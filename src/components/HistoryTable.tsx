@@ -104,12 +104,19 @@ export const HistoryTable: React.FC<HistoryTableProps> = ({ logs, onClearHistory
                         <div className="text-neutral-900 dark:text-neutral-100 font-medium">
                           {dateStr}
                         </div>
-                        <div className="text-[11px] text-neutral-400">
-                          {log.slotType === 'morning'
-                            ? '6:00 AM Morning Drop'
-                            : log.slotType === 'evening'
-                            ? '6:00 PM Evening Drop'
-                            : 'Manual Test Drop'}
+                        <div className="text-[11px] text-neutral-400 flex items-center gap-1.5 flex-wrap">
+                          {log.contextName && (
+                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800/60">
+                              {log.contextName}
+                            </span>
+                          )}
+                          <span>
+                            {log.slotType === 'morning'
+                              ? '6:00 AM Drop'
+                              : log.slotType === 'evening'
+                              ? '6:00 PM Drop'
+                              : 'Manual Drop'}
+                          </span>
                         </div>
                       </td>
 
