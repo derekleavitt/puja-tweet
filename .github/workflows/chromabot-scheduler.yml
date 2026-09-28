@@ -1,0 +1,61 @@
+name: ChromaBot Scheduled Color Drop
+
+on:
+  schedule:
+    # Run every 5 minutes (standard GitHub Actions minimum interval)
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+    inputs:
+      slot:
+        description: 'Drop slot type (morning / evening / auto)'
+        required: true
+        default: 'auto'
+        type: choice
+        options:
+          - auto
+          - morning
+          - evening
+      dry_run:
+        description: 'Simulate without posting live to X (Dry Run)'
+        required: false
+        default: false
+        type: boolean
+      target_tweet_id:
+        description: 'Optional override for Target Tweet ID'
+        required: false
+        default: ''
+        type: string
+
+jobs:
+  post-chromatic-drop:
+    runs-on: ubuntu-latest
+    name: Generate & Post Chromatic Weather Drop
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      - name: Execute Chromatic Drop
+        env:
+          TWITTER_API_KEY: ${{ secrets.TWITTER_API_KEY }}
+          TWITTER_API_SECRET: ${{ secrets.TWITTER_API_SECRET }}
+          TWITTER_ACCESS_TOKEN: ${{ secrets.TWITTER_ACCESS_TOKEN }}
+          TWITTER_ACCESS_TOKEN_SECRET: ${{ secrets.TWITTER_ACCESS_TOKEN_SECRET }}
+          TWITTER_BEARER_TOKEN: ${{ secrets.TWITTER_BEARER_TOKEN }}
+          TARGET_TWEET_ID: ${{ inputs.target_tweet_id || secrets.TARGET_TWEET_ID }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          SLOT_ARG="${{ inputs.slot || 'auto' }}"
+          echo "Executing drop for slot: $SLOT_ARG"
+          npx tsx scripts/post-drop.ts --slot "$SLOT_ARG"
