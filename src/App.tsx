@@ -1,6 +1,6 @@
 /**
  * X ChromaBot - Automated Color Reply Generator
- * Target Status: https://x.com/pfinallyhere/status/2103110008212992249
+ * Secured behind Google Authentication & synced with Cloud Firestore.
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -12,6 +12,14 @@ import { SettingsPanel } from './components/SettingsPanel.js';
 import { HistoryTable } from './components/HistoryTable.js';
 import { TwitterSetup } from './components/TwitterSetup.js';
 import { StandaloneExport } from './components/StandaloneExport.js';
+import { AuthProvider } from './context/AuthContext.js';
+import { AuthGate } from './components/AuthGate.js';
+import {
+  loadFirestoreSettings,
+  saveFirestoreSettings,
+  recordFirestoreLog,
+  loadFirestoreLogs,
+} from './lib/firestoreSync.js';
 import {
   ColorData,
   BotSettings,
@@ -21,11 +29,11 @@ import {
   QueueSlot,
 } from './types.js';
 
-export default function App() {
+function ChromaBotDashboard() {
   const [activeTab, setActiveTab] = useState<string>('studio');
   const [color, setColor] = useState<ColorData | null>(null);
   const [settings, setSettings] = useState<BotSettings>({
-    targetTweetId: '2103110008212992249',
+    targetTweetId: '2091597504928428416',
     scheduleTimes: ['06:00', '18:00'],
     timezone: 'America/Los_Angeles',
     schedulerEnabled: true,
@@ -41,7 +49,7 @@ export default function App() {
   const [lastPostedResult, setLastPostedResult] = useState<any>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Fetch status & state from backend
+  // Fetch status & state from backend & Firestore
   const fetchStatus = useCallback(async () => {
     try {
       const res = await fetch('/api/status');
@@ -70,11 +78,27 @@ export default function App() {
 
   const fetchHistory = useCallback(async () => {
     try {
+      // 1. Fetch server logs
       const res = await fetch('/api/history');
+      let combinedLogs: PostLog[] = [];
       if (res.ok) {
         const data = await res.json();
-        setLogs(data.logs);
+        combinedLogs = data.logs || [];
       }
+
+      // 2. Fetch firestore logs if present
+      const cloudLogs = await loadFirestoreLogs();
+      if (cloudLogs && cloudLogs.length > 0) {
+        const idSet = new Set(combinedLogs.map(l => l.id));
+        cloudLogs.forEach(cl => {
+          if (!idSet.has(cl.id)) {
+            combinedLogs.push(cl);
+          }
+        });
+        combinedLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      }
+
+      setLogs(combinedLogs);
     } catch (err) {
       console.error('Error fetching logs:', err);
     }
@@ -96,10 +120,27 @@ export default function App() {
     }
   }, []);
 
-  // Initial load
+  // Initial load: check Firestore for saved cloud settings
   useEffect(() => {
     async function init() {
       setIsLoading(true);
+
+      // Check Firestore cloud settings first
+      try {
+        const cloudSettings = await loadFirestoreSettings();
+        if (cloudSettings && cloudSettings.targetTweetId) {
+          setSettings(cloudSettings);
+          // Sync server memory with cloud settings
+          await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(cloudSettings),
+          });
+        }
+      } catch (e) {
+        console.warn('Initial cloud sync error:', e);
+      }
+
       await Promise.all([fetchStatus(), fetchQueue(), fetchHistory(), generateColor('morning')]);
       setIsLoading(false);
     }
@@ -134,6 +175,12 @@ export default function App() {
 
       const data = await res.json();
       setLastPostedResult(data);
+
+      if (data.log) {
+        // Sync log to Cloud Firestore
+        await recordFirestoreLog(data.log);
+      }
+
       await Promise.all([fetchStatus(), fetchHistory(), fetchQueue()]);
       return data;
     } catch (err: any) {
@@ -155,7 +202,9 @@ export default function App() {
         body: JSON.stringify({ dryRun: updated }),
       });
       if (res.ok) {
-        setSettings((prev) => ({ ...prev, dryRun: updated }));
+        const newSettings = { ...settings, dryRun: updated };
+        setSettings(newSettings);
+        await saveFirestoreSettings(newSettings);
       }
     } catch (err) {
       console.error('Error toggling dry run:', err);
@@ -172,23 +221,27 @@ export default function App() {
         body: JSON.stringify({ schedulerEnabled: updated }),
       });
       if (res.ok) {
-        setSettings((prev) => ({ ...prev, schedulerEnabled: updated }));
+        const newSettings = { ...settings, schedulerEnabled: updated };
+        setSettings(newSettings);
+        await saveFirestoreSettings(newSettings);
       }
     } catch (err) {
       console.error('Error toggling scheduler:', err);
     }
   };
 
-  // Save settings
-  const handleSaveSettings = async (newSettings: Partial<BotSettings>) => {
+  // Save settings (persists both in local storage & cloud firestore)
+  const handleSaveSettings = async (newSettingsPartial: Partial<BotSettings>) => {
     const res = await fetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newSettings),
+      body: JSON.stringify(newSettingsPartial),
     });
     if (res.ok) {
       const data = await res.json();
       setSettings(data.settings);
+      // Persist to Cloud Firestore
+      await saveFirestoreSettings(data.settings);
       fetchStatus();
     }
   };
@@ -272,7 +325,7 @@ export default function App() {
         {isLoading ? (
           <div className="py-24 text-center text-neutral-500">
             <div className="w-8 h-8 mx-auto mb-3 rounded-full border-2 border-neutral-300 border-t-neutral-800 dark:border-neutral-700 dark:border-t-neutral-200 animate-spin" />
-            <p className="text-sm font-medium">Initializing ChromaBot Scheduler...</p>
+            <p className="text-sm font-medium">Connecting to Cloud Firestore &amp; Scheduler...</p>
           </div>
         ) : (
           <>
@@ -327,12 +380,22 @@ export default function App() {
             <span>Target: x.com/pfinallyhere/status/{settings.targetTweetId}</span>
           </div>
           <div className="flex items-center gap-4 text-neutral-400 font-mono text-[11px]">
-            <span>6:00 AM &amp; 6:00 PM Automation</span>
+            <span>Cloud State &amp; Google Auth Active</span>
             <span>·</span>
             <span>RFC 5849 OAuth 1.0a &amp; X API v2</span>
           </div>
         </div>
       </footer>
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AuthGate>
+        <ChromaBotDashboard />
+      </AuthGate>
+    </AuthProvider>
   );
 }
