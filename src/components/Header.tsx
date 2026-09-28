@@ -30,9 +30,9 @@ export const Header: React.FC<HeaderProps> = ({
     { id: 'studio', label: 'Studio' },
     { id: 'queue', label: '7-Day Queue' },
     { id: 'history', label: 'Post Logs' },
-    { id: 'settings', label: 'Schedule & Template' },
+    { id: 'settings', label: 'Repeat Timing' },
     { id: 'credentials', label: 'X Credentials' },
-    { id: 'export', label: 'Cloud Runner' },
+    { id: 'export', label: 'Autonomous Ping' },
   ];
 
   return (

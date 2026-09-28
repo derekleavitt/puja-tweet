@@ -16,6 +16,9 @@ export interface BotSettings {
   dryRun: boolean;
   template: string;
   themePreference: 'dynamic' | 'vibrant' | 'minimal' | 'poetic';
+  intervalMode?: 'fixed_times' | 'interval';
+  intervalMinutes?: number; // 1, 15, 30, 60, 180, 360, 540, 720
+  webhookSecret?: string;
 }
 
 export interface PostLog {
@@ -51,6 +54,9 @@ const DEFAULT_SETTINGS: BotSettings = {
   dryRun: false,
   template: DEFAULT_TWEET_TEMPLATE,
   themePreference: 'dynamic',
+  intervalMode: 'fixed_times',
+  intervalMinutes: 720,
+  webhookSecret: 'chroma_auto_secret',
 };
 
 class StorageService {
@@ -58,6 +64,7 @@ class StorageService {
   private logs: PostLog[] = [];
   private queue: QueueSlot[] = [];
   private lastPostedSlot: string = '';
+  private lastPostedTimestamp: number = 0;
   private userCredentials: TwitterCredentials = {};
 
   constructor() {
@@ -94,6 +101,9 @@ class StorageService {
         if (data.lastPostedSlot) {
           this.lastPostedSlot = data.lastPostedSlot;
         }
+        if (data.lastPostedTimestamp) {
+          this.lastPostedTimestamp = Number(data.lastPostedTimestamp);
+        }
         if (data.credentials) {
           this.userCredentials = data.credentials;
         }
@@ -111,6 +121,7 @@ class StorageService {
         logs: this.logs.slice(-100), // keep latest 100 logs
         queue: this.queue,
         lastPostedSlot: this.lastPostedSlot,
+        lastPostedTimestamp: this.lastPostedTimestamp,
         credentials: this.userCredentials,
       };
       fs.writeFileSync(STORE_FILE, JSON.stringify(payload, null, 2), 'utf-8');
@@ -210,6 +221,15 @@ class StorageService {
 
   public setLastPostedSlot(slot: string) {
     this.lastPostedSlot = slot;
+    this.save();
+  }
+
+  public getLastPostedTimestamp(): number {
+    return this.lastPostedTimestamp;
+  }
+
+  public setLastPostedTimestamp(ts: number) {
+    this.lastPostedTimestamp = ts;
     this.save();
   }
 

@@ -149,6 +149,8 @@ function ChromaBotDashboard() {
     // Heartbeat poll every 8 seconds
     const interval = setInterval(() => {
       fetchStatus();
+      fetchHistory();
+      fetchQueue();
     }, 8000);
 
     return () => clearInterval(interval);
@@ -318,6 +320,13 @@ function ChromaBotDashboard() {
         onToggleScheduler={handleToggleScheduler}
         timezone={settings.timezone}
         scheduleTimes={settings.scheduleTimes}
+        settings={settings}
+        onChangeFrequency={async (mode, minutes) => {
+          await handleSaveSettings({
+            intervalMode: mode,
+            intervalMinutes: minutes,
+          });
+        }}
       />
 
       {/* Main Container Viewport */}

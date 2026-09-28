@@ -111,47 +111,47 @@ app.post('/api/generate-color', (req, res) => {
 
 app.post('/api/post-now', async (req, res) => {
   try {
-    const settings = storage.getSettings();
     const slotType = req.body.slotType || 'manual';
-    
-    // Use provided color or generate fresh one
-    const color = req.body.color || generateColor(slotType === 'morning' ? 'morning' : 'evening');
-    const timeTag = slotType === 'morning' ? '6:00 AM' : slotType === 'evening' ? '6:00 PM' : 'Live Drop';
-    const text = req.body.text || formatTweetText(settings.template, color, timeTag);
-    const targetTweetId = req.body.targetTweetId || settings.targetTweetId;
     const forceLive = req.body.forceLive === true;
 
-    const isDryRun = forceLive ? false : settings.dryRun;
-    const creds = storage.getEffectiveCredentials();
-
-    const tweetRes = await postColorTweet(
-      creds,
-      {
-        text,
-        replyToTweetId: targetTweetId,
-      },
-      isDryRun
-    );
-
-    const logEntry = {
-      id: `log_${Date.now()}`,
-      timestamp: new Date().toISOString(),
+    const result = await scheduler.executeDrop({
       slotType,
-      targetTweetId,
-      color,
-      tweetText: text,
-      tweetId: tweetRes.tweetId,
-      tweetUrl: tweetRes.url,
-      status: tweetRes.success ? (tweetRes.simulated ? 'simulated' as const : 'success' as const) : 'error' as const,
-      errorMessage: tweetRes.error,
-    };
+      forceLive,
+      source: 'manual',
+    });
 
-    storage.addLog(logEntry);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Autonomous Webhook / Cron Ping Endpoint (Supports GET or POST for easy browser testing / pingers)
+app.all(['/api/cron/trigger', '/api/webhook/trigger'], async (req, res) => {
+  try {
+    const settings = storage.getSettings();
+    const providedSecret = req.query.secret || req.headers['x-cron-secret'] || req.body?.secret;
+
+    if (settings.webhookSecret && providedSecret !== settings.webhookSecret) {
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized. Invalid secret parameter (?secret=YOUR_SECRET)',
+      });
+    }
+
+    const forceLive = req.query.forceLive === 'true' || req.body?.forceLive === true;
+    const slotType = (req.query.slot as any) || req.body?.slot || undefined;
+
+    console.log(`[Webhook Trigger] Received autonomous ping! Executing drop...`);
+    const result = await scheduler.executeDrop({
+      slotType,
+      forceLive,
+      source: 'webhook',
+    });
 
     res.json({
-      success: tweetRes.success,
-      result: tweetRes,
-      log: logEntry,
+      message: 'Autonomous drop executed successfully!',
+      ...result,
     });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
