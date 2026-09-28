@@ -1,6 +1,8 @@
 /**
  * Express Backend Server for X ChromaBot
- * Handles Twitter/X API communication, 6am/6pm scheduler, and Vite dev middleware.
+ * Multi-Context Autonomous Architecture:
+ * Handles multiple tweet contexts and schedules, Twitter/X API communication,
+ * and Vite dev middleware.
  */
 
 import 'dotenv/config';
@@ -22,9 +24,14 @@ const PORT = parseInt(process.env.PORT || '3000', 10);
 app.use(express.json());
 
 // API Routes
+
+// System Status & Current State
 app.get('/api/status', (req, res) => {
   const settings = storage.getSettings();
+  const activeContext = storage.getActiveContext();
+  const contexts = storage.getContexts();
   const nextPost = scheduler.getNextScheduledPost();
+  const allNextPosts = scheduler.getAllNextScheduledPosts();
   const credentialsStatus = storage.getMaskedCredentialsStatus();
   const logs = storage.getLogs();
 
@@ -37,17 +44,113 @@ app.get('/api/status', (req, res) => {
 
   res.json({
     settings,
+    activeContext,
+    contexts,
     nextPost,
+    allNextPosts,
     credentialsStatus,
     stats,
     latestLog: logs[0] || null,
   });
 });
 
+// --- Context & Schedule Management APIs ---
+
+app.get('/api/contexts', (req, res) => {
+  res.json({
+    contexts: storage.getContexts(),
+    activeContextId: storage.getActiveContext().id,
+    nextPosts: scheduler.getAllNextScheduledPosts(),
+  });
+});
+
+app.post('/api/contexts', (req, res) => {
+  try {
+    const created = storage.createContext(req.body);
+    res.json({ success: true, context: created, contexts: storage.getContexts() });
+  } catch (err: any) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/contexts/:id', (req, res) => {
+  try {
+    const updated = storage.updateContext(req.params.id, req.body);
+    res.json({ success: true, context: updated, contexts: storage.getContexts() });
+  } catch (err: any) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/contexts/:id', (req, res) => {
+  try {
+    const ok = storage.deleteContext(req.params.id);
+    res.json({
+      success: ok,
+      contexts: storage.getContexts(),
+      activeContextId: storage.getActiveContext().id,
+    });
+  } catch (err: any) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/contexts/:id/activate', (req, res) => {
+  try {
+    const active = storage.setActiveContextId(req.params.id);
+    res.json({ success: true, activeContext: active, contexts: storage.getContexts() });
+  } catch (err: any) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/contexts/:id/toggle', (req, res) => {
+  try {
+    const toggled = storage.toggleContext(req.params.id);
+    res.json({ success: true, context: toggled, contexts: storage.getContexts() });
+  } catch (err: any) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/contexts/:id/duplicate', (req, res) => {
+  try {
+    const duplicated = storage.duplicateContext(req.params.id);
+    res.json({ success: true, context: duplicated, contexts: storage.getContexts() });
+  } catch (err: any) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/contexts/:id/trigger', async (req, res) => {
+  try {
+    const slotType = req.body.slotType || 'manual';
+    const forceLive = req.body.forceLive === true;
+
+    const result = await scheduler.executeDrop({
+      contextId: req.params.id,
+      slotType,
+      forceLive,
+      source: 'manual',
+    });
+
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// --- Settings & Credentials APIs ---
+
 app.post('/api/settings', (req, res) => {
   try {
     const updated = storage.updateSettings(req.body);
-    res.json({ success: true, settings: updated });
+    res.json({
+      success: true,
+      settings: updated,
+      activeContext: storage.getActiveContext(),
+      contexts: storage.getContexts(),
+    });
   } catch (err: any) {
     res.status(400).json({ success: false, error: err.message });
   }
@@ -97,15 +200,21 @@ app.post('/api/twitter/verify', async (req, res) => {
 app.post('/api/generate-color', (req, res) => {
   const slotType = req.body.slotType || 'random';
   const color = generateColor(slotType);
-  const settings = storage.getSettings();
+
+  const context = req.body.contextId
+    ? (storage.getContext(req.body.contextId) || storage.getActiveContext())
+    : storage.getActiveContext();
+
   const timeTag = slotType === 'morning' ? '6:00 AM' : slotType === 'evening' ? '6:00 PM' : 'Drop';
-  const previewText = formatTweetText(settings.template, color, timeTag);
+  const previewText = formatTweetText(context.template, color, timeTag);
 
   res.json({
     color,
     previewText,
     charCount: previewText.length,
-    targetTweetId: settings.targetTweetId,
+    targetTweetId: context.targetTweetId,
+    contextId: context.id,
+    contextName: context.name,
   });
 });
 
@@ -113,8 +222,10 @@ app.post('/api/post-now', async (req, res) => {
   try {
     const slotType = req.body.slotType || 'manual';
     const forceLive = req.body.forceLive === true;
+    const contextId = req.body.contextId;
 
     const result = await scheduler.executeDrop({
+      contextId,
       slotType,
       forceLive,
       source: 'manual',
@@ -126,7 +237,7 @@ app.post('/api/post-now', async (req, res) => {
   }
 });
 
-// Autonomous Webhook / Cron Ping Endpoint (Supports GET or POST for easy browser testing / pingers)
+// Autonomous Webhook / Cron Ping Endpoint (Supports GET or POST for external cron/ping services)
 app.all(['/api/cron/trigger', '/api/webhook/trigger'], async (req, res) => {
   try {
     const settings = storage.getSettings();
@@ -141,9 +252,11 @@ app.all(['/api/cron/trigger', '/api/webhook/trigger'], async (req, res) => {
 
     const forceLive = req.query.forceLive === 'true' || req.body?.forceLive === true;
     const slotType = (req.query.slot as any) || req.body?.slot || undefined;
+    const contextId = (req.query.contextId as string) || req.body?.contextId || undefined;
 
-    console.log(`[Webhook Trigger] Received autonomous ping! Executing drop...`);
+    console.log(`[Webhook Trigger] Received autonomous ping! Executing drop... (context: ${contextId || 'active'})`);
     const result = await scheduler.executeDrop({
+      contextId,
       slotType,
       forceLive,
       source: 'webhook',
@@ -185,8 +298,9 @@ app.delete('/api/history', (req, res) => {
 
 app.get('/api/export-script', (req, res) => {
   const settings = storage.getSettings();
+  const activeContext = storage.getActiveContext();
   
-  const githubActionsYaml = `name: Daily 6am & 6pm Color Replies to X
+  const githubActionsYaml = `name: Daily Color Replies to X (${activeContext.name})
 
 on:
   schedule:
@@ -212,12 +326,12 @@ jobs:
           TWITTER_API_SECRET: \${{ secrets.TWITTER_API_SECRET }}
           TWITTER_ACCESS_TOKEN: \${{ secrets.TWITTER_ACCESS_TOKEN }}
           TWITTER_ACCESS_TOKEN_SECRET: \${{ secrets.TWITTER_ACCESS_TOKEN_SECRET }}
-          TARGET_TWEET_ID: "${settings.targetTweetId}"
+          TARGET_TWEET_ID: "${activeContext.targetTweetId}"
         run: node scripts/standalone-poster.mjs
 `;
 
   const nodeScript = `// Standalone Color Poster for X (Twitter)
-// Target Post: https://x.com/pfinallyhere/status/${settings.targetTweetId}
+// Target Post: https://x.com/i/status/${activeContext.targetTweetId}
 
 import crypto from 'crypto';
 
@@ -225,7 +339,7 @@ const API_KEY = process.env.TWITTER_API_KEY;
 const API_SECRET = process.env.TWITTER_API_SECRET;
 const ACCESS_TOKEN = process.env.TWITTER_ACCESS_TOKEN;
 const ACCESS_TOKEN_SECRET = process.env.TWITTER_ACCESS_TOKEN_SECRET;
-const TARGET_TWEET_ID = process.env.TARGET_TWEET_ID || "${settings.targetTweetId}";
+const TARGET_TWEET_ID = process.env.TARGET_TWEET_ID || "${activeContext.targetTweetId}";
 
 function percentEncode(str) {
   return encodeURIComponent(str).replace(/[!'()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase());
@@ -297,13 +411,14 @@ main().catch(console.error);
   res.json({
     githubActionsYaml,
     nodeScript,
-    targetTweetId: settings.targetTweetId,
+    targetTweetId: activeContext.targetTweetId,
+    contextName: activeContext.name,
   });
 });
 
 // Vite or Static files handling
 async function startServer() {
-  // Start background scheduler
+  // Start background multi-context scheduler
   scheduler.start();
 
   if (process.env.NODE_ENV === 'production') {

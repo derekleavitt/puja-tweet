@@ -21,5 +21,9 @@ service cloud.firestore {
     match /postLogs/{logId} {
       allow read, write: if isAuthorizedAdmin();
     }
+
+    match /contexts/{contextId} {
+      allow read, write: if isAuthorizedAdmin();
+    }
   }
 }
