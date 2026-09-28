@@ -15,6 +15,38 @@ export interface ColorData {
   contrastText: '#000000' | '#FFFFFF';
 }
 
+export interface TweetContextSchedule {
+  mode: 'interval' | 'fixed_times';
+  intervalMinutes: number; // e.g. 1, 15, 30, 60, 180, 360, 720
+  scheduleTimes: string[]; // e.g. ["06:00", "18:00"]
+  timezone: string; // e.g. "America/Los_Angeles"
+  humanizeJitterEnabled: boolean; // Random humanized anti-bot delay
+  jitterPercentage: number; // Default 25 (0 to 25% of interval window)
+}
+
+export interface TweetContext {
+  id: string; // Unique context ID e.g. 'ctx_default', 'ctx_1790623000'
+  name: string; // Context title e.g. 'Primary Eternal Colors'
+  description?: string;
+  targetTweetId: string; // The numeric Tweet ID to reply to
+  enabled: boolean; // Whether automatic scheduling is active for this context
+  dryRun?: boolean; // Dry-run simulation vs live posting on X
+  schedule: TweetContextSchedule;
+  template: string; // Tweet text template with variables
+  themePreference: 'dynamic' | 'vibrant' | 'minimal' | 'poetic';
+  lastPostedTimestamp?: number;
+  currentJitterMs?: number;
+  lastPostedSlot?: string;
+  stats?: {
+    totalPosts: number;
+    successfulPosts: number;
+    simulatedPosts: number;
+    failedPosts: number;
+  };
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface BotSettings {
   targetTweetId: string;
   scheduleTimes: string[];
@@ -26,6 +58,9 @@ export interface BotSettings {
   intervalMode?: 'fixed_times' | 'interval';
   intervalMinutes?: number; // 1, 15, 30, 60, 180, 360, 540, 720
   webhookSecret?: string;
+  humanizeJitterEnabled?: boolean; // Randomized humanized delay
+  jitterPercentage?: number; // default 25% (0% - 25% window delay)
+  activeContextId?: string; // Current active context selected in Studio
 }
 
 export interface CredentialsStatus {
@@ -47,12 +82,16 @@ export interface CredentialsStatus {
 }
 
 export interface NextPostInfo {
+  contextId?: string;
+  contextName?: string;
   slotTime: string;
   label: string;
   isMorning: boolean;
   secondsUntil: number;
   countdownFormatted: string;
   targetTimezone: string;
+  jitterSeconds?: number;
+  jitterFormatted?: string;
 }
 
 export interface PostLog {
@@ -67,6 +106,8 @@ export interface PostLog {
   tweetUrl?: string;
   status: 'success' | 'simulated' | 'error';
   errorMessage?: string;
+  contextId?: string;
+  contextName?: string;
 }
 
 export interface QueueSlot {
@@ -75,4 +116,6 @@ export interface QueueSlot {
   timeSlot: '06:00' | '18:00' | string;
   slotType: 'morning' | 'evening';
   color: ColorData;
+  contextId?: string;
+  contextName?: string;
 }

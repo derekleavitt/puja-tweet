@@ -1,16 +1,19 @@
 import React, { useState } from 'react';
-import { Sun, Moon, Shuffle, Send, ExternalLink, Check, Copy, AlertCircle, ArrowUpRight } from 'lucide-react';
-import { ColorData, BotSettings } from '../types.js';
+import { Sun, Moon, Shuffle, Send, ExternalLink, Check, Copy, AlertCircle, ArrowUpRight, Layers } from 'lucide-react';
+import { ColorData, BotSettings, TweetContext } from '../types.js';
 import { TargetTweetEditor } from './TargetTweetEditor.js';
 
 interface LiveStudioProps {
   color: ColorData | null;
   onGenerateColor: (slot: 'morning' | 'evening' | 'random') => void;
-  onPostNow: (customColor?: ColorData, slotType?: 'morning' | 'evening' | 'manual') => Promise<any>;
+  onPostNow: (customColor?: ColorData, slotType?: 'morning' | 'evening' | 'manual', contextId?: string) => Promise<any>;
   settings: BotSettings;
   isPosting: boolean;
   lastPostedResult: any;
   onUpdateTargetTweetId: (newId: string) => Promise<void>;
+  contexts?: TweetContext[];
+  activeContextId?: string;
+  onSelectContext?: (id: string) => Promise<void>;
 }
 
 export const LiveStudio: React.FC<LiveStudioProps> = ({
@@ -21,6 +24,9 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   isPosting,
   lastPostedResult,
   onUpdateTargetTweetId,
+  contexts = [],
+  activeContextId = '',
+  onSelectContext,
 }) => {
   const [selectedSlot, setSelectedSlot] = useState<'morning' | 'evening' | 'manual'>('morning');
   const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -71,11 +77,30 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
       {/* Top Banner / Goal-to-Mechanism */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-neutral-200 dark:border-neutral-800">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-neutral-900 dark:text-neutral-100">
-            Chromatic Post Studio
-          </h1>
-          <p className="text-sm text-neutral-500 mt-0.5">
-            Automated reply generator targeting X status{' '}
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h1 className="text-xl font-bold tracking-tight text-neutral-900 dark:text-neutral-100">
+              Chromatic Post Studio
+            </h1>
+            {contexts.length > 0 && (
+              <div className="flex items-center gap-1.5 bg-neutral-100 dark:bg-neutral-800 px-2.5 py-1 rounded-lg border border-neutral-200 dark:border-neutral-700 text-xs">
+                <Layers className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                <span className="font-semibold text-neutral-500">Context:</span>
+                <select
+                  value={activeContextId}
+                  onChange={(e) => onSelectContext?.(e.target.value)}
+                  className="bg-transparent font-medium text-neutral-900 dark:text-neutral-100 focus:outline-none cursor-pointer pr-1 text-xs"
+                >
+                  {contexts.map((c) => (
+                    <option key={c.id} value={c.id} className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100">
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+          <p className="text-sm text-neutral-500 mt-1">
+            Replying to X status{' '}
             <a
               href={`https://x.com/i/status/${settings.targetTweetId}`}
               target="_blank"
