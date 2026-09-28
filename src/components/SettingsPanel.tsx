@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Save, Check, ExternalLink, RefreshCw, Power } from 'lucide-react';
+import { Save, Check, ExternalLink, RefreshCw, Clock, Repeat, Globe, Key, ShieldCheck } from 'lucide-react';
 import { BotSettings } from '../types.js';
 import { extractTweetId } from './TargetTweetEditor.js';
 
@@ -24,10 +24,24 @@ const COMMON_TIMEZONES = [
   'UTC',
 ];
 
+const INTERVAL_PRESETS = [
+  { label: 'Every 1 minute (Fast Test)', value: 1 },
+  { label: 'Every 15 minutes', value: 15 },
+  { label: 'Every 30 minutes', value: 30 },
+  { label: 'Every 60 minutes (1 Hour)', value: 60 },
+  { label: 'Every 3 hours', value: 180 },
+  { label: 'Every 6 hours', value: 360 },
+  { label: 'Every 9 hours', value: 540 },
+  { label: 'Every 12 hours (Twice Daily)', value: 720 },
+];
+
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSettings }) => {
   const [targetTweetId, setTargetTweetId] = useState(settings.targetTweetId);
+  const [intervalMode, setIntervalMode] = useState<'fixed_times' | 'interval'>(settings.intervalMode || 'fixed_times');
+  const [intervalMinutes, setIntervalMinutes] = useState<number>(settings.intervalMinutes || 720);
   const [scheduleTimes, setScheduleTimes] = useState(settings.scheduleTimes.join(', '));
   const [timezone, setTimezone] = useState(settings.timezone);
+  const [webhookSecret, setWebhookSecret] = useState(settings.webhookSecret || 'chroma_auto_secret');
   const [schedulerEnabled, setSchedulerEnabled] = useState(settings.schedulerEnabled);
   const [dryRun, setDryRun] = useState(settings.dryRun);
   const [template, setTemplate] = useState(settings.template);
@@ -47,8 +61,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
 
       await onSaveSettings({
         targetTweetId: cleanedTargetId,
+        intervalMode,
+        intervalMinutes: Number(intervalMinutes),
         scheduleTimes: times.length > 0 ? times : ['06:00', '18:00'],
         timezone,
+        webhookSecret: webhookSecret.trim(),
         schedulerEnabled,
         dryRun,
         template,
@@ -65,15 +82,18 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
     setTemplate((prev) => `${prev} ${token}`);
   };
 
+  const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+  const webhookUrl = `${currentOrigin}/api/cron/trigger?secret=${encodeURIComponent(webhookSecret)}`;
+
   return (
     <div className="max-w-4xl space-y-6">
       <div className="pb-4 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold tracking-tight text-neutral-900 dark:text-neutral-100">
-            Schedule & Template Configuration
+            Timing & Autonomous Reply Settings
           </h2>
           <p className="text-sm text-neutral-500 mt-0.5">
-            Configure target post reply settings, daily execution times, and tweet copywriting variables.
+            Configure how often ChromaBot drops colors: by interval (1m, 15m, 1h, 3h, 6h, 12h) or at fixed clock times.
           </p>
         </div>
 
@@ -102,14 +122,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
           </div>
 
           <p className="text-xs text-neutral-500">
-            Paste a numeric Tweet ID or a full post URL (e.g. <span className="font-mono">https://x.com/username/status/2103110008212992249</span>).
+            Paste a numeric Tweet ID or a full post URL (e.g. <span className="font-mono">https://x.com/username/status/2091597504928428416</span>).
           </p>
 
           <input
             type="text"
             value={targetTweetId}
             onChange={(e) => setTargetTweetId(e.target.value)}
-            placeholder="2103110008212992249 or https://x.com/..."
+            placeholder="2091597504928428416 or https://x.com/..."
             className="w-full px-3.5 py-2 text-sm font-mono border border-neutral-300 dark:border-neutral-700 rounded-lg bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-neutral-400 dark:focus:ring-neutral-600"
             required
           />
@@ -121,43 +141,177 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
           )}
         </div>
 
-        {/* Schedule Times & Timezone */}
-        <div className="border border-neutral-200 dark:border-neutral-800 rounded-xl p-5 bg-white dark:bg-neutral-900 grid grid-cols-1 md:grid-cols-2 gap-5 shadow-xs">
+        {/* Schedule Mode Selector: Interval vs Fixed Times */}
+        <div className="border border-neutral-200 dark:border-neutral-800 rounded-xl p-5 bg-white dark:bg-neutral-900 space-y-5 shadow-xs">
+          <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 pb-3">
+            <span className="text-xs font-bold uppercase tracking-wider text-neutral-700 dark:text-neutral-300 flex items-center gap-2">
+              <Clock className="w-4 h-4 text-neutral-500" /> Repeat Timing Mode
+            </span>
+            <div className="flex items-center gap-1 bg-neutral-100 dark:bg-neutral-800 p-1 rounded-lg text-xs">
+              <button
+                type="button"
+                onClick={() => setIntervalMode('interval')}
+                className={`px-3 py-1 font-medium rounded-md transition-colors cursor-pointer ${
+                  intervalMode === 'interval'
+                    ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 shadow-xs'
+                    : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900'
+                }`}
+              >
+                <Repeat className="w-3.5 h-3.5 inline mr-1" />
+                Interval Repeat
+              </button>
+              <button
+                type="button"
+                onClick={() => setIntervalMode('fixed_times')}
+                className={`px-3 py-1 font-medium rounded-md transition-colors cursor-pointer ${
+                  intervalMode === 'fixed_times'
+                    ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 shadow-xs'
+                    : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900'
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5 inline mr-1" />
+                Fixed Clock Times (6am & 6pm)
+              </button>
+            </div>
+          </div>
+
+          {intervalMode === 'interval' ? (
+            <div className="space-y-4">
+              <p className="text-xs text-neutral-500">
+                Choose how often ChromaBot automatically drops a new color reply. The internal server timer counts down and triggers a fresh post every time the interval elapses.
+              </p>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                {INTERVAL_PRESETS.map((preset) => {
+                  const isSelected = intervalMinutes === preset.value;
+                  return (
+                    <button
+                      type="button"
+                      key={preset.value}
+                      onClick={() => setIntervalMinutes(preset.value)}
+                      className={`p-3 text-left rounded-xl border transition-all cursor-pointer ${
+                        isSelected
+                          ? 'border-neutral-900 bg-neutral-900 text-white dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-950 font-semibold shadow-xs'
+                          : 'border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700 bg-neutral-50 dark:bg-neutral-950/60 text-neutral-800 dark:text-neutral-200'
+                      }`}
+                    >
+                      <div className="text-xs">{preset.label}</div>
+                      <div className={`text-[11px] mt-1 font-mono ${isSelected ? 'text-neutral-300 dark:text-neutral-600' : 'text-neutral-400'}`}>
+                        {preset.value < 60 ? `${preset.value} min` : `${preset.value / 60} hr${preset.value === 60 ? '' : 's'}`}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="p-3 bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/40 rounded-lg text-xs text-blue-800 dark:text-blue-300 flex items-center gap-2">
+                <Check className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                <span>
+                  Active Repeat: <strong>Every {intervalMinutes < 60 ? `${intervalMinutes} minutes` : `${intervalMinutes / 60} hours`}</strong>. The server counts down continuously.
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase tracking-wider text-neutral-700 dark:text-neutral-300">
+                  Daily Drop Times (24-hour format)
+                </label>
+                <p className="text-xs text-neutral-500">
+                  Comma-separated list. Defaults to 6:00 AM (06:00) and 6:00 PM (18:00).
+                </p>
+                <input
+                  type="text"
+                  value={scheduleTimes}
+                  onChange={(e) => setScheduleTimes(e.target.value)}
+                  placeholder="06:00, 18:00"
+                  className="w-full px-3.5 py-2 text-sm font-mono border border-neutral-300 dark:border-neutral-700 rounded-lg bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-neutral-400 dark:focus:ring-neutral-600"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase tracking-wider text-neutral-700 dark:text-neutral-300">
+                  Timezone
+                </label>
+                <p className="text-xs text-neutral-500">
+                  Determines when 6:00 AM and 6:00 PM occur.
+                </p>
+                <select
+                  value={timezone}
+                  onChange={(e) => setTimezone(e.target.value)}
+                  className="w-full px-3.5 py-2 text-sm font-mono border border-neutral-300 dark:border-neutral-700 rounded-lg bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-neutral-400 dark:focus:ring-neutral-600"
+                >
+                  {COMMON_TIMEZONES.map((tz) => (
+                    <option key={tz} value={tz}>
+                      {tz}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Autonomous Webhook URL & Ping Endpoint */}
+        <div className="border border-neutral-200 dark:border-neutral-800 rounded-xl p-5 bg-white dark:bg-neutral-900 space-y-4 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-neutral-700 dark:text-neutral-300 flex items-center gap-2">
+              <Globe className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              Autonomous Webhook Trigger (Zero-Maintenance)
+            </span>
+            <span className="text-[11px] px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-medium">
+              No GitHub Actions Auth Required
+            </span>
+          </div>
+
+          <p className="text-xs text-neutral-500 leading-relaxed">
+            Because this web app already has working X credentials, you can ping this URL from any free recurring cron tool (e.g.{' '}
+            <a href="https://cron-job.org" target="_blank" rel="noreferrer" className="text-blue-600 dark:text-blue-400 underline">
+              cron-job.org
+            </a>{' '}
+            or{' '}
+            <a href="https://uptimerobot.com" target="_blank" rel="noreferrer" className="text-blue-600 dark:text-blue-400 underline">
+              UptimeRobot
+            </a>
+            ) at your desired frequency. Each ping wakes the app and immediately publishes a live chromatic reply.
+          </p>
+
           <div className="space-y-2">
-            <label className="text-xs font-bold uppercase tracking-wider text-neutral-700 dark:text-neutral-300">
-              Daily Drop Times (24-hour format)
+            <label className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-400 flex items-center gap-1.5">
+              <Key className="w-3.5 h-3.5 text-neutral-400" /> Webhook Secret Token (Security)
             </label>
-            <p className="text-xs text-neutral-500">
-              Comma-separated list. Defaults to 6:00 AM (06:00) and 6:00 PM (18:00).
-            </p>
             <input
               type="text"
-              value={scheduleTimes}
-              onChange={(e) => setScheduleTimes(e.target.value)}
-              placeholder="06:00, 18:00"
-              className="w-full px-3.5 py-2 text-sm font-mono border border-neutral-300 dark:border-neutral-700 rounded-lg bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-neutral-400 dark:focus:ring-neutral-600"
-              required
+              value={webhookSecret}
+              onChange={(e) => setWebhookSecret(e.target.value)}
+              className="w-full px-3 py-1.5 text-xs font-mono border border-neutral-300 dark:border-neutral-700 rounded-lg bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100"
+              placeholder="chroma_auto_secret"
             />
           </div>
 
-          <div className="space-y-2">
-            <label className="text-xs font-bold uppercase tracking-wider text-neutral-700 dark:text-neutral-300">
-              Timezone
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-400">
+              One-Click Autonomous URL (GET or POST):
             </label>
-            <p className="text-xs text-neutral-500">
-              Determines when 6:00 AM and 6:00 PM occur.
-            </p>
-            <select
-              value={timezone}
-              onChange={(e) => setTimezone(e.target.value)}
-              className="w-full px-3.5 py-2 text-sm font-mono border border-neutral-300 dark:border-neutral-700 rounded-lg bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-neutral-400 dark:focus:ring-neutral-600"
-            >
-              {COMMON_TIMEZONES.map((tz) => (
-                <option key={tz} value={tz}>
-                  {tz}
-                </option>
-              ))}
-            </select>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                readOnly
+                value={webhookUrl}
+                className="w-full px-3 py-2 text-xs font-mono border border-neutral-200 dark:border-neutral-800 rounded-lg bg-neutral-100 dark:bg-neutral-950 text-neutral-700 dark:text-neutral-300 select-all"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(webhookUrl);
+                  setSavedSuccess(true);
+                  setTimeout(() => setSavedSuccess(false), 2000);
+                }}
+                className="px-3 py-2 text-xs font-semibold bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 rounded-lg transition-colors shrink-0 cursor-pointer"
+              >
+                Copy URL
+              </button>
+            </div>
           </div>
         </div>
 
@@ -175,7 +329,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
                 Automated Background Scheduler
               </div>
               <p className="text-xs text-neutral-500">
-                When active, the server monitors clock ticks and automatically fires replies at 6am & 6pm.
+                When active, the server monitors interval or clock ticks and automatically fires replies.
               </p>
             </div>
           </label>
@@ -210,7 +364,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
           </div>
 
           <textarea
-            rows={6}
+            rows={5}
             value={template}
             onChange={(e) => setTemplate(e.target.value)}
             className="w-full px-3.5 py-2.5 text-xs font-mono border border-neutral-300 dark:border-neutral-700 rounded-lg bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-neutral-400 dark:focus:ring-neutral-600 leading-relaxed"
