@@ -1,6 +1,5 @@
 import dotenv from 'dotenv';
 import fs from 'fs';
-import path from 'path';
 import { generateColor, formatTweetText } from '../server/colorEngine.js';
 import { postColorTweet, TwitterCredentials } from '../server/twitterClient.js';
 import { storage } from '../server/storage.js';
@@ -50,7 +49,7 @@ async function run() {
   const slotType = options.slot === 'auto' ? determineSlot() : options.slot;
   const isMorning = slotType === 'morning';
 
-  console.log('----------------------------------------------------');
+  console.log('====================================================');
   console.log(`🎨 ChromaBot Scheduled Workflow Triggered`);
   console.log(`⏰ Slot: ${slotType.toUpperCase()} (${isMorning ? '6:00 AM Sunrise' : '6:00 PM Sunset'})`);
   console.log(`🕒 Execution Time (UTC): ${new Date().toISOString()}`);
@@ -62,9 +61,29 @@ async function run() {
   // Retrieve Twitter credentials (process.env from GitHub Secrets or store)
   const creds = storage.getEffectiveCredentials();
 
+  const hasOAuth1 = !!(creds.apiKey && creds.apiSecret && creds.accessToken && creds.accessTokenSecret);
+  const hasOAuth2User = !!creds.oauth2AccessToken;
+
   console.log(`🎯 Target Tweet ID: ${targetTweetId}`);
-  console.log(`🛡️ Mode: ${isDryRun ? 'Dry Run Simulation' : 'Live X API'}`);
-  console.log(`🔑 Credentials configured: ${!!(creds.apiKey && creds.accessToken)}`);
+  console.log(`🛡️ Mode: ${isDryRun ? 'DRY RUN (Simulated)' : 'LIVE X API (Real Post)'}`);
+  console.log(`🔑 Credentials Status:`);
+  console.log(`   - TWITTER_API_KEY: ${creds.apiKey ? '✓ Set' : '✗ Missing'}`);
+  console.log(`   - TWITTER_API_SECRET: ${creds.apiSecret ? '✓ Set' : '✗ Missing'}`);
+  console.log(`   - TWITTER_ACCESS_TOKEN: ${creds.accessToken ? '✓ Set' : '✗ Missing'}`);
+  console.log(`   - TWITTER_ACCESS_TOKEN_SECRET: ${creds.accessTokenSecret ? '✓ Set' : '✗ Missing'}`);
+  console.log(`   - TWITTER_OAUTH2_ACCESS_TOKEN: ${creds.oauth2AccessToken ? '✓ Set' : '✗ Missing'}`);
+  console.log(`   - Authentication Ready: ${hasOAuth1 || hasOAuth2User ? '✓ YES' : '✗ NO (Missing user credentials in GitHub Secrets)'}`);
+
+  if (!isDryRun && !hasOAuth1 && !hasOAuth2User) {
+    console.error('');
+    console.error('🚨 CANNOT POST LIVE TWEET: Missing Twitter Credentials in GitHub Secrets!');
+    console.error('Please configure your GitHub Repository Secrets:');
+    console.error('  1. TWITTER_API_KEY');
+    console.error('  2. TWITTER_API_SECRET');
+    console.error('  3. TWITTER_ACCESS_TOKEN');
+    console.error('  4. TWITTER_ACCESS_TOKEN_SECRET');
+    console.error('');
+  }
 
   // Generate unique Sunrise / Sunset color and 3-5 word weather description
   const color = generateColor(slotType);
@@ -87,14 +106,21 @@ async function run() {
   );
 
   const status = result.success ? (result.simulated ? 'simulated' : 'success') : 'error';
-  console.log(`📊 Result Status: ${status}`);
+  console.log(`📊 Result Status: ${status.toUpperCase()}`);
 
-  if (result.success) {
-    console.log(`✅ Tweet successfully dispatched!`);
+  if (result.success && !result.simulated) {
+    console.log(`🎉 LIVE TWEET DISPATCHED SUCCESSFULLY!`);
     if (result.tweetId) console.log(`🔗 Tweet ID: ${result.tweetId}`);
-    if (result.url) console.log(`🌐 URL: ${result.url}`);
+    if (result.url) console.log(`🌐 Live URL: ${result.url}`);
+  } else if (result.simulated) {
+    console.log(`⚠️ Note: Result was SIMULATED. Reasons can be:`);
+    console.log(`   - DRY_RUN is enabled, or`);
+    console.log(`   - GitHub Secrets for OAuth 1.0a / OAuth 2.0 are not yet populated.`);
   } else {
     console.error(`❌ Posting error: ${result.error}`);
+    if (result.rawResponse) {
+      console.error(`Raw Twitter Response:`, JSON.stringify(result.rawResponse, null, 2));
+    }
   }
 
   // Record log in local bot store
@@ -121,11 +147,12 @@ async function run() {
 | **Color Pick** | **${color.colorPick}** (\`${color.hex}\`) |
 | **Slot** | ${isMorning ? '🌅 Morning Sunrise (6:00 AM MST)' : '🌇 Evening Sunset (6:00 PM MST)'} |
 | **Weather (3-5 words)** | *"${color.weatherDesc}"* |
-| **Status** | ${result.success ? (result.simulated ? '🟡 Simulated' : '🟢 Published to X') : '🔴 Failed'} |
+| **Status** | ${result.success ? (result.simulated ? '🟡 Simulated (Check Secrets / Dry Run)' : '🟢 Live Tweet Published to X') : '🔴 Failed'} |
 | **Target Reply** | [#${targetTweetId}](https://x.com/i/status/${targetTweetId}) |
 | **Generated Tweet** | \`${tweetText}\` |
 ${result.url ? `| **Live Tweet URL** | [View Tweet on X](${result.url}) |` : ''}
 ${result.error ? `| **Error Detail** | \`${result.error}\` |` : ''}
+${!hasOAuth1 && !hasOAuth2User && !isDryRun ? `| **Missing Secrets** | \`TWITTER_API_KEY\`, \`TWITTER_API_SECRET\`, \`TWITTER_ACCESS_TOKEN\`, \`TWITTER_ACCESS_TOKEN_SECRET\` |` : ''}
 
 \`\`\`
 ${color.swatchBar}
@@ -139,7 +166,7 @@ Hex: ${color.hex} | RGB: ${color.rgb.r}, ${color.rgb.g}, ${color.rgb.b}
     }
   }
 
-  if (!result.success && !isDryRun) {
+  if (!result.success || (!isDryRun && result.simulated)) {
     process.exitCode = 1;
   }
 }
