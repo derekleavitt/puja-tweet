@@ -1,0 +1,25 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAuthorizedAdmin() {
+      return isSignedIn() && request.auth.token.email == 'the.derek.leavitt@gmail.com';
+    }
+
+    match /users/{userId} {
+      allow read, write: if isAuthorizedAdmin();
+    }
+
+    match /settings/{docId} {
+      allow read, write: if isAuthorizedAdmin();
+    }
+
+    match /postLogs/{logId} {
+      allow read, write: if isAuthorizedAdmin();
+    }
+  }
+}
