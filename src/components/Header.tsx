@@ -1,6 +1,7 @@
 import React from 'react';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, LogOut, UserCheck } from 'lucide-react';
 import { TargetTweetEditor } from './TargetTweetEditor.js';
+import { useAuth } from '../context/AuthContext.js';
 
 interface HeaderProps {
   activeTab: string;
@@ -23,6 +24,8 @@ export const Header: React.FC<HeaderProps> = ({
   targetTweetId,
   onUpdateTargetTweetId,
 }) => {
+  const { user, signOut } = useAuth();
+
   const navItems = [
     { id: 'studio', label: 'Studio' },
     { id: 'queue', label: '7-Day Queue' },
@@ -67,7 +70,7 @@ export const Header: React.FC<HeaderProps> = ({
         ))}
       </nav>
 
-      {/* Zone 3: 1-2 primary actions + Target status */}
+      {/* Zone 3: Actions + User Status */}
       <div className="flex items-center gap-2.5">
         <div className="hidden lg:block">
           <TargetTweetEditor
@@ -93,15 +96,34 @@ export const Header: React.FC<HeaderProps> = ({
         <button
           onClick={onQuickPost}
           disabled={isPosting}
-          className="px-3.5 py-1.5 text-xs font-medium text-white bg-neutral-900 dark:bg-neutral-100 dark:text-neutral-900 rounded-md hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors whitespace-nowrap disabled:opacity-50 flex items-center gap-1.5 cursor-pointer shadow-xs"
+          className="px-3 py-1.5 text-xs font-medium text-white bg-neutral-900 dark:bg-neutral-100 dark:text-neutral-900 rounded-md hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors whitespace-nowrap disabled:opacity-50 flex items-center gap-1.5 cursor-pointer shadow-xs"
         >
           {isPosting ? (
             <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
           ) : (
             <Sparkles className="w-3.5 h-3.5" />
           )}
-          Post Reply Now
+          Post Reply
         </button>
+
+        {user && (
+          <div className="flex items-center gap-1.5 pl-2 border-l border-neutral-200 dark:border-neutral-800">
+            <div
+              title={`Authorized: ${user.email}`}
+              className="flex items-center gap-1 text-[11px] font-mono text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-1 rounded"
+            >
+              <UserCheck className="w-3 h-3 text-emerald-500" />
+              <span className="hidden xl:inline max-w-[130px] truncate">{user.email}</span>
+            </div>
+            <button
+              onClick={() => signOut()}
+              title="Sign out of ChromaBot"
+              className="p-1 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 rounded transition-colors cursor-pointer"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
       </div>
     </header>
   );
