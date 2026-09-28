@@ -2,5 +2,7 @@
   "name": "X ChromaBot - Automated Color Reply Generator",
   "description": "Automate daily color palette tweets posted at 6:00 AM and 6:00 PM directly as replies on X (Twitter).",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }
