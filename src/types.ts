@@ -23,6 +23,9 @@ export interface BotSettings {
   dryRun: boolean;
   template: string;
   themePreference: 'dynamic' | 'vibrant' | 'minimal' | 'poetic';
+  intervalMode?: 'fixed_times' | 'interval';
+  intervalMinutes?: number; // 1, 15, 30, 60, 180, 360, 540, 720
+  webhookSecret?: string;
 }
 
 export interface CredentialsStatus {
