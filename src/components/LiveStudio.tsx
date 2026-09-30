@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Sun, Moon, Shuffle, Send, ExternalLink, Check, Copy, AlertCircle, ArrowUpRight, Layers } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Sun, Moon, Shuffle, Send, ExternalLink, Check, Copy, AlertCircle, ArrowUpRight, Layers, Sparkles, RefreshCw } from 'lucide-react';
 import { ColorData, BotSettings, TweetContext } from '../types.js';
 import { TargetTweetEditor } from './TargetTweetEditor.js';
 
@@ -14,6 +14,7 @@ interface LiveStudioProps {
   contexts?: TweetContext[];
   activeContextId?: string;
   onSelectContext?: (id: string) => Promise<void>;
+  onUpdateContext?: (id: string, updates: Partial<TweetContext>) => Promise<void>;
 }
 
 export const LiveStudio: React.FC<LiveStudioProps> = ({
@@ -27,9 +28,14 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   contexts = [],
   activeContextId = '',
   onSelectContext,
+  onUpdateContext,
 }) => {
   const [selectedSlot, setSelectedSlot] = useState<'morning' | 'evening' | 'manual'>('morning');
   const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  const currentContext = contexts.find(c => c.id === activeContextId) || contexts[0];
+  const replyTargetMode = currentContext?.replyTargetMode || settings.replyTargetMode || 'original_post';
+  const lastPostedTweetId = currentContext?.lastPostedTweetId || settings.lastPostedTweetId;
 
   if (!color) {
     return (
@@ -48,12 +54,18 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
 
   const slotLabel = selectedSlot === 'morning' ? '6:00 AM' : selectedSlot === 'evening' ? '6:00 PM' : 'Live Drop';
 
-  // Construct Tweet text based on settings template
+  const hasAgentTag = /<agent>/i.test(settings.template);
+  const hasHistoryTag = /<history>/i.test(settings.template);
+
+  const [aiPreviewText, setAiPreviewText] = useState<string>('');
+  const [isGeneratingAi, setIsGeneratingAi] = useState<boolean>(false);
+
+  // Construct Tweet text based on settings template (fallback / base)
   const colorPick = color.colorPick || color.name;
   const weatherDesc = color.weatherDesc || 'warming crisp morning air';
   const weatherTweet = `${colorPick} ${weatherDesc} #eternal #colors`;
 
-  const tweetText = settings.template
+  const staticTweetText = settings.template
     .replace(/{weather_tweet}/g, weatherTweet)
     .replace(/{color_pick}/g, colorPick)
     .replace(/{weather_desc}/g, weatherDesc)
@@ -68,6 +80,38 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     .replace(/{swatch_bar}/g, color.swatchBar)
     .replace(/{companions}/g, color.companions.join(' '));
 
+  const fetchAiPreview = useCallback(async () => {
+    if (!hasAgentTag) return;
+    setIsGeneratingAi(true);
+    try {
+      const res = await fetch('/api/template/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          template: settings.template,
+          color,
+          slotType: selectedSlot,
+          contextId: activeContextId,
+        }),
+      });
+      const data = await res.json();
+      if (data.previewText) {
+        setAiPreviewText(data.previewText);
+      }
+    } catch (err) {
+      console.error('Error fetching AI preview:', err);
+    } finally {
+      setIsGeneratingAi(false);
+    }
+  }, [hasAgentTag, settings.template, color, selectedSlot, activeContextId]);
+
+  useEffect(() => {
+    if (hasAgentTag) {
+      fetchAiPreview();
+    }
+  }, [fetchAiPreview, hasAgentTag]);
+
+  const tweetText = hasAgentTag ? (aiPreviewText || staticTweetText) : staticTweetText;
   const charCount = tweetText.length;
   const isOverLimit = charCount > 280;
   const weatherWordsCount = (color.weatherDesc || '').split(/\s+/).filter(Boolean).length;
@@ -166,6 +210,24 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
       <TargetTweetEditor
         currentTargetId={settings.targetTweetId}
         onSave={onUpdateTargetTweetId}
+        replyTargetMode={replyTargetMode}
+        engagementMode={currentContext?.engagementMode || settings.engagementMode || 'reply'}
+        lastPostedTweetId={lastPostedTweetId}
+        onToggleEngagementMode={async (newMode) => {
+          if (currentContext && onUpdateContext) {
+            await onUpdateContext(currentContext.id, { engagementMode: newMode });
+          }
+        }}
+        onToggleReplyTargetMode={async (newMode) => {
+          if (currentContext && onUpdateContext) {
+            await onUpdateContext(currentContext.id, { replyTargetMode: newMode });
+          }
+        }}
+        onResetChain={async () => {
+          if (currentContext && onUpdateContext) {
+            await onUpdateContext(currentContext.id, { lastPostedTweetId: undefined });
+          }
+        }}
       />
 
       {/* Main Grid: Left Color Canvas | Right X Tweet Preview */}
@@ -280,37 +342,70 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
         <div className="lg:col-span-5 space-y-4">
           <div className="border border-neutral-200 dark:border-neutral-800 rounded-xl p-5 bg-white dark:bg-neutral-900 shadow-xs space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-neutral-100 dark:border-neutral-800 text-xs">
-              <span className="font-bold text-neutral-900 dark:text-neutral-100 flex items-center gap-1.5">
-                <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
-                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-                </svg>
-                X Live Reply Preview
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-neutral-900 dark:text-neutral-100 flex items-center gap-1.5">
+                  <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                  </svg>
+                  X Live Reply Preview
+                </span>
+                {hasAgentTag && (
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 flex items-center gap-1">
+                    <Sparkles className="w-2.5 h-2.5 text-purple-500" />
+                    <span>AI Poetry{hasHistoryTag ? ' + History' : ''}</span>
+                  </span>
+                )}
+              </div>
 
-              <span
-                className={`font-mono tabular-nums ${
-                  isOverLimit ? 'text-red-500 font-bold' : 'text-neutral-400'
-                }`}
-              >
-                {charCount} / 280
-              </span>
+              <div className="flex items-center gap-2">
+                {hasAgentTag && (
+                  <button
+                    type="button"
+                    onClick={fetchAiPreview}
+                    disabled={isGeneratingAi}
+                    className="p-1 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/60 rounded transition-colors cursor-pointer"
+                    title="Regenerate AI poem"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isGeneratingAi ? 'animate-spin' : ''}`} />
+                  </button>
+                )}
+                <span
+                  className={`font-mono tabular-nums ${
+                    isOverLimit ? 'text-red-500 font-bold' : 'text-neutral-400'
+                  }`}
+                >
+                  {charCount} / 280
+                </span>
+              </div>
             </div>
 
             {/* Target Post Context indicator & Weather Breakdown */}
             <div className="bg-neutral-50 dark:bg-neutral-950/60 rounded-lg p-3 text-xs border border-neutral-200 dark:border-neutral-800 space-y-2">
               <div className="flex items-center justify-between text-neutral-500">
                 <span className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
-                  Replying directly to:
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${replyTargetMode === 'last_comment' ? 'bg-purple-500' : 'bg-blue-500'}`} />
+                  <span>
+                    {replyTargetMode === 'last_comment'
+                      ? (lastPostedTweetId ? 'Replying to last comment:' : 'Replying to root (starting chain):')
+                      : 'Replying to root post:'}
+                  </span>
                 </span>
-                <a
-                  href={`https://x.com/i/status/${settings.targetTweetId}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-mono text-neutral-800 dark:text-neutral-200 hover:text-blue-600 font-medium"
-                >
-                  #{settings.targetTweetId}
-                </a>
+                <div className="flex items-center gap-1 font-mono text-neutral-800 dark:text-neutral-200">
+                  <a
+                    href={`https://x.com/i/status/${replyTargetMode === 'last_comment' && lastPostedTweetId ? lastPostedTweetId : settings.targetTweetId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-blue-600 font-medium inline-flex items-center gap-0.5"
+                  >
+                    #{replyTargetMode === 'last_comment' && lastPostedTweetId ? lastPostedTweetId : settings.targetTweetId}
+                    <ArrowUpRight className="w-3 h-3 text-neutral-400" />
+                  </a>
+                  {replyTargetMode === 'last_comment' && (
+                    <span className="text-[10px] font-sans font-semibold px-1.5 py-0.2 rounded bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300">
+                      Chain
+                    </span>
+                  )}
+                </div>
               </div>
 
               {color.weatherDesc && (
@@ -347,7 +442,11 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                     <span className="text-xs text-neutral-400">· Now</span>
                   </div>
                   <div className="text-xs text-neutral-500 mt-1">
-                    Replying to <span className="text-blue-500">@pfinallyhere</span>
+                    Replying to {replyTargetMode === 'last_comment' && lastPostedTweetId ? (
+                      <span className="text-purple-600 dark:text-purple-400 font-medium">our last comment (#{lastPostedTweetId})</span>
+                    ) : (
+                      <span className="text-blue-500">root post (#{settings.targetTweetId})</span>
+                    )}
                   </div>
                 </div>
               </div>

@@ -11,9 +11,10 @@ import {
   Clock,
   Key,
   Radio,
+  Activity,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.js';
-import { TweetContext } from '../types.js';
+import { TweetContext, RateLimitTelemetry, CooldownState } from '../types.js';
 
 interface HeaderProps {
   activeTab: string;
@@ -27,6 +28,9 @@ interface HeaderProps {
   contexts?: TweetContext[];
   activeContextId?: string;
   onSelectContext?: (id: string) => void;
+  rateLimitTelemetry?: RateLimitTelemetry | null;
+  cooldownState?: CooldownState | null;
+  onOpenRateLimits?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -39,6 +43,9 @@ export const Header: React.FC<HeaderProps> = ({
   contexts = [],
   activeContextId = '',
   onSelectContext,
+  rateLimitTelemetry,
+  cooldownState,
+  onOpenRateLimits,
 }) => {
   const { user, signOut } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -145,6 +152,30 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Right: Actions, Quick Controls & Dedicated Log Out */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {/* Rate Limits & Quota Badge Button */}
+            <button
+              type="button"
+              onClick={onOpenRateLimits}
+              title="Click to view live X rate limit quota, 24-hour caps, and anti-spam heuristics"
+              className={`px-2 py-1 text-xs font-mono rounded-md border transition-colors flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                cooldownState?.isThrottled
+                  ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-800 animate-pulse'
+                  : (rateLimitTelemetry?.remaining ?? 50) < 5
+                  ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-800'
+                  : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+              }`}
+            >
+              <Activity className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+              <span className="hidden sm:inline font-semibold">
+                {cooldownState?.isThrottled
+                  ? `Cooldown (${Math.floor(cooldownState.secondsRemaining / 60)}m)`
+                  : `X Quota: ${rateLimitTelemetry?.remaining ?? 50}/${rateLimitTelemetry?.limit ?? 50}`}
+              </span>
+              <span className="sm:hidden font-semibold">
+                {cooldownState?.isThrottled ? 'Locked' : `${rateLimitTelemetry?.remaining ?? 50}r`}
+              </span>
+            </button>
+
             {/* Dry Run / Live Switch Indicator */}
             <button
               onClick={onToggleDryRun}

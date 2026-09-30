@@ -11,6 +11,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { formatTweetText, generateColor } from './server/colorEngine.js';
+import { resolveTemplateText } from './server/templateAgent.js';
 import { scheduler } from './server/scheduler.js';
 import { storage } from './server/storage.js';
 import { postColorTweet, verifyTwitterCredentials } from './server/twitterClient.js';
@@ -19,7 +20,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = parseInt(process.env.PORT || '3000', 10);
+const PORT = 3000;
 
 app.use(express.json());
 
@@ -50,8 +51,24 @@ app.get('/api/status', (req, res) => {
     allNextPosts,
     credentialsStatus,
     stats,
+    cooldownState: storage.getCooldownState(),
+    rateLimitTelemetry: storage.getRateLimitTelemetry(),
+    queue: storage.getQueue(),
     latestLog: logs[0] || null,
   });
+});
+
+app.get('/api/rate-limits', (req, res) => {
+  res.json({
+    success: true,
+    telemetry: storage.getRateLimitTelemetry(),
+    cooldownState: storage.getCooldownState(),
+  });
+});
+
+app.post('/api/cooldown/clear', (req, res) => {
+  storage.clearGlobalCooldown();
+  res.json({ success: true, cooldownState: storage.getCooldownState() });
 });
 
 // --- Context & Schedule Management APIs ---
@@ -67,7 +84,12 @@ app.get('/api/contexts', (req, res) => {
 app.post('/api/contexts', (req, res) => {
   try {
     const created = storage.createContext(req.body);
-    res.json({ success: true, context: created, contexts: storage.getContexts() });
+    res.json({
+      success: true,
+      context: created,
+      contexts: storage.getContexts(),
+      queue: storage.getQueue(),
+    });
   } catch (err: any) {
     res.status(400).json({ success: false, error: err.message });
   }
@@ -76,7 +98,12 @@ app.post('/api/contexts', (req, res) => {
 app.put('/api/contexts/:id', (req, res) => {
   try {
     const updated = storage.updateContext(req.params.id, req.body);
-    res.json({ success: true, context: updated, contexts: storage.getContexts() });
+    res.json({
+      success: true,
+      context: updated,
+      contexts: storage.getContexts(),
+      queue: storage.getQueue(),
+    });
   } catch (err: any) {
     res.status(400).json({ success: false, error: err.message });
   }
@@ -89,6 +116,7 @@ app.delete('/api/contexts/:id', (req, res) => {
       success: ok,
       contexts: storage.getContexts(),
       activeContextId: storage.getActiveContext().id,
+      queue: storage.getQueue(),
     });
   } catch (err: any) {
     res.status(400).json({ success: false, error: err.message });
@@ -98,7 +126,12 @@ app.delete('/api/contexts/:id', (req, res) => {
 app.post('/api/contexts/:id/activate', (req, res) => {
   try {
     const active = storage.setActiveContextId(req.params.id);
-    res.json({ success: true, activeContext: active, contexts: storage.getContexts() });
+    res.json({
+      success: true,
+      activeContext: active,
+      contexts: storage.getContexts(),
+      queue: storage.getQueue(active.id),
+    });
   } catch (err: any) {
     res.status(400).json({ success: false, error: err.message });
   }
@@ -107,7 +140,12 @@ app.post('/api/contexts/:id/activate', (req, res) => {
 app.post('/api/contexts/:id/toggle', (req, res) => {
   try {
     const toggled = storage.toggleContext(req.params.id);
-    res.json({ success: true, context: toggled, contexts: storage.getContexts() });
+    res.json({
+      success: true,
+      context: toggled,
+      contexts: storage.getContexts(),
+      queue: storage.getQueue(),
+    });
   } catch (err: any) {
     res.status(400).json({ success: false, error: err.message });
   }
@@ -116,7 +154,42 @@ app.post('/api/contexts/:id/toggle', (req, res) => {
 app.post('/api/contexts/:id/duplicate', (req, res) => {
   try {
     const duplicated = storage.duplicateContext(req.params.id);
-    res.json({ success: true, context: duplicated, contexts: storage.getContexts() });
+    res.json({
+      success: true,
+      context: duplicated,
+      contexts: storage.getContexts(),
+      queue: storage.getQueue(),
+    });
+  } catch (err: any) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/contexts/:id/reset-chain', (req, res) => {
+  try {
+    const updated = storage.resetContextChain(req.params.id);
+    res.json({
+      success: true,
+      context: updated,
+      contexts: storage.getContexts(),
+      queue: storage.getQueue(),
+    });
+  } catch (err: any) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/contexts/:id/clear-history', (req, res) => {
+  try {
+    const result = storage.clearContextHistory(req.params.id);
+    res.json({
+      success: true,
+      clearedCount: result.clearedCount,
+      context: result.context,
+      contexts: storage.getContexts(),
+      logs: storage.getLogs(),
+      queue: storage.getQueue(),
+    });
   } catch (err: any) {
     res.status(400).json({ success: false, error: err.message });
   }
@@ -150,6 +223,7 @@ app.post('/api/settings', (req, res) => {
       settings: updated,
       activeContext: storage.getActiveContext(),
       contexts: storage.getContexts(),
+      queue: storage.getQueue(),
     });
   } catch (err: any) {
     res.status(400).json({ success: false, error: err.message });
@@ -197,25 +271,81 @@ app.post('/api/twitter/verify', async (req, res) => {
   }
 });
 
-app.post('/api/generate-color', (req, res) => {
-  const slotType = req.body.slotType || 'random';
-  const color = generateColor(slotType);
+app.post('/api/generate-color', async (req, res) => {
+  try {
+    const slotType = req.body.slotType || 'random';
+    const color = req.body.color || generateColor(slotType);
 
-  const context = req.body.contextId
-    ? (storage.getContext(req.body.contextId) || storage.getActiveContext())
-    : storage.getActiveContext();
+    const context = req.body.contextId
+      ? (storage.getContext(req.body.contextId) || storage.getActiveContext())
+      : storage.getActiveContext();
 
-  const timeTag = slotType === 'morning' ? '6:00 AM' : slotType === 'evening' ? '6:00 PM' : 'Drop';
-  const previewText = formatTweetText(context.template, color, timeTag);
+    const templateToUse = req.body.template || context.template;
+    const timeTag = slotType === 'morning' ? '6:00 AM' : slotType === 'evening' ? '6:00 PM' : 'Drop';
 
-  res.json({
-    color,
-    previewText,
-    charCount: previewText.length,
-    targetTweetId: context.targetTweetId,
-    contextId: context.id,
-    contextName: context.name,
-  });
+    const previewText = await resolveTemplateText(templateToUse, color, {
+      slotLabel: timeTag,
+      contextId: context.id,
+      targetTweetId: context.targetTweetId,
+    });
+
+    const replyInfo = storage.getEffectiveReplyTargetId(context);
+
+    res.json({
+      color,
+      previewText,
+      charCount: previewText.length,
+      targetTweetId: context.targetTweetId,
+      replyToTweetId: replyInfo.targetTweetId,
+      replyTargetMode: context.replyTargetMode || 'original_post',
+      lastPostedTweetId: context.lastPostedTweetId,
+      isCascadingToLastComment: replyInfo.isCascadingToLastComment,
+      isFirstInChain: replyInfo.isFirstInChain,
+      contextId: context.id,
+      contextName: context.name,
+      hasAgentTag: /<agent>/i.test(templateToUse),
+      hasHistoryTag: /<history>/i.test(templateToUse),
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/template/preview', async (req, res) => {
+  try {
+    const { template, color, slotType, contextId } = req.body;
+    const targetColor = color || generateColor(slotType || 'random');
+    const context = contextId
+      ? (storage.getContext(contextId) || storage.getActiveContext())
+      : storage.getActiveContext();
+
+    const timeTag = slotType === 'morning' ? '6:00 AM' : slotType === 'evening' ? '6:00 PM' : 'Drop';
+
+    const previewText = await resolveTemplateText(template || context.template, targetColor, {
+      slotLabel: timeTag,
+      contextId: context.id,
+      targetTweetId: context.targetTweetId,
+    });
+
+    const replyInfo = storage.getEffectiveReplyTargetId(context);
+
+    res.json({
+      success: true,
+      color: targetColor,
+      previewText,
+      charCount: previewText.length,
+      targetTweetId: context.targetTweetId,
+      replyToTweetId: replyInfo.targetTweetId,
+      replyTargetMode: context.replyTargetMode || 'original_post',
+      lastPostedTweetId: context.lastPostedTweetId,
+      isCascadingToLastComment: replyInfo.isCascadingToLastComment,
+      isFirstInChain: replyInfo.isFirstInChain,
+      hasAgentTag: /<agent>/i.test(template || ''),
+      hasHistoryTag: /<history>/i.test(template || ''),
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 app.post('/api/post-now', async (req, res) => {
@@ -223,10 +353,12 @@ app.post('/api/post-now', async (req, res) => {
     const slotType = req.body.slotType || 'manual';
     const forceLive = req.body.forceLive === true;
     const contextId = req.body.contextId;
+    const color = req.body.color;
 
     const result = await scheduler.executeDrop({
       contextId,
       slotType,
+      color,
       forceLive,
       source: 'manual',
     });
@@ -272,7 +404,14 @@ app.all(['/api/cron/trigger', '/api/webhook/trigger'], async (req, res) => {
 });
 
 app.get('/api/queue', (req, res) => {
-  res.json({ queue: storage.getQueue() });
+  const contextId = req.query.contextId as string | undefined;
+  res.json({ queue: storage.getQueue(contextId) });
+});
+
+app.post('/api/queue/regenerate', (req, res) => {
+  const contextId = req.body?.contextId || req.query?.contextId;
+  const queue = storage.clearAndRegenerateQueue(contextId ? String(contextId) : storage.getActiveContext().id);
+  res.json({ success: true, queue });
 });
 
 app.post('/api/queue/reroll', (req, res) => {

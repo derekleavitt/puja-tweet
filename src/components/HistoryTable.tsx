@@ -166,14 +166,34 @@ export const HistoryTable: React.FC<HistoryTableProps> = ({ logs, onClearHistory
                       {/* Tweet Reference */}
                       <td className="py-3.5 px-4 font-mono text-[11px] text-neutral-500">
                         {log.tweetId ? (
-                          <span className="text-neutral-700 dark:text-neutral-300">
+                          <div className="font-semibold text-neutral-800 dark:text-neutral-200">
                             ID: {log.tweetId}
-                          </span>
+                          </div>
                         ) : (
-                          <span>Target: #{log.targetTweetId}</span>
+                          <div>Target: #{log.targetTweetId}</div>
                         )}
-                        <div className="text-[10px] text-neutral-400">
-                          Reply to #{log.targetTweetId}
+                        <div className="text-[10px] text-neutral-400 mt-0.5 flex items-center gap-1 flex-wrap">
+                          {log.quoteTweetId || log.engagementMode === 'quote' ? (
+                            <>
+                              <span>Quote #{log.quoteTweetId || log.targetTweetId}</span>
+                              <span className="text-[9px] font-semibold px-1 py-0.2 rounded bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 font-sans">
+                                Quote Tweet
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <span>Reply to #{log.replyToTweetId || log.targetTweetId}</span>
+                              {log.replyToTweetId && log.replyToTweetId !== log.targetTweetId ? (
+                                <span className="text-[9px] font-semibold px-1 py-0.2 rounded bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 font-sans">
+                                  Chain
+                                </span>
+                              ) : (
+                                <span className="text-[9px] font-semibold px-1 py-0.2 rounded bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 font-sans">
+                                  Root
+                                </span>
+                              )}
+                            </>
+                          )}
                         </div>
                       </td>
 
