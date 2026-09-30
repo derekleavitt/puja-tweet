@@ -4,7 +4,7 @@
  * Secured behind Google Authentication & synced with Cloud Firestore.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Header } from './components/Header.js';
 import { StatusBar } from './components/StatusBar.js';
 import { LiveStudio } from './components/LiveStudio.js';
@@ -14,6 +14,7 @@ import { SettingsPanel } from './components/SettingsPanel.js';
 import { HistoryTable } from './components/HistoryTable.js';
 import { TwitterSetup } from './components/TwitterSetup.js';
 import { StandaloneExport } from './components/StandaloneExport.js';
+import { RateLimitModal } from './components/RateLimitModal.js';
 import { AuthProvider } from './context/AuthContext.js';
 import { AuthGate } from './components/AuthGate.js';
 import {
@@ -33,7 +34,10 @@ import {
   PostLog,
   QueueSlot,
   TweetContext,
+  CooldownState,
+  RateLimitTelemetry,
 } from './types.js';
+import { ShieldAlert, Clock, RefreshCw } from 'lucide-react';
 
 function ChromaBotDashboard() {
   const [activeTab, setActiveTab] = useState<string>('studio');
@@ -41,24 +45,28 @@ function ChromaBotDashboard() {
   const [settings, setSettings] = useState<BotSettings>({
     targetTweetId: '2091597504928428416',
     scheduleTimes: ['06:00', '18:00'],
-    timezone: 'America/Los_Angeles',
+    timezone: 'America/Denver',
     schedulerEnabled: true,
     dryRun: false,
     template: '{color_pick} {weather_desc} #eternal #colors',
     themePreference: 'dynamic',
     intervalMode: 'interval',
-    intervalMinutes: 1,
+    intervalMinutes: 15,
   });
   const [contexts, setContexts] = useState<TweetContext[]>([]);
   const [activeContextId, setActiveContextId] = useState<string>('ctx_primary');
   const [nextPost, setNextPost] = useState<NextPostInfo | null>(null);
   const [allNextPosts, setAllNextPosts] = useState<any[]>([]);
   const [credentialsStatus, setCredentialsStatus] = useState<CredentialsStatus | null>(null);
+  const [cooldownState, setCooldownState] = useState<CooldownState | null>(null);
+  const [rateLimitTelemetry, setRateLimitTelemetry] = useState<RateLimitTelemetry | null>(null);
+  const [isRateLimitModalOpen, setIsRateLimitModalOpen] = useState<boolean>(false);
   const [queue, setQueue] = useState<QueueSlot[]>([]);
   const [logs, setLogs] = useState<PostLog[]>([]);
   const [isPosting, setIsPosting] = useState<boolean>(false);
   const [lastPostedResult, setLastPostedResult] = useState<any>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const hasInitializedRef = useRef<boolean>(false);
 
   // Fetch status & state from backend & Firestore
   const fetchStatus = useCallback(async () => {
@@ -78,11 +86,46 @@ function ChromaBotDashboard() {
           setAllNextPosts(data.allNextPosts);
         }
         setCredentialsStatus(data.credentialsStatus);
+        if (data.cooldownState) {
+          setCooldownState(data.cooldownState);
+        }
+        if (data.rateLimitTelemetry) {
+          setRateLimitTelemetry(data.rateLimitTelemetry);
+        }
+        if (Array.isArray(data.queue)) {
+          setQueue(data.queue);
+        }
       }
     } catch (err) {
       console.error('Error fetching bot status:', err);
     }
   }, []);
+
+  const handleRefreshRateLimits = async () => {
+    try {
+      const res = await fetch('/api/rate-limits');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.telemetry) setRateLimitTelemetry(data.telemetry);
+        if (data.cooldownState) setCooldownState(data.cooldownState);
+      }
+    } catch (e) {
+      console.error('Failed to refresh rate limits:', e);
+    }
+  };
+
+  const handleClearCooldown = async () => {
+    try {
+      const res = await fetch('/api/cooldown/clear', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        setCooldownState(data.cooldownState);
+        await handleRefreshRateLimits();
+      }
+    } catch (e) {
+      console.error('Failed to clear cooldown:', e);
+    }
+  };
 
   const fetchQueue = useCallback(async () => {
     try {
@@ -140,33 +183,47 @@ function ChromaBotDashboard() {
     }
   }, [activeContextId]);
 
-  // Initial load: check Firestore for saved cloud contexts & settings
+  // Initial load: check Firestore for saved cloud contexts & settings (runs once on mount)
   useEffect(() => {
     async function init() {
+      if (hasInitializedRef.current) return;
+      hasInitializedRef.current = true;
       setIsLoading(true);
 
       try {
         // Load cloud contexts if saved
         const cloudContexts = await loadFirestoreContexts();
         if (cloudContexts && cloudContexts.length > 0) {
-          // Sync server with cloud contexts
+          // Sync server with cloud contexts (preserving each campaign's independent schedule)
           for (const c of cloudContexts) {
-            await fetch(`/api/contexts/${c.id}`, {
+            const putRes = await fetch(`/api/contexts/${c.id}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(c),
             });
+            if (putRes.ok) {
+              const putJson = await putRes.json();
+              if (putJson.context) {
+                await saveFirestoreContext(putJson.context);
+              }
+            }
           }
-        }
 
-        const cloudSettings = await loadFirestoreSettings();
-        if (cloudSettings && cloudSettings.targetTweetId) {
-          setSettings(cloudSettings);
-          await fetch('/api/settings', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(cloudSettings),
-          });
+          // Restore activeContextId from cloudSettings without overwriting campaign schedules
+          const cloudSettings = await loadFirestoreSettings();
+          if (cloudSettings?.activeContextId && cloudContexts.some(c => c.id === cloudSettings.activeContextId)) {
+            await fetch(`/api/contexts/${cloudSettings.activeContextId}/activate`, { method: 'POST' });
+          }
+        } else {
+          const cloudSettings = await loadFirestoreSettings();
+          if (cloudSettings && cloudSettings.targetTweetId) {
+            setSettings(cloudSettings);
+            await fetch('/api/settings', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(cloudSettings),
+            });
+          }
         }
       } catch (e) {
         console.warn('Initial cloud sync error:', e);
@@ -215,6 +272,9 @@ function ChromaBotDashboard() {
         await recordFirestoreLog(data.log);
         setLogs(prev => [data.log, ...prev]);
       }
+      if (data.context) {
+        await saveFirestoreContext(data.context);
+      }
 
       await fetchStatus();
       await fetchQueue();
@@ -234,8 +294,13 @@ function ChromaBotDashboard() {
     try {
       const res = await fetch(`/api/contexts/${id}/activate`, { method: 'POST' });
       if (res.ok) {
+        const json = await res.json();
         setActiveContextId(id);
+        if (Array.isArray(json.queue)) {
+          setQueue(json.queue);
+        }
         await fetchStatus();
+        await fetchQueue();
         await generateColor('morning');
       }
     } catch (err) {
@@ -254,7 +319,11 @@ function ChromaBotDashboard() {
       if (json.context) {
         await saveFirestoreContext(json.context);
       }
+      if (Array.isArray(json.queue)) {
+        setQueue(json.queue);
+      }
       await fetchStatus();
+      await fetchQueue();
     } else {
       const err = await res.json();
       throw new Error(err.error || 'Failed to create context');
@@ -272,7 +341,11 @@ function ChromaBotDashboard() {
       if (json.context) {
         await saveFirestoreContext(json.context);
       }
+      if (Array.isArray(json.queue)) {
+        setQueue(json.queue);
+      }
       await fetchStatus();
+      await fetchQueue();
     } else {
       const err = await res.json();
       throw new Error(err.error || 'Failed to update context');
@@ -282,8 +355,13 @@ function ChromaBotDashboard() {
   const handleDeleteContext = async (id: string) => {
     const res = await fetch(`/api/contexts/${id}`, { method: 'DELETE' });
     if (res.ok) {
+      const json = await res.json();
       await deleteFirestoreContext(id);
+      if (Array.isArray(json.queue)) {
+        setQueue(json.queue);
+      }
       await fetchStatus();
+      await fetchQueue();
     } else {
       const err = await res.json();
       throw new Error(err.error || 'Failed to delete context');
@@ -297,7 +375,11 @@ function ChromaBotDashboard() {
       if (json.context) {
         await saveFirestoreContext(json.context);
       }
+      if (Array.isArray(json.queue)) {
+        setQueue(json.queue);
+      }
       await fetchStatus();
+      await fetchQueue();
     }
   };
 
@@ -308,7 +390,11 @@ function ChromaBotDashboard() {
       if (json.context) {
         await saveFirestoreContext(json.context);
       }
+      if (Array.isArray(json.queue)) {
+        setQueue(json.queue);
+      }
       await fetchStatus();
+      await fetchQueue();
     }
   };
 
@@ -323,8 +409,38 @@ function ChromaBotDashboard() {
       await recordFirestoreLog(data.log);
       setLogs(prev => [data.log, ...prev]);
     }
+    if (data.context) {
+      await saveFirestoreContext(data.context);
+    }
     await fetchStatus();
+    await fetchQueue();
     return data;
+  };
+
+  const handleClearContextHistory = async (id: string) => {
+    try {
+      const res = await fetch(`/api/contexts/${id}/clear-history`, {
+        method: 'POST',
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.context) {
+          await saveFirestoreContext(json.context);
+        }
+        if (Array.isArray(json.queue)) {
+          setQueue(json.queue);
+        }
+        setLogs(prev => prev.filter(l => (id === 'ctx_primary' ? l.contextId && l.contextId !== 'ctx_primary' : l.contextId !== id)));
+        await fetchHistory();
+        await fetchStatus();
+        await fetchQueue();
+      } else {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to clear campaign history');
+      }
+    } catch (err: any) {
+      console.error('Error clearing context history:', err);
+    }
   };
 
   // Toggle dry run
@@ -337,10 +453,17 @@ function ChromaBotDashboard() {
         body: JSON.stringify({ dryRun: updated }),
       });
       if (res.ok) {
-        const newSettings = { ...settings, dryRun: updated };
-        setSettings(newSettings);
-        await saveFirestoreSettings(newSettings);
+        const data = await res.json();
+        setSettings(data.settings);
+        await saveFirestoreSettings(data.settings);
+        if (data.activeContext) {
+          await saveFirestoreContext(data.activeContext);
+        }
+        if (Array.isArray(data.queue)) {
+          setQueue(data.queue);
+        }
         await fetchStatus();
+        await fetchQueue();
       }
     } catch (err) {
       console.error('Error toggling dry run:', err);
@@ -357,17 +480,24 @@ function ChromaBotDashboard() {
         body: JSON.stringify({ schedulerEnabled: updated }),
       });
       if (res.ok) {
-        const newSettings = { ...settings, schedulerEnabled: updated };
-        setSettings(newSettings);
-        await saveFirestoreSettings(newSettings);
+        const data = await res.json();
+        setSettings(data.settings);
+        await saveFirestoreSettings(data.settings);
+        if (data.activeContext) {
+          await saveFirestoreContext(data.activeContext);
+        }
+        if (Array.isArray(data.queue)) {
+          setQueue(data.queue);
+        }
         await fetchStatus();
+        await fetchQueue();
       }
     } catch (err) {
       console.error('Error toggling scheduler:', err);
     }
   };
 
-  // Save settings (persists both in local storage & cloud firestore)
+  // Save settings (persists both in local storage & cloud firestore, and clears/regenerates queue)
   const handleSaveSettings = async (newSettingsPartial: Partial<BotSettings>) => {
     const res = await fetch('/api/settings', {
       method: 'POST',
@@ -378,7 +508,14 @@ function ChromaBotDashboard() {
       const data = await res.json();
       setSettings(data.settings);
       await saveFirestoreSettings(data.settings);
-      fetchStatus();
+      if (data.activeContext) {
+        await saveFirestoreContext(data.activeContext);
+      }
+      if (Array.isArray(data.queue)) {
+        setQueue(data.queue);
+      }
+      await fetchStatus();
+      await fetchQueue();
     }
   };
 
@@ -395,6 +532,27 @@ function ChromaBotDashboard() {
       }
     } catch (err) {
       console.error('Error rerolling slot:', err);
+    }
+  };
+
+  // Clear and regenerate entire 14-slot queue for campaign
+  const handleRegenerateQueue = async (contextId?: string) => {
+    try {
+      const res = await fetch('/api/queue/regenerate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contextId: contextId || activeContextId }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.queue)) {
+          setQueue(data.queue);
+        } else {
+          await fetchQueue();
+        }
+      }
+    } catch (err) {
+      console.error('Error regenerating queue:', err);
     }
   };
 
@@ -448,6 +606,9 @@ function ChromaBotDashboard() {
         contexts={contexts}
         activeContextId={activeContextId}
         onSelectContext={handleSelectActiveContext}
+        rateLimitTelemetry={rateLimitTelemetry}
+        cooldownState={cooldownState}
+        onOpenRateLimits={() => setIsRateLimitModalOpen(true)}
       />
 
       {/* Status Bar with live countdown and active context info */}
@@ -462,15 +623,62 @@ function ChromaBotDashboard() {
         settings={settings}
         activeContext={activeContext}
         onChangeFrequency={async (mode, minutes) => {
-          await handleSaveSettings({
-            intervalMode: mode,
-            intervalMinutes: minutes,
-          });
+          if (activeContext) {
+            await handleUpdateContext(activeContext.id, {
+              schedule: {
+                ...activeContext.schedule,
+                mode,
+                intervalMinutes: minutes ?? activeContext.schedule.intervalMinutes,
+              },
+            });
+          } else {
+            await handleSaveSettings({
+              intervalMode: mode,
+              intervalMinutes: minutes,
+            });
+          }
         }}
       />
 
       {/* Main Container Viewport */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 md:p-8">
+        {/* Anti-Spam Rate Limit / Reply Cooldown Alert Banner */}
+        {cooldownState?.isThrottled && (
+          <div className="mb-6 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-start justify-between gap-4">
+            <div className="flex items-start gap-3 min-w-0">
+              <div className="p-2 rounded-lg bg-amber-500/20 text-amber-500 shrink-0">
+                <Clock className="w-5 h-5 animate-pulse" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h4 className="font-semibold text-amber-700 dark:text-amber-300 text-sm">
+                    X Anti-Spam Cooldown Active
+                  </h4>
+                  <span className="px-2 py-0.5 text-xs font-mono font-medium rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300">
+                    {Math.floor(cooldownState.secondsRemaining / 60)}m {cooldownState.secondsRemaining % 60}s remaining
+                  </span>
+                </div>
+                <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-1">
+                  {cooldownState.reason || 'X temporarily throttled automated in-thread replies on your account. Automated drops are held in safe standby to allow X to reset the cooldown cleanly.'}
+                </p>
+                <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">
+                  Tip: Use <strong className="text-neutral-700 dark:text-neutral-300">Quote Tweet mode</strong> or <strong className="text-neutral-700 dark:text-neutral-300">Dry-Run simulation</strong> while in-thread comments cool down.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={handleClearCooldown}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-600 hover:bg-amber-700 text-white transition-colors cursor-pointer"
+                title="Override and clear cooldown immediately"
+              >
+                Clear Cooldown
+              </button>
+            </div>
+          </div>
+        )}
+
         {isLoading ? (
           <div className="py-24 text-center text-neutral-500">
             <div className="w-8 h-8 mx-auto mb-3 rounded-full border-2 border-neutral-300 border-t-neutral-800 dark:border-neutral-700 dark:border-t-neutral-200 animate-spin" />
@@ -490,6 +698,7 @@ function ChromaBotDashboard() {
                 contexts={contexts}
                 activeContextId={activeContextId}
                 onSelectContext={handleSelectActiveContext}
+                onUpdateContext={handleUpdateContext}
               />
             )}
 
@@ -505,6 +714,7 @@ function ChromaBotDashboard() {
                 onDuplicateContext={handleDuplicateContext}
                 onToggleContext={handleToggleContext}
                 onTriggerContext={handleTriggerContext}
+                onClearContextHistory={handleClearContextHistory}
               />
             )}
 
@@ -514,6 +724,10 @@ function ChromaBotDashboard() {
                 onRerollSlot={handleRerollSlot}
                 onPostNow={(slotColor, slotType) => handlePostNow(slotColor, slotType)}
                 isPosting={isPosting}
+                contexts={contexts}
+                activeContextId={activeContextId}
+                onSelectContext={handleSelectActiveContext}
+                onRegenerateQueue={handleRegenerateQueue}
               />
             )}
 
@@ -553,6 +767,16 @@ function ChromaBotDashboard() {
           </div>
         </div>
       </footer>
+
+      {/* Rate Limits & Anti-Spam Telemetry Modal */}
+      <RateLimitModal
+        isOpen={isRateLimitModalOpen}
+        onClose={() => setIsRateLimitModalOpen(false)}
+        telemetry={rateLimitTelemetry}
+        cooldownState={cooldownState}
+        onClearCooldown={handleClearCooldown}
+        onRefreshTelemetry={handleRefreshRateLimits}
+      />
     </div>
   );
 }

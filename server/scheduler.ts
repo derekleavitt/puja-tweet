@@ -8,12 +8,14 @@
  */
 
 import { formatTweetText, generateColor, ColorData } from './colorEngine.js';
+import { resolveTemplateText } from './templateAgent.js';
 import { storage, TweetContext } from './storage.js';
 import { postColorTweet } from './twitterClient.js';
 
 export interface ExecuteDropOptions {
   contextId?: string;
   slotType?: 'morning' | 'evening' | 'manual';
+  color?: ColorData;
   forceLive?: boolean;
   source?: 'scheduler' | 'webhook' | 'manual';
 }
@@ -52,44 +54,128 @@ class SchedulerService {
       : (new Date().getUTCHours() - 7 + 24) % 24 < 12;
 
     const slotType = options.slotType || (isMorning ? 'morning' : 'evening');
-    const color: ColorData = storage.popNextQueueSlot(slotType === 'morning' ? 'morning' : 'evening');
+    const color: ColorData = options.color || storage.popNextQueueSlot(slotType === 'morning' ? 'morning' : 'evening', context.id);
     const timeTag = isMorning ? '6:00 AM' : '6:00 PM';
-    const text = formatTweetText(context.template, color, timeTag);
+    const text = await resolveTemplateText(context.template, color, {
+      slotLabel: timeTag,
+      contextId: context.id,
+      targetTweetId: context.targetTweetId,
+    });
+
+    const engagementMode = context.engagementMode || 'reply';
+    let replyToTweetId: string | undefined = undefined;
+    let quoteTweetId: string | undefined = undefined;
+    const replyTargetInfo = storage.getEffectiveReplyTargetId(context);
+
+    if (engagementMode === 'reply') {
+      replyToTweetId = replyTargetInfo.targetTweetId;
+    } else if (engagementMode === 'quote') {
+      quoteTweetId = context.targetTweetId;
+    }
 
     const isDryRun = options.forceLive ? false : (context.dryRun ?? false);
     const creds = storage.getEffectiveCredentials();
 
     console.log(
       `[Scheduler] Executing drop for context "${context.name}" (${context.id}) ` +
-      `-> Target Tweet: #${context.targetTweetId} (source: ${options.source || 'manual'}, mode: ${isDryRun ? 'DRY-RUN' : 'LIVE X'})`
+      `-> Mode: ${engagementMode.toUpperCase()} ` +
+      `${engagementMode === 'reply' ? `(Target #${replyToTweetId}, ${context.replyTargetMode === 'last_comment' ? (replyTargetInfo.isFirstInChain ? 'Initiating cascade from root' : 'Cascading reply to last comment') : 'Direct reply to original root'})` : ''}` +
+      `${engagementMode === 'quote' ? `(Quoting Post #${quoteTweetId})` : ''}` +
+      `${engagementMode === 'standalone' ? '(Timeline post)' : ''}` +
+      `, source: ${options.source || 'manual'}, mode: ${isDryRun ? 'DRY-RUN' : 'LIVE X'}`
     );
 
-    const tweetRes = await postColorTweet(
+    let finalTweetRes = await postColorTweet(
       creds,
       {
         text,
-        replyToTweetId: context.targetTweetId,
+        replyToTweetId,
+        quoteTweetId,
+        engagementMode,
       },
       isDryRun
     );
 
-    const now = Date.now();
-    const status = tweetRes.success ? (tweetRes.simulated ? ('simulated' as const) : ('success' as const)) : ('error' as const);
+    // AUTO-RECOVERY: If replyTargetMode was 'last_comment' and the reply to the previous comment failed
+    // due to the previous comment being deleted/invalid (NOT a temporary rate limit or cooldown),
+    // reset broken chain anchor back to root post and retry once on root.
+    if (!finalTweetRes.success && engagementMode === 'reply' && context.replyTargetMode === 'last_comment' && !replyTargetInfo.isFirstInChain) {
+      const isThrottleOrCooldown =
+        finalTweetRes.isRateLimitOrCooldown ||
+        finalTweetRes.error?.includes('cooldown') ||
+        finalTweetRes.error?.includes('not permitted to access this feature') ||
+        finalTweetRes.error?.includes('Credits Depleted') ||
+        finalTweetRes.error?.includes('Payment Required') ||
+        finalTweetRes.rawResponse?.status === 429;
 
-    // Record stats and roll jitter on this context
-    storage.recordContextPostResult(context.id, status);
+      if (!isThrottleOrCooldown) {
+        console.log(
+          `[Scheduler] Cascading anchor #${replyToTweetId} for context "${context.name}" appears deleted or invalid (${finalTweetRes.error}). Resetting anchor to primary root post #${context.targetTweetId}.`
+        );
+        context.lastPostedTweetId = undefined;
+        storage.resetContextChain(context.id);
+
+        if (!isDryRun) {
+          const fallbackRes = await postColorTweet(
+            creds,
+            {
+              text,
+              replyToTweetId: context.targetTweetId,
+              engagementMode: 'reply',
+            },
+            isDryRun
+          );
+          if (fallbackRes.success) {
+            finalTweetRes = fallbackRes;
+          }
+        }
+      } else {
+        console.log(
+          `[Scheduler] Preserving chain anchor #${replyToTweetId} for context "${context.name}" during temporary X cooldown.`
+        );
+      }
+    }
+
+    // Update rate limit telemetry from headers
+    if (finalTweetRes.rateLimitHeaders) {
+      storage.updateRateLimitTelemetry(finalTweetRes.rateLimitHeaders);
+    }
+
+    // Set global cooldown if X returned rate limit or cooldown
+    if (!isDryRun && (finalTweetRes.isRateLimitOrCooldown || finalTweetRes.rawResponse?.status === 429 || finalTweetRes.error?.includes('cooldown') || finalTweetRes.error?.includes('not permitted to access this feature'))) {
+      storage.setGlobalCooldown(15, finalTweetRes.error || 'X API Rate Limit / Reply Cooldown Active');
+    }
+
+    // Record live post timestamp for anti-burst spacing
+    if (!isDryRun && finalTweetRes.success) {
+      storage.recordLivePostTimestamp();
+    }
+
+    const now = Date.now();
+    const status = finalTweetRes.success ? (finalTweetRes.simulated ? ('simulated' as const) : ('success' as const)) : ('error' as const);
+
+    // Record stats, roll jitter, and update lastPostedTweetId for chain continuity (only for actual replies)
+    storage.recordContextPostResult(
+      context.id,
+      status,
+      finalTweetRes.tweetId,
+      finalTweetRes.engagementMode || engagementMode
+    );
 
     const logEntry = {
       id: `log_${now}_${Math.random().toString(36).substring(2, 6)}`,
       timestamp: new Date().toISOString(),
       slotType,
       targetTweetId: context.targetTweetId,
+      replyToTweetId: finalTweetRes.replyTo || replyToTweetId,
+      quoteTweetId: finalTweetRes.quoteTweetId || quoteTweetId,
+      engagementMode: finalTweetRes.engagementMode || engagementMode,
       color,
       tweetText: text,
-      tweetId: tweetRes.tweetId,
-      tweetUrl: tweetRes.url,
+      tweetId: finalTweetRes.tweetId,
+      tweetUrl: finalTweetRes.url,
       status,
-      errorMessage: tweetRes.error,
+      errorMessage: finalTweetRes.error,
       contextId: context.id,
       contextName: context.name,
     };
@@ -97,8 +183,8 @@ class SchedulerService {
     storage.addLog(logEntry);
 
     return {
-      success: tweetRes.success,
-      result: tweetRes,
+      success: finalTweetRes.success,
+      result: finalTweetRes,
       log: logEntry,
       context,
     };
@@ -114,6 +200,23 @@ class SchedulerService {
       this.isProcessing = true;
       const contexts = storage.getContexts().filter(c => c.enabled);
       if (contexts.length === 0) return;
+
+      // 1. Check Global Rate Limit / Cooldown
+      const cooldown = storage.getCooldownState();
+      if (cooldown.isThrottled) {
+        return; // Safe standby while cooldown expires
+      }
+
+      // 2. Pre-Emptive Rate Window Check: If remaining requests in window is 0, wait for reset
+      const telemetry = storage.getRateLimitTelemetry();
+      if (telemetry.headersCaptured && telemetry.remaining <= 0 && telemetry.secondsUntilReset > 0) {
+        return; // Standby until 15-minute window resets
+      }
+
+      // 3. Anti-Burst Protection: Ensure minimum 60s spacing between any live drops across all campaigns
+      if (storage.getTimeSinceLastLivePostMs() < 60 * 1000) {
+        return; // Stagger to next tick
+      }
 
       const now = Date.now();
 
@@ -157,7 +260,7 @@ class SchedulerService {
 
     // MODE 2: FIXED TIMES (e.g. ["06:00", "18:00"])
     const nowDate = new Date(now);
-    const timezone = schedule.timezone || 'America/Los_Angeles';
+    const timezone = schedule.timezone || 'America/Denver';
 
     const timeInZone = new Intl.DateTimeFormat('en-US', {
       timeZone: timezone,
@@ -197,11 +300,9 @@ class SchedulerService {
 
   public getAllNextScheduledPosts() {
     return storage.getContexts().map(c => ({
-      contextId: c.id,
-      contextName: c.name,
+      ...this.calculateNextPostForContext(c),
       enabled: c.enabled,
       targetTweetId: c.targetTweetId,
-      ...this.calculateNextPostForContext(c),
     }));
   }
 
@@ -254,7 +355,7 @@ class SchedulerService {
 
     // Fixed Times Mode
     const nowDate = new Date(now);
-    const timezone = schedule.timezone || 'America/Los_Angeles';
+    const timezone = schedule.timezone || 'America/Denver';
     const formatter = new Intl.DateTimeFormat('en-US', {
       timeZone: timezone,
       year: 'numeric',

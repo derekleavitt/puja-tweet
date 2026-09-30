@@ -19,7 +19,7 @@ export interface TweetContextSchedule {
   mode: 'interval' | 'fixed_times';
   intervalMinutes: number; // e.g. 1, 15, 30, 60, 180, 360, 720
   scheduleTimes: string[]; // e.g. ["06:00", "18:00"]
-  timezone: string; // e.g. "America/Los_Angeles"
+  timezone: string; // e.g. "America/Denver" (MST)
   humanizeJitterEnabled: boolean; // Random humanized anti-bot delay
   jitterPercentage: number; // Default 25 (0 to 25% of interval window)
 }
@@ -28,7 +28,11 @@ export interface TweetContext {
   id: string; // Unique context ID e.g. 'ctx_default', 'ctx_1790623000'
   name: string; // Context title e.g. 'Primary Eternal Colors'
   description?: string;
-  targetTweetId: string; // The numeric Tweet ID to reply to
+  targetTweetId: string; // The numeric Tweet ID to reply to (root post)
+  replyTargetMode?: 'original_post' | 'last_comment'; // 'original_post' = reply to root post; 'last_comment' = cascading reply to last comment made by us
+  engagementMode?: 'reply' | 'quote' | 'standalone'; // 'reply' = comment thread, 'quote' = Quote Tweet (embeds post), 'standalone' = timeline post
+  autoFallbackToQuote?: boolean; // If true, automatically falls back to Quote Tweet if X restricts direct comments (403)
+  lastPostedTweetId?: string; // Latest tweet ID generated and posted in this campaign
   enabled: boolean; // Whether automatic scheduling is active for this context
   dryRun?: boolean; // Dry-run simulation vs live posting on X
   schedule: TweetContextSchedule;
@@ -37,6 +41,7 @@ export interface TweetContext {
   lastPostedTimestamp?: number;
   currentJitterMs?: number;
   lastPostedSlot?: string;
+  consecutiveErrors?: number;
   stats?: {
     totalPosts: number;
     successfulPosts: number;
@@ -49,6 +54,10 @@ export interface TweetContext {
 
 export interface BotSettings {
   targetTweetId: string;
+  replyTargetMode?: 'original_post' | 'last_comment';
+  engagementMode?: 'reply' | 'quote' | 'standalone';
+  autoFallbackToQuote?: boolean;
+  lastPostedTweetId?: string;
   scheduleTimes: string[];
   timezone: string;
   schedulerEnabled: boolean;
@@ -61,6 +70,39 @@ export interface BotSettings {
   humanizeJitterEnabled?: boolean; // Randomized humanized delay
   jitterPercentage?: number; // default 25% (0% - 25% window delay)
   activeContextId?: string; // Current active context selected in Studio
+}
+
+export interface CooldownState {
+  isThrottled: boolean;
+  throttledUntil: number; // epoch ms
+  secondsRemaining: number;
+  reason?: string;
+  source?: string;
+  lastThrottledAt?: string;
+}
+
+export interface RateLimitHeaders {
+  limit?: number;
+  remaining?: number;
+  reset?: number; // epoch timestamp in seconds
+  appDailyLimit?: number;
+  userDailyLimit?: number;
+  retryAfter?: number;
+}
+
+export interface RateLimitTelemetry {
+  limit: number; // e.g. 50
+  remaining: number; // e.g. 48
+  resetEpochSeconds: number; // epoch timestamp seconds
+  resetDateIso: string;
+  secondsUntilReset: number;
+  status: 'optimal' | 'warning' | 'throttled';
+  postsLast24Hours: number;
+  estimatedDailyCap: number; // 17 (Free), 100 (Basic), 10000 (Pay-Per-Use)
+  lastUpdatedIso: string;
+  tierDetected: 'Free (Legacy)' | 'Basic ($200/mo)' | 'Pay-Per-Use ($0.015/tweet)' | 'Pro ($5k/mo)' | 'Enterprise';
+  headersCaptured: boolean;
+  activeCooldown?: CooldownState;
 }
 
 export interface CredentialsStatus {
@@ -100,6 +142,9 @@ export interface PostLog {
   slotType: 'morning' | 'evening' | 'manual';
   scheduledTime?: string;
   targetTweetId: string;
+  replyToTweetId?: string; // The specific tweet ID that was replied to (root or cascading comment)
+  quoteTweetId?: string; // If posted as Quote Tweet
+  engagementMode?: 'reply' | 'quote' | 'standalone';
   color: ColorData;
   tweetText: string;
   tweetId?: string;
@@ -118,4 +163,7 @@ export interface QueueSlot {
   color: ColorData;
   contextId?: string;
   contextName?: string;
+  previewText?: string;
+  targetTweetId?: string;
+  replyTargetMode?: 'original_post' | 'last_comment';
 }

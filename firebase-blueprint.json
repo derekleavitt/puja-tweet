@@ -35,6 +35,12 @@
       "type": "object",
       "properties": {
         "targetTweetId": { "type": "string" },
+        "replyTargetMode": {
+          "type": "string",
+          "enum": ["original_post", "last_comment"],
+          "description": "Whether drops reply to original post or last comment made by us"
+        },
+        "lastPostedTweetId": { "type": "string" },
         "scheduleTimes": { "type": "array", "items": { "type": "string" } },
         "timezone": { "type": "string" },
         "schedulerEnabled": { "type": "boolean" },
@@ -54,6 +60,7 @@
         "timestamp": { "type": "string" },
         "slotType": { "type": "string" },
         "targetTweetId": { "type": "string" },
+        "replyToTweetId": { "type": "string" },
         "color": { "type": "object" },
         "tweetText": { "type": "string" },
         "tweetId": { "type": "string" },
@@ -75,6 +82,12 @@
         "name": { "type": "string" },
         "description": { "type": "string" },
         "targetTweetId": { "type": "string" },
+        "replyTargetMode": {
+          "type": "string",
+          "enum": ["original_post", "last_comment"],
+          "description": "Whether to reply to original post or last comment made by us"
+        },
+        "lastPostedTweetId": { "type": "string" },
         "enabled": { "type": "boolean" },
         "schedule": { "type": "object" },
         "template": { "type": "string" },

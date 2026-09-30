@@ -23,6 +23,7 @@ const FREQUENCY_OPTIONS = [
   { label: 'Every 3 hours', mode: 'interval' as const, minutes: 180 },
   { label: 'Every 6 hours', mode: 'interval' as const, minutes: 360 },
   { label: 'Every 12 hours', mode: 'interval' as const, minutes: 720 },
+  { label: 'Every 24 hours', mode: 'interval' as const, minutes: 1440 },
   { label: 'Daily at 6:00 AM & 6:00 PM', mode: 'fixed_times' as const, minutes: 720 },
 ];
 
@@ -61,9 +62,11 @@ export const StatusBar: React.FC<StatusBarProps> = ({
     return `${h.toString().padStart(2, '0')}h ${m.toString().padStart(2, '0')}m ${s.toString().padStart(2, '0')}s`;
   };
 
-  const targetUrl = `https://x.com/i/status/${targetTweetId}`;
-  const isInterval = settings?.intervalMode === 'interval';
-  const intervalMins = settings?.intervalMinutes || 720;
+  const effectiveTargetId = activeContext?.targetTweetId || targetTweetId;
+  const targetUrl = `https://x.com/i/status/${effectiveTargetId}`;
+  const isInterval = (activeContext?.schedule?.mode || settings?.intervalMode) === 'interval';
+  const intervalMins = activeContext?.schedule?.intervalMinutes || settings?.intervalMinutes || 720;
+  const isCampaignEnabled = activeContext ? activeContext.enabled : schedulerEnabled;
   
   // Selected value for select dropdown
   const currentValue = isInterval ? `interval_${intervalMins}` : 'fixed_720';
@@ -151,7 +154,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
             className="flex items-center gap-1 text-neutral-700 dark:text-neutral-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors font-mono shrink-0"
             title="Open target tweet on X"
           >
-            <span>Target: #{targetTweetId.substring(0, 7)}…</span>
+            <span>Target: #{effectiveTargetId.substring(0, 7)}…</span>
             <ExternalLink className="w-3 h-3" />
           </a>
 
@@ -171,7 +174,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
             onClick={onToggleScheduler}
             className="hover:text-neutral-900 dark:hover:text-neutral-100 underline underline-offset-2 transition-colors cursor-pointer shrink-0"
           >
-            {schedulerEnabled ? 'Pause' : 'Resume'}
+            {isCampaignEnabled ? 'Pause' : 'Resume'}
           </button>
         </div>
       </div>
