@@ -13,7 +13,7 @@ export interface TweetContextSchedule {
   mode: 'interval' | 'fixed_times';
   intervalMinutes: number; // e.g. 1, 15, 30, 60, 180, 360, 720
   scheduleTimes: string[]; // e.g. ["06:00", "18:00"]
-  timezone: string; // e.g. "America/Los_Angeles"
+  timezone: string; // e.g. "America/Denver" (MST)
   humanizeJitterEnabled: boolean; // Random humanized delay
   jitterPercentage: number; // Default 25 (0 to 25% of repeat window)
 }
@@ -23,6 +23,10 @@ export interface TweetContext {
   name: string;
   description?: string;
   targetTweetId: string;
+  replyTargetMode?: 'original_post' | 'last_comment'; // 'original_post' = root post, 'last_comment' = cascading thread
+  engagementMode?: 'reply' | 'quote' | 'standalone'; // 'reply' = comments, 'quote' = Quote Tweet, 'standalone' = timeline drop
+  autoFallbackToQuote?: boolean; // Automatically fall back to Quote Tweet if X restricts comments (403)
+  lastPostedTweetId?: string; // Latest tweet ID posted in this campaign
   enabled: boolean;
   dryRun?: boolean;
   schedule: TweetContextSchedule;
@@ -31,6 +35,7 @@ export interface TweetContext {
   lastPostedTimestamp?: number;
   currentJitterMs?: number;
   lastPostedSlot?: string;
+  consecutiveErrors?: number;
   stats?: {
     totalPosts: number;
     successfulPosts: number;
@@ -43,6 +48,10 @@ export interface TweetContext {
 
 export interface BotSettings {
   targetTweetId: string;
+  replyTargetMode?: 'original_post' | 'last_comment';
+  engagementMode?: 'reply' | 'quote' | 'standalone';
+  autoFallbackToQuote?: boolean;
+  lastPostedTweetId?: string;
   scheduleTimes: string[];
   timezone: string;
   schedulerEnabled: boolean;
@@ -63,6 +72,9 @@ export interface PostLog {
   slotType: 'morning' | 'evening' | 'manual';
   scheduledTime?: string;
   targetTweetId: string;
+  replyToTweetId?: string; // Actual tweet ID replied to
+  quoteTweetId?: string; // Target post ID if quoted
+  engagementMode?: 'reply' | 'quote' | 'standalone';
   color: ColorData;
   tweetText: string;
   tweetId?: string;
@@ -81,6 +93,42 @@ export interface QueueSlot {
   color: ColorData;
   contextId?: string;
   contextName?: string;
+  previewText?: string;
+  targetTweetId?: string;
+  replyTargetMode?: 'original_post' | 'last_comment';
+}
+
+export interface CooldownState {
+  isThrottled: boolean;
+  throttledUntil: number; // epoch ms
+  secondsRemaining: number;
+  reason?: string;
+  source?: string;
+  lastThrottledAt?: string;
+}
+
+export interface RateLimitHeaders {
+  limit?: number;
+  remaining?: number;
+  reset?: number; // epoch timestamp in seconds
+  appDailyLimit?: number;
+  userDailyLimit?: number;
+  retryAfter?: number;
+}
+
+export interface RateLimitTelemetry {
+  limit: number;
+  remaining: number;
+  resetEpochSeconds: number;
+  resetDateIso: string;
+  secondsUntilReset: number;
+  status: 'optimal' | 'warning' | 'throttled';
+  postsLast24Hours: number;
+  estimatedDailyCap: number;
+  lastUpdatedIso: string;
+  tierDetected: 'Free (Legacy)' | 'Basic ($200/mo)' | 'Pay-Per-Use ($0.015/tweet)' | 'Pro ($5k/mo)' | 'Enterprise';
+  headersCaptured: boolean;
+  activeCooldown?: CooldownState;
 }
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
@@ -89,13 +137,13 @@ const STORE_FILE = path.join(DATA_DIR, 'bot-store.json');
 const DEFAULT_SETTINGS: BotSettings = {
   targetTweetId: process.env.TARGET_TWEET_ID || '2091597504928428416',
   scheduleTimes: (process.env.SCHEDULE_TIMES || '06:00,18:00').split(',').map(s => s.trim()),
-  timezone: process.env.SCHEDULE_TIMEZONE || 'America/Los_Angeles',
+  timezone: process.env.SCHEDULE_TIMEZONE || 'America/Denver',
   schedulerEnabled: true,
   dryRun: false,
   template: DEFAULT_TWEET_TEMPLATE,
   themePreference: 'dynamic',
   intervalMode: 'interval',
-  intervalMinutes: 1,
+  intervalMinutes: 15,
   webhookSecret: 'chroma_auto_secret',
   humanizeJitterEnabled: true,
   jitterPercentage: 25,
@@ -112,6 +160,12 @@ class StorageService {
   private lastPostedTimestamp: number = 0;
   private currentJitterMs: number = 0;
   private userCredentials: TwitterCredentials = {};
+  private cooldownUntilMs: number = 0;
+  private cooldownReason: string = '';
+  private lastThrottledAt: string = '';
+  private lastGlobalLivePostTimestamp: number = 0;
+  private lastCapturedRateLimitHeaders?: RateLimitHeaders;
+  private lastRateLimitCaptureTimestamp?: number;
 
   constructor() {
     this.settings = { ...DEFAULT_SETTINGS };
@@ -138,13 +192,15 @@ class StorageService {
         name: 'Primary Eternal Colors',
         description: 'Main automated color palette reply thread on X',
         targetTweetId: this.settings.targetTweetId || '2091597504928428416',
+        replyTargetMode: 'original_post',
+        lastPostedTweetId: undefined,
         enabled: this.settings.schedulerEnabled ?? true,
         dryRun: this.settings.dryRun ?? false,
         schedule: {
           mode: this.settings.intervalMode || 'interval',
           intervalMinutes: this.settings.intervalMinutes || 1,
           scheduleTimes: this.settings.scheduleTimes || ['06:00', '18:00'],
-          timezone: this.settings.timezone || 'America/Los_Angeles',
+          timezone: this.settings.timezone || 'America/Denver',
           humanizeJitterEnabled: this.settings.humanizeJitterEnabled ?? true,
           jitterPercentage: this.settings.jitterPercentage ?? 25,
         },
@@ -168,7 +224,65 @@ class StorageService {
       if (!this.contexts.some(c => c.id === this.activeContextId)) {
         this.activeContextId = this.contexts[0].id;
       }
+      // Sanitize contexts to ensure no cross-campaign or quote-tweet chain pollution
+      let modified = false;
+      for (const ctx of this.contexts) {
+        if (this.sanitizeContextChain(ctx)) {
+          modified = true;
+        }
+      }
+      if (modified) {
+        this.save();
+      }
     }
+  }
+
+  private sanitizeContextChain(ctx: TweetContext): boolean {
+    let modified = false;
+    if (ctx.autoFallbackToQuote) {
+      ctx.autoFallbackToQuote = false;
+      modified = true;
+    }
+
+    const quoteTweetIds = new Set(
+      this.logs
+        .filter(l => l.engagementMode === 'quote' || l.engagementMode === 'standalone' || !!l.quoteTweetId)
+        .map(l => l.tweetId)
+        .filter(Boolean)
+    );
+
+    if (ctx.lastPostedTweetId) {
+      const matchingLog = this.logs.find(l => l.tweetId === ctx.lastPostedTweetId);
+      const isPolluted =
+        !/^\d+$/.test(ctx.lastPostedTweetId) ||
+        quoteTweetIds.has(ctx.lastPostedTweetId) ||
+        (matchingLog &&
+          (matchingLog.engagementMode === 'quote' ||
+            matchingLog.engagementMode === 'standalone' ||
+            (matchingLog.contextId && matchingLog.contextId !== ctx.id) ||
+            (matchingLog.targetTweetId && matchingLog.targetTweetId !== ctx.targetTweetId) ||
+            (matchingLog.replyToTweetId && quoteTweetIds.has(matchingLog.replyToTweetId))));
+
+      if (isPolluted) {
+        const validReplyLogs = this.logs.filter(
+          l =>
+            l.contextId === ctx.id &&
+            l.targetTweetId === ctx.targetTweetId &&
+            l.status === 'success' &&
+            l.engagementMode !== 'quote' &&
+            l.engagementMode !== 'standalone' &&
+            !l.quoteTweetId &&
+            l.tweetId &&
+            /^\d+$/.test(l.tweetId) &&
+            (!l.replyToTweetId || !quoteTweetIds.has(l.replyToTweetId))
+        );
+        const latestValid = validReplyLogs[validReplyLogs.length - 1];
+        ctx.lastPostedTweetId = latestValid?.tweetId || undefined;
+        modified = true;
+      }
+    }
+
+    return modified;
   }
 
   private load() {
@@ -203,6 +317,24 @@ class StorageService {
         if (data.credentials) {
           this.userCredentials = data.credentials;
         }
+        if (data.cooldownUntilMs) {
+          this.cooldownUntilMs = Number(data.cooldownUntilMs);
+        }
+        if (data.cooldownReason) {
+          this.cooldownReason = data.cooldownReason;
+        }
+        if (data.lastThrottledAt) {
+          this.lastThrottledAt = data.lastThrottledAt;
+        }
+        if (data.lastGlobalLivePostTimestamp) {
+          this.lastGlobalLivePostTimestamp = Number(data.lastGlobalLivePostTimestamp);
+        }
+        if (data.lastCapturedRateLimitHeaders) {
+          this.lastCapturedRateLimitHeaders = data.lastCapturedRateLimitHeaders;
+        }
+        if (data.lastRateLimitCaptureTimestamp) {
+          this.lastRateLimitCaptureTimestamp = Number(data.lastRateLimitCaptureTimestamp);
+        }
       }
     } catch (err) {
       console.warn('Could not read bot store file, using defaults:', err);
@@ -222,11 +354,121 @@ class StorageService {
         lastPostedTimestamp: this.lastPostedTimestamp,
         currentJitterMs: this.currentJitterMs,
         credentials: this.userCredentials,
+        cooldownUntilMs: this.cooldownUntilMs,
+        cooldownReason: this.cooldownReason,
+        lastThrottledAt: this.lastThrottledAt,
+        lastGlobalLivePostTimestamp: this.lastGlobalLivePostTimestamp,
+        lastCapturedRateLimitHeaders: this.lastCapturedRateLimitHeaders,
+        lastRateLimitCaptureTimestamp: this.lastRateLimitCaptureTimestamp,
       };
       fs.writeFileSync(STORE_FILE, JSON.stringify(payload, null, 2), 'utf-8');
     } catch (err) {
       console.error('Error saving bot store:', err);
     }
+  }
+
+  // --- Rate Limit & Anti-Spam Cooldown Methods ---
+
+  public getCooldownState(): CooldownState {
+    const now = Date.now();
+    const isThrottled = this.cooldownUntilMs > now;
+    return {
+      isThrottled,
+      throttledUntil: this.cooldownUntilMs,
+      secondsRemaining: isThrottled ? Math.ceil((this.cooldownUntilMs - now) / 1000) : 0,
+      reason: isThrottled ? this.cooldownReason : undefined,
+      lastThrottledAt: this.lastThrottledAt || undefined,
+    };
+  }
+
+  public setGlobalCooldown(durationMinutes: number, reason: string) {
+    this.cooldownUntilMs = Date.now() + durationMinutes * 60 * 1000;
+    this.cooldownReason = reason;
+    this.lastThrottledAt = new Date().toISOString();
+    console.log(`[Storage] Set global X API cooldown for ${durationMinutes} minutes: ${reason}`);
+    this.save();
+  }
+
+  public clearGlobalCooldown() {
+    this.cooldownUntilMs = 0;
+    this.cooldownReason = '';
+    console.log(`[Storage] Cleared global X API cooldown.`);
+    this.save();
+  }
+
+  public recordLivePostTimestamp() {
+    this.lastGlobalLivePostTimestamp = Date.now();
+  }
+
+  public getTimeSinceLastLivePostMs(): number {
+    if (!this.lastGlobalLivePostTimestamp) return Infinity;
+    return Date.now() - this.lastGlobalLivePostTimestamp;
+  }
+
+  // --- Rate Limit Telemetry & Quota Tracking ---
+
+  public updateRateLimitTelemetry(headers?: RateLimitHeaders) {
+    if (headers && (headers.limit !== undefined || headers.remaining !== undefined)) {
+      this.lastCapturedRateLimitHeaders = headers;
+      this.lastRateLimitCaptureTimestamp = Date.now();
+      this.save();
+    }
+  }
+
+  public getRateLimitTelemetry(): RateLimitTelemetry {
+    const now = Date.now();
+    const cooldown = this.getCooldownState();
+
+    // Calculate 24-hour live post volume
+    const oneDayAgo = now - 24 * 60 * 60 * 1000;
+    const postsLast24Hours = this.logs.filter(
+      l => l.status === 'success' && !l.tweetId?.startsWith('sim_') && new Date(l.timestamp).getTime() >= oneDayAgo
+    ).length;
+
+    const headers = this.lastCapturedRateLimitHeaders;
+    const limit = headers?.limit ?? 50;
+    const remaining = headers?.remaining ?? (cooldown.isThrottled ? 0 : 50);
+    const resetEpochSeconds = headers?.reset ?? Math.floor((now + 15 * 60 * 1000) / 1000);
+    const secondsUntilReset = Math.max(0, resetEpochSeconds - Math.floor(now / 1000));
+    const resetDateIso = new Date(resetEpochSeconds * 1000).toISOString();
+
+    // Identify account tier based on response headers
+    let tierDetected: 'Free (Legacy)' | 'Basic ($200/mo)' | 'Pay-Per-Use ($0.015/tweet)' | 'Pro ($5k/mo)' | 'Enterprise' = 'Pay-Per-Use ($0.015/tweet)';
+    let estimatedDailyCap = 10000;
+
+    if (limit <= 17 || headers?.appDailyLimit === 17) {
+      tierDetected = 'Free (Legacy)';
+      estimatedDailyCap = 17;
+    } else if (headers?.appDailyLimit === 100 || headers?.userDailyLimit === 100) {
+      tierDetected = 'Basic ($200/mo)';
+      estimatedDailyCap = 100;
+    } else if (limit >= 100) {
+      tierDetected = 'Pro ($5k/mo)';
+      estimatedDailyCap = 10000;
+    }
+
+    // Determine status
+    let status: 'optimal' | 'warning' | 'throttled' = 'optimal';
+    if (cooldown.isThrottled || remaining === 0 || (estimatedDailyCap <= 100 && postsLast24Hours >= estimatedDailyCap)) {
+      status = 'throttled';
+    } else if (remaining < 5 || (estimatedDailyCap <= 100 && postsLast24Hours >= estimatedDailyCap * 0.8)) {
+      status = 'warning';
+    }
+
+    return {
+      limit,
+      remaining,
+      resetEpochSeconds,
+      resetDateIso,
+      secondsUntilReset,
+      status,
+      postsLast24Hours,
+      estimatedDailyCap,
+      lastUpdatedIso: this.lastRateLimitCaptureTimestamp ? new Date(this.lastRateLimitCaptureTimestamp).toISOString() : new Date().toISOString(),
+      tierDetected,
+      headersCaptured: !!this.lastCapturedRateLimitHeaders,
+      activeCooldown: cooldown.isThrottled ? cooldown : undefined,
+    };
   }
 
   // --- Context Management Methods ---
@@ -259,7 +501,7 @@ class StorageService {
   }
 
   public createContext(data: Partial<TweetContext>): TweetContext {
-    const id = `ctx_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const id = data.id || `ctx_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const targetTweetId = this.cleanTweetId(data.targetTweetId || this.settings.targetTweetId || '2091597504928428416');
     
     const newContext: TweetContext = {
@@ -267,23 +509,27 @@ class StorageService {
       name: data.name?.trim() || `Context #${this.contexts.length + 1}`,
       description: data.description?.trim() || '',
       targetTweetId,
+      replyTargetMode: data.replyTargetMode || 'original_post',
+      engagementMode: data.engagementMode || 'reply',
+      autoFallbackToQuote: false,
+      lastPostedTweetId: data.lastPostedTweetId,
       enabled: data.enabled ?? true,
       dryRun: data.dryRun ?? false,
       schedule: {
         mode: data.schedule?.mode || 'interval',
         intervalMinutes: data.schedule?.intervalMinutes || 60,
         scheduleTimes: data.schedule?.scheduleTimes || ['06:00', '18:00'],
-        timezone: data.schedule?.timezone || this.settings.timezone || 'America/Los_Angeles',
+        timezone: data.schedule?.timezone || this.settings.timezone || 'America/Denver',
         humanizeJitterEnabled: data.schedule?.humanizeJitterEnabled ?? true,
         jitterPercentage: data.schedule?.jitterPercentage ?? 25,
       },
       template: data.template?.trim() || DEFAULT_TWEET_TEMPLATE,
       themePreference: data.themePreference || 'dynamic',
-      lastPostedTimestamp: 0,
-      currentJitterMs: 0,
-      createdAt: new Date().toISOString(),
+      lastPostedTimestamp: data.lastPostedTimestamp || 0,
+      currentJitterMs: data.currentJitterMs || 0,
+      createdAt: data.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      stats: {
+      stats: data.stats || {
         totalPosts: 0,
         successfulPosts: 0,
         simulatedPosts: 0,
@@ -291,10 +537,13 @@ class StorageService {
       },
     };
 
+    this.sanitizeContextChain(newContext);
+
     // Calculate initial jitter if interval
     this.generateRandomJitterForContext(newContext);
 
     this.contexts.push(newContext);
+    this.clearAndRegenerateQueue(newContext.id);
     this.save();
     return newContext;
   }
@@ -302,32 +551,56 @@ class StorageService {
   public updateContext(id: string, updates: Partial<TweetContext>): TweetContext {
     const idx = this.contexts.findIndex(c => c.id === id);
     if (idx === -1) {
-      throw new Error(`Context ${id} not found`);
+      // Upsert if context from cloud sync does not exist locally yet
+      return this.createContext({ ...updates, id });
     }
 
     const current = this.contexts[idx];
     const targetTweetId = updates.targetTweetId
       ? this.cleanTweetId(updates.targetTweetId)
       : current.targetTweetId;
+    const targetChanged = targetTweetId !== current.targetTweetId;
 
     const mergedSchedule: TweetContextSchedule = {
       ...current.schedule,
       ...(updates.schedule || {}),
     };
 
+    const scheduleChanged =
+      (updates.schedule?.intervalMinutes !== undefined &&
+        updates.schedule.intervalMinutes !== current.schedule.intervalMinutes) ||
+      (updates.schedule?.mode !== undefined &&
+        updates.schedule.mode !== current.schedule.mode);
+
     const updated: TweetContext = {
       ...current,
       ...updates,
+      id: current.id, // Never allow id to be overwritten
       targetTweetId,
+      replyTargetMode: updates.replyTargetMode !== undefined ? updates.replyTargetMode : (current.replyTargetMode || 'original_post'),
+      engagementMode: updates.engagementMode !== undefined ? updates.engagementMode : (current.engagementMode || 'reply'),
+      autoFallbackToQuote: false,
+      lastPostedTweetId: targetChanged
+        ? (updates.lastPostedTweetId || undefined)
+        : ('lastPostedTweetId' in updates ? (updates.lastPostedTweetId || undefined) : current.lastPostedTweetId),
       schedule: mergedSchedule,
       updatedAt: new Date().toISOString(),
     };
+
+    this.sanitizeContextChain(updated);
+
+    if (scheduleChanged) {
+      this.generateRandomJitterForContext(updated);
+    }
 
     this.contexts[idx] = updated;
 
     if (this.activeContextId === id) {
       this.syncActiveContextToSettings(updated);
     }
+
+    // Any save/edit of a campaign clears its queue and regenerates based on the new settings
+    this.clearAndRegenerateQueue(id);
 
     this.save();
     return updated;
@@ -341,6 +614,7 @@ class StorageService {
     if (idx === -1) return false;
 
     this.contexts.splice(idx, 1);
+    this.queue = this.queue.filter(q => q.contextId !== id);
     if (this.activeContextId === id) {
       this.activeContextId = this.contexts[0].id;
       this.syncActiveContextToSettings(this.contexts[0]);
@@ -359,6 +633,10 @@ class StorageService {
       name: `${source.name} (Copy)`,
       description: source.description,
       targetTweetId: source.targetTweetId,
+      replyTargetMode: source.replyTargetMode || 'original_post',
+      engagementMode: source.engagementMode || 'reply',
+      autoFallbackToQuote: false,
+      lastPostedTweetId: undefined, // Fresh copy starts clean
       enabled: false, // Start paused
       dryRun: source.dryRun,
       schedule: { ...source.schedule },
@@ -373,6 +651,82 @@ class StorageService {
       throw new Error(`Context ${id} not found`);
     }
     return this.updateContext(id, { enabled: !current.enabled });
+  }
+
+  public resetContextChain(id: string): TweetContext {
+    const current = this.getContext(id);
+    if (!current) {
+      throw new Error(`Context ${id} not found`);
+    }
+    current.lastPostedTweetId = undefined;
+    if (this.activeContextId === id) {
+      this.settings.lastPostedTweetId = undefined;
+    }
+    this.clearAndRegenerateQueue(id);
+    this.save();
+    return current;
+  }
+
+  /**
+   * Look up the most recent tweet ID posted by us for this context.
+   * Strictly verifies that the tweet belongs to this context's reply chain and is not a quote/standalone post.
+   */
+  public getContextLastPostedTweetId(contextId: string): string | undefined {
+    const context = this.getContext(contextId);
+    if (!context || context.replyTargetMode !== 'last_comment') {
+      return undefined;
+    }
+    const candidateId = context.lastPostedTweetId;
+    if (!candidateId || !/^\d+$/.test(candidateId)) {
+      return undefined;
+    }
+
+    const matchingLog = this.logs.find(l => l.tweetId === candidateId);
+    if (matchingLog) {
+      if (
+        matchingLog.engagementMode === 'quote' ||
+        matchingLog.engagementMode === 'standalone' ||
+        !!matchingLog.quoteTweetId ||
+        (matchingLog.contextId && matchingLog.contextId !== contextId) ||
+        (matchingLog.targetTweetId && matchingLog.targetTweetId !== context.targetTweetId)
+      ) {
+        return undefined;
+      }
+    }
+
+    return candidateId;
+  }
+
+  /**
+   * Determine the effective target tweet ID to reply to based on context's replyTargetMode.
+   */
+  public getEffectiveReplyTargetId(context: TweetContext): {
+    targetTweetId: string;
+    isCascadingToLastComment: boolean;
+    isFirstInChain: boolean;
+  } {
+    if (context.replyTargetMode === 'last_comment') {
+      const lastTweetId = this.getContextLastPostedTweetId(context.id);
+      if (lastTweetId) {
+        return {
+          targetTweetId: lastTweetId,
+          isCascadingToLastComment: true,
+          isFirstInChain: false,
+        };
+      }
+      // If no prior comment made yet, reply to root targetTweetId to initiate chain
+      return {
+        targetTweetId: context.targetTweetId,
+        isCascadingToLastComment: true,
+        isFirstInChain: true,
+      };
+    }
+
+    return {
+      targetTweetId: context.targetTweetId,
+      isCascadingToLastComment: false,
+      isFirstInChain: false,
+    };
   }
 
   public generateRandomJitterForContext(context: TweetContext): number {
@@ -392,7 +746,12 @@ class StorageService {
     return randomJitter;
   }
 
-  public recordContextPostResult(contextId: string, status: 'success' | 'simulated' | 'error') {
+  public recordContextPostResult(
+    contextId: string,
+    status: 'success' | 'simulated' | 'error',
+    postedTweetId?: string,
+    engagementMode: 'reply' | 'quote' | 'standalone' = 'reply'
+  ) {
     const context = this.getContext(contextId);
     if (!context) return;
 
@@ -402,15 +761,40 @@ class StorageService {
     context.stats.totalPosts += 1;
     if (status === 'success') context.stats.successfulPosts += 1;
     if (status === 'simulated') context.stats.simulatedPosts += 1;
-    if (status === 'error') context.stats.failedPosts += 1;
+    if (status === 'error') {
+      context.stats.failedPosts += 1;
+      context.consecutiveErrors = (context.consecutiveErrors || 0) + 1;
+      // Safety anti-hammer backoff: If posting hit an error (such as an X reply cooldown),
+      // back off by at least 15 minutes so the developer account has time to clear the cooldown
+      const intervalMs = (context.schedule.intervalMinutes || 15) * 60 * 1000;
+      const minRetryDelayMs = 15 * 60 * 1000;
+      if (intervalMs < minRetryDelayMs) {
+        context.lastPostedTimestamp = Date.now() + (minRetryDelayMs - intervalMs);
+      } else {
+        context.lastPostedTimestamp = Date.now();
+      }
+    } else {
+      context.consecutiveErrors = 0;
+      context.lastPostedTimestamp = Date.now();
+    }
 
-    context.lastPostedTimestamp = Date.now();
+    // Only update lastPostedTweetId if this was a genuine in-thread reply
+    if (postedTweetId && status === 'success' && engagementMode === 'reply' && /^\d+$/.test(postedTweetId)) {
+      context.lastPostedTweetId = postedTweetId;
+      if (this.activeContextId === contextId) {
+        this.settings.lastPostedTweetId = postedTweetId;
+      }
+    }
     this.generateRandomJitterForContext(context);
     this.save();
   }
 
   private syncActiveContextToSettings(ctx: TweetContext) {
     this.settings.targetTweetId = ctx.targetTweetId;
+    this.settings.replyTargetMode = ctx.replyTargetMode || 'original_post';
+    this.settings.engagementMode = ctx.engagementMode || 'reply';
+    this.settings.autoFallbackToQuote = ctx.autoFallbackToQuote ?? true;
+    this.settings.lastPostedTweetId = ctx.lastPostedTweetId;
     this.settings.schedulerEnabled = ctx.enabled;
     this.settings.dryRun = ctx.dryRun ?? false;
     this.settings.template = ctx.template;
@@ -436,6 +820,10 @@ class StorageService {
     const active = this.getActiveContext();
     return {
       targetTweetId: active.targetTweetId,
+      replyTargetMode: active.replyTargetMode || 'original_post',
+      engagementMode: active.engagementMode || 'reply',
+      autoFallbackToQuote: active.autoFallbackToQuote ?? true,
+      lastPostedTweetId: active.lastPostedTweetId,
       scheduleTimes: active.schedule.scheduleTimes,
       timezone: active.schedule.timezone,
       schedulerEnabled: active.enabled,
@@ -464,6 +852,10 @@ class StorageService {
 
     const contextUpdates: Partial<TweetContext> = {};
     if (newSettings.targetTweetId) contextUpdates.targetTweetId = newSettings.targetTweetId;
+    if (newSettings.replyTargetMode) contextUpdates.replyTargetMode = newSettings.replyTargetMode;
+    if (newSettings.engagementMode) contextUpdates.engagementMode = newSettings.engagementMode;
+    if (newSettings.autoFallbackToQuote !== undefined) contextUpdates.autoFallbackToQuote = newSettings.autoFallbackToQuote;
+    if (newSettings.lastPostedTweetId !== undefined) contextUpdates.lastPostedTweetId = newSettings.lastPostedTweetId;
     if (newSettings.schedulerEnabled !== undefined) contextUpdates.enabled = newSettings.schedulerEnabled;
     if (newSettings.dryRun !== undefined) contextUpdates.dryRun = newSettings.dryRun;
     if (newSettings.template) contextUpdates.template = newSettings.template;
@@ -550,6 +942,38 @@ class StorageService {
     this.save();
   }
 
+  public clearContextHistory(contextId: string): { clearedCount: number; context?: TweetContext } {
+    const beforeCount = this.logs.length;
+    // Filter out logs matching contextId (and if primary context, logs with ctx_primary or no contextId)
+    this.logs = this.logs.filter(l => {
+      if (contextId === 'ctx_primary') {
+        return l.contextId && l.contextId !== 'ctx_primary';
+      }
+      return l.contextId !== contextId;
+    });
+    const clearedCount = beforeCount - this.logs.length;
+
+    // Reset campaign stats and anchors
+    const ctx = this.getContext(contextId);
+    if (ctx) {
+      ctx.stats = {
+        totalPosts: 0,
+        successfulPosts: 0,
+        simulatedPosts: 0,
+        failedPosts: 0,
+      };
+      ctx.lastPostedTimestamp = 0;
+      ctx.lastPostedSlot = undefined;
+      ctx.lastPostedTweetId = undefined; // Reset chain anchor to clean slate
+      if (this.activeContextId === contextId) {
+        this.settings.lastPostedTweetId = undefined;
+      }
+      this.clearAndRegenerateQueue(contextId);
+    }
+    this.save();
+    return { clearedCount, context: ctx };
+  }
+
   public getLastPostedSlot(): string {
     return this.lastPostedSlot;
   }
@@ -591,56 +1015,211 @@ class StorageService {
     return randomJitter;
   }
 
-  public getQueue(): QueueSlot[] {
-    this.syncQueue();
-    return this.queue;
+  private formatSlotPreviewText(template: string, color: ColorData, slotLabel: string): string {
+    const colorPick = color.colorPick || color.name;
+    const weatherDesc = color.weatherDesc || 'warming crisp morning air';
+    const weatherTweet = `${colorPick} ${weatherDesc} #eternal #colors`;
+
+    let resolved = (template || DEFAULT_TWEET_TEMPLATE)
+      .replace(/{weather_tweet}/g, weatherTweet)
+      .replace(/{color_pick}/g, colorPick)
+      .replace(/{weather_desc}/g, weatherDesc)
+      .replace(/{weather_description}/g, weatherDesc)
+      .replace(/{time_tag}/g, slotLabel)
+      .replace(/{color_name}/g, color.name)
+      .replace(/{hex}/g, color.hex)
+      .replace(/{rgb}/g, `${color.rgb.r}, ${color.rgb.g}, ${color.rgb.b}`)
+      .replace(/{hsl}/g, `${color.hsl.h}°, ${color.hsl.s}%, ${color.hsl.l}%`)
+      .replace(/{cmyk}/g, `C:${color.cmyk.c}% M:${color.cmyk.m}% Y:${color.cmyk.y}% K:${color.cmyk.k}%`)
+      .replace(/{mood}/g, color.mood)
+      .replace(/{swatch_bar}/g, color.swatchBar)
+      .replace(/{companions}/g, color.companions.join(' '));
+
+    resolved = resolved.replace(/<\/?history>/gi, '');
+    resolved = resolved.replace(/<agent(?:\s+history=["']?true["']?)?>([\s\S]*?)<\/agent>/gi, (_, inner) => `[AI Poetry (${colorPick} ${color.hex}): ${inner.trim()}]`);
+    const finalPreview = resolved.trim();
+    return finalPreview || weatherTweet;
+  }
+
+  private createQueueSlotForContext(ctx: TweetContext, slotIndex: number, baseTimeMs = Date.now()): QueueSlot {
+    const tz = (!ctx.schedule?.timezone || ctx.schedule.timezone === 'MST')
+      ? 'America/Denver'
+      : ctx.schedule.timezone;
+
+    if (ctx.schedule?.mode === 'interval') {
+      const intervalMins = Math.max(1, ctx.schedule.intervalMinutes || 15);
+      const futureDate = new Date(baseTimeMs + (slotIndex + 1) * intervalMins * 60 * 1000);
+      let dateStr = futureDate.toISOString().split('T')[0];
+      let timeSlot = '06:00';
+      let isMorning = true;
+
+      try {
+        const parts = new Intl.DateTimeFormat('en-CA', {
+          timeZone: tz,
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        }).formatToParts(futureDate);
+        const y = parts.find(p => p.type === 'year')?.value || '2026';
+        const m = parts.find(p => p.type === 'month')?.value || '01';
+        const d = parts.find(p => p.type === 'day')?.value || '01';
+        const hr = parseInt(parts.find(p => p.type === 'hour')?.value || '6', 10) % 24;
+        const mn = parts.find(p => p.type === 'minute')?.value || '00';
+        dateStr = `${y}-${m}-${d}`;
+        timeSlot = `${hr.toString().padStart(2, '0')}:${mn}`;
+        isMorning = hr < 12;
+      } catch {
+        const hr = futureDate.getUTCHours();
+        const mn = futureDate.getUTCMinutes().toString().padStart(2, '0');
+        timeSlot = `${hr.toString().padStart(2, '0')}:${mn}`;
+        isMorning = hr < 12;
+      }
+
+      const slotType: 'morning' | 'evening' = isMorning ? 'morning' : 'evening';
+      const color = generateColor(slotType);
+      const previewText = this.formatSlotPreviewText(ctx.template, color, timeSlot);
+
+      return {
+        slotId: `slot_${ctx.id}_${Date.now()}_${slotIndex}_${Math.random().toString(36).substring(2, 6)}`,
+        dateStr,
+        timeSlot,
+        slotType,
+        color,
+        contextId: ctx.id,
+        contextName: ctx.name,
+        previewText,
+        targetTweetId: ctx.targetTweetId,
+        replyTargetMode: ctx.replyTargetMode || 'original_post',
+      };
+    }
+
+    // Fixed times mode
+    const times = ctx.schedule?.scheduleTimes?.length ? ctx.schedule.scheduleTimes : ['06:00', '18:00'];
+    const dayOffset = Math.floor(slotIndex / times.length);
+    const timeIdx = slotIndex % times.length;
+    const timeSlot = times[timeIdx] || '06:00';
+    const hourNum = parseInt(timeSlot.split(':')[0] || '6', 10);
+    const slotType: 'morning' | 'evening' = hourNum < 12 ? 'morning' : 'evening';
+    const futureDate = new Date(baseTimeMs + dayOffset * 86400000);
+    const dateStr = futureDate.toISOString().split('T')[0];
+    const color = generateColor(slotType);
+    const previewText = this.formatSlotPreviewText(ctx.template, color, timeSlot);
+
+    return {
+      slotId: `slot_${ctx.id}_${dateStr}_${timeSlot}_${slotIndex}_${Math.random().toString(36).substring(2, 6)}`,
+      dateStr,
+      timeSlot,
+      slotType,
+      color,
+      contextId: ctx.id,
+      contextName: ctx.name,
+      previewText,
+      targetTweetId: ctx.targetTweetId,
+      replyTargetMode: ctx.replyTargetMode || 'original_post',
+    };
+  }
+
+  /**
+   * Clears existing queue slots for the specified campaign (or all campaigns if omitted)
+   * and regenerates 14 fresh slots based on the campaign's current template & schedule settings.
+   */
+  public clearAndRegenerateQueue(contextId?: string): QueueSlot[] {
+    const requiredCount = 14;
+    const nowMs = Date.now();
+
+    if (contextId) {
+      const ctx = this.getContext(contextId);
+      if (!ctx) return this.getQueue();
+      // Remove all slots belonging to this context (and any legacy untagged slots)
+      this.queue = this.queue.filter(q => q.contextId && q.contextId !== contextId);
+      for (let i = 0; i < requiredCount; i++) {
+        this.queue.push(this.createQueueSlotForContext(ctx, i, nowMs));
+      }
+      this.save();
+      return this.queue.filter(q => q.contextId === contextId);
+    }
+
+    // Regenerate for all contexts
+    this.queue = [];
+    for (const ctx of this.contexts) {
+      for (let i = 0; i < requiredCount; i++) {
+        this.queue.push(this.createQueueSlotForContext(ctx, i, nowMs));
+      }
+    }
+    this.save();
+    return this.getQueue();
+  }
+
+  public getQueue(contextId?: string): QueueSlot[] {
+    const targetId = contextId || this.activeContextId;
+    this.syncQueue(targetId);
+    return this.queue.filter(q => q.contextId === targetId);
   }
 
   public rerollQueueSlot(slotId: string): QueueSlot | null {
     const idx = this.queue.findIndex(q => q.slotId === slotId);
     if (idx === -1) return null;
     const current = this.queue[idx];
+    const ctx = (current.contextId ? this.getContext(current.contextId) : undefined) || this.getActiveContext();
     const newColor = generateColor(current.slotType);
+    const previewText = this.formatSlotPreviewText(ctx.template, newColor, current.timeSlot);
     this.queue[idx] = {
       ...current,
       color: newColor,
+      previewText,
+      contextId: ctx.id,
+      contextName: ctx.name,
+      targetTweetId: ctx.targetTweetId,
+      replyTargetMode: ctx.replyTargetMode || 'original_post',
     };
     this.save();
     return this.queue[idx];
   }
 
-  public popNextQueueSlot(slotType: 'morning' | 'evening'): ColorData {
-    const nextIdx = this.queue.findIndex(q => q.slotType === slotType);
+  public popNextQueueSlot(slotType: 'morning' | 'evening', contextId?: string): ColorData {
+    const targetId = contextId || this.activeContextId;
+    this.syncQueue(targetId);
+    const nextIdx = this.queue.findIndex(q => q.contextId === targetId);
     if (nextIdx !== -1) {
       const item = this.queue.splice(nextIdx, 1)[0];
-      this.syncQueue();
+      this.syncQueue(targetId);
       this.save();
       return item.color;
     }
     return generateColor(slotType);
   }
 
-  private syncQueue() {
+  private syncQueue(contextId?: string) {
     const requiredCount = 14;
-    const now = new Date();
+    const nowMs = Date.now();
 
-    while (this.queue.length < requiredCount) {
-      const slotIndex = this.queue.length;
-      const dayOffset = Math.floor(slotIndex / 2);
-      const isMorning = slotIndex % 2 === 0;
+    // Remove legacy untagged slots that lack contextId or previewText
+    const hasLegacySlots = this.queue.some(q => !q.contextId || !q.previewText);
+    if (hasLegacySlots) {
+      this.queue = this.queue.filter(q => !!q.contextId && !!q.previewText);
+    }
 
-      const futureDate = new Date(now.getTime() + dayOffset * 86400000);
-      const dateStr = futureDate.toISOString().split('T')[0];
-      const timeSlot = isMorning ? '06:00' : '18:00';
-      const slotType = isMorning ? 'morning' : 'evening';
+    const contextsToSync = contextId
+      ? [this.getContext(contextId) || this.getActiveContext()].filter(Boolean)
+      : this.contexts;
 
-      this.queue.push({
-        slotId: `slot_${dateStr}_${timeSlot}`,
-        dateStr,
-        timeSlot,
-        slotType,
-        color: generateColor(slotType),
-      });
+    let modified = hasLegacySlots;
+    for (const ctx of contextsToSync) {
+      if (!ctx) continue;
+      const existing = this.queue.filter(q => q.contextId === ctx.id);
+      let idx = existing.length;
+      while (idx < requiredCount) {
+        this.queue.push(this.createQueueSlotForContext(ctx, idx, nowMs));
+        idx++;
+        modified = true;
+      }
+    }
+
+    if (modified) {
+      this.save();
     }
   }
 }

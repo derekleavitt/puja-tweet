@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Save, Check, ExternalLink, RefreshCw, Clock, Repeat, Globe, Key, ShieldCheck, Sparkles, UserCheck } from 'lucide-react';
+import { Save, Check, ExternalLink, RefreshCw, Clock, Repeat, Globe, Key, ShieldCheck, Sparkles, UserCheck, Target, Link2, RotateCcw } from 'lucide-react';
 import { BotSettings } from '../types.js';
 import { extractTweetId } from './TargetTweetEditor.js';
 
@@ -37,6 +37,8 @@ const INTERVAL_PRESETS = [
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSettings }) => {
   const [targetTweetId, setTargetTweetId] = useState(settings.targetTweetId);
+  const [replyTargetMode, setReplyTargetMode] = useState<'original_post' | 'last_comment'>(settings.replyTargetMode || 'original_post');
+  const [lastPostedTweetId, setLastPostedTweetId] = useState(settings.lastPostedTweetId);
   const [intervalMode, setIntervalMode] = useState<'fixed_times' | 'interval'>(settings.intervalMode || 'fixed_times');
   const [intervalMinutes, setIntervalMinutes] = useState<number>(settings.intervalMinutes || 720);
   const [scheduleTimes, setScheduleTimes] = useState(settings.scheduleTimes.join(', '));
@@ -49,6 +51,33 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
   const [jitterPercentage, setJitterPercentage] = useState<number>(settings.jitterPercentage ?? 25);
   const [isSaving, setIsSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [testingAi, setTestingAi] = useState(false);
+  const [aiPreviewResult, setAiPreviewResult] = useState<string | null>(null);
+
+  const testAiGeneration = async () => {
+    setTestingAi(true);
+    setAiPreviewResult(null);
+    try {
+      const res = await fetch('/api/template/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ template }),
+      });
+      const data = await res.json();
+      if (data.previewText) {
+        setAiPreviewResult(data.previewText);
+      } else {
+        setAiPreviewResult('Could not generate preview.');
+      }
+    } catch (err: any) {
+      setAiPreviewResult(`Error: ${err.message}`);
+    } finally {
+      setTestingAi(false);
+    }
+  };
+
+  const hasAgentTag = /<agent>/i.test(template);
+  const hasHistoryTag = /<history>/i.test(template);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,6 +92,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
 
       await onSaveSettings({
         targetTweetId: cleanedTargetId,
+        replyTargetMode,
+        lastPostedTweetId,
         intervalMode,
         intervalMinutes: Number(intervalMinutes),
         scheduleTimes: times.length > 0 ? times : ['06:00', '18:00'],
@@ -143,6 +174,87 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
               ✓ Clean ID detected: {extractTweetId(targetTweetId)}
             </div>
           )}
+
+          {/* Reply Threading Strategy Toggle in Settings */}
+          <div className="pt-4 border-t border-neutral-100 dark:border-neutral-800/80 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold uppercase tracking-wider text-neutral-700 dark:text-neutral-300">
+                Reply Threading Strategy
+              </label>
+              <span className="text-[11px] font-mono text-neutral-400">
+                {replyTargetMode === 'last_comment' ? 'Cascading Ladder Chain' : 'Direct Root Hub'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                onClick={() => setReplyTargetMode('original_post')}
+                className={`p-3 rounded-lg border text-left cursor-pointer transition-all flex flex-col justify-between ${
+                  replyTargetMode === 'original_post'
+                    ? 'border-indigo-600 bg-indigo-50/60 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-100 font-semibold ring-1 ring-indigo-500/30'
+                    : 'border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/60 text-neutral-700 dark:text-neutral-300 hover:border-neutral-300'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 text-xs">
+                  <Target className="w-3.5 h-3.5 text-blue-500" />
+                  <span>Reply to Original Post</span>
+                </div>
+                <div className="text-[11px] text-neutral-500 dark:text-neutral-400 font-normal mt-1 leading-snug">
+                  All automated drops attach directly under root post (#{extractTweetId(targetTweetId) || targetTweetId || '...'}).
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setReplyTargetMode('last_comment')}
+                className={`p-3 rounded-lg border text-left cursor-pointer transition-all flex flex-col justify-between ${
+                  replyTargetMode === 'last_comment'
+                    ? 'border-purple-600 bg-purple-50/60 dark:bg-purple-950/40 text-purple-900 dark:text-purple-100 font-semibold ring-1 ring-purple-500/30'
+                    : 'border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/60 text-neutral-700 dark:text-neutral-300 hover:border-neutral-300'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 text-xs">
+                  <Link2 className="w-3.5 h-3.5 text-purple-500" />
+                  <span>Reply to Last Comment</span>
+                </div>
+                <div className="text-[11px] text-neutral-500 dark:text-neutral-400 font-normal mt-1 leading-snug">
+                  Each next drop replies to the previous comment made by us, forming an unbroken cascading thread.
+                </div>
+              </button>
+            </div>
+
+            {replyTargetMode === 'last_comment' && (
+              <div className="p-2.5 rounded-lg bg-purple-50/70 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/60 text-xs flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="w-2 h-2 rounded-full bg-purple-500 shrink-0" />
+                  <div className="truncate text-purple-900 dark:text-purple-200 text-[11px]">
+                    {lastPostedTweetId ? (
+                      <span>
+                        Current chain anchor: <strong className="font-mono">#{lastPostedTweetId}</strong>
+                      </span>
+                    ) : (
+                      <span>
+                        No prior comment recorded. First drop will reply to root post <strong className="font-mono">#{extractTweetId(targetTweetId) || targetTweetId}</strong> to begin the chain.
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {lastPostedTweetId && (
+                  <button
+                    type="button"
+                    onClick={() => setLastPostedTweetId(undefined)}
+                    className="px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/60 rounded border border-amber-300 dark:border-amber-800 hover:bg-amber-200 cursor-pointer flex items-center gap-1 shrink-0"
+                    title="Reset chain anchor back to original post"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Reset to Root</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Schedule Mode Selector: Interval vs Fixed Times */}
@@ -442,44 +554,138 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
           />
 
           {/* Variable chips */}
-          <div className="space-y-1.5 pt-1">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold text-neutral-500">Insert Variable Token:</span>
-              <button
-                type="button"
-                onClick={() => setTemplate('{color_pick} {weather_desc} #eternal #colors')}
-                className="text-[11px] text-blue-600 dark:text-blue-400 hover:underline font-medium cursor-pointer"
-              >
-                Reset to Weather Formula
-              </button>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {[
-                '{color_pick}',
-                '{weather_desc}',
-                '{weather_tweet}',
-                '{time_tag}',
-                '{color_name}',
-                '{hex}',
-                '{rgb}',
-                '{hsl}',
-                '{cmyk}',
-                '{mood}',
-                '{swatch_bar}',
-              ].map((token) => (
+          <div className="space-y-2 pt-1">
+            {/* Quick AI Presets */}
+            <div className="space-y-1.5">
+              <span className="text-[11px] font-semibold text-neutral-500 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                <span>AI Poetry Agent Presets (Gemini Engine):</span>
+              </span>
+              <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
-                  key={token}
-                  onClick={() => insertToken(token)}
-                  className={`px-2 py-0.5 text-xs font-mono rounded transition-colors cursor-pointer ${
-                    ['{color_pick}', '{weather_desc}', '{weather_tweet}'].includes(token)
-                      ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
-                      : 'bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200'
-                  }`}
+                  onClick={() => setTemplate('<history><agent>consider whats already and been said and respond with just the body of a tweet that is unique pablo neruda like expression that plays on the series thats been written thus far</agent></history>')}
+                  className="px-2.5 py-1 text-xs font-medium rounded-lg bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-950/70 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-800 transition-colors cursor-pointer text-left"
                 >
-                  + {token}
+                  📜 Neruda Arc with History
                 </button>
-              ))}
+                <button
+                  type="button"
+                  onClick={() => setTemplate('<agent>respond with just the body of a tweet that is unique pablo neruda like expression</agent>')}
+                  className="px-2.5 py-1 text-xs font-medium rounded-lg bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-950/70 text-purple-800 dark:text-purple-200 border border-purple-300 dark:border-purple-800 transition-colors cursor-pointer text-left"
+                >
+                  ✍️ Neruda Solo Poem
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTemplate('🎨 {color_pick} | <history><agent>Write a 2-line visceral Neruda-style poem connecting this new hue to previous drops</agent></history> #eternal #colors')}
+                  className="px-2.5 py-1 text-xs font-medium rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-950/70 text-indigo-800 dark:text-indigo-200 border border-indigo-300 dark:border-indigo-800 transition-colors cursor-pointer text-left"
+                >
+                  ✨ Swatch + History Arc
+                </button>
+              </div>
+            </div>
+
+            {/* AI Agent Tokens */}
+            <div className="space-y-1">
+              <span className="text-[11px] font-semibold text-neutral-500">Insert AI Agent Expressions:</span>
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => insertToken('<agent>Write a poetic expression for {color_pick}</agent>')}
+                  className="px-2 py-0.5 text-xs font-mono rounded bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/60 dark:hover:bg-purple-900 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-800 transition-colors cursor-pointer"
+                >
+                  + &lt;agent&gt;...&lt;/agent&gt;
+                </button>
+                <button
+                  type="button"
+                  onClick={() => insertToken('<history><agent>Consider prior tweets and write a poem for {color_pick}</agent></history>')}
+                  className="px-2 py-0.5 text-xs font-mono rounded bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 dark:hover:bg-amber-900 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800 transition-colors cursor-pointer"
+                >
+                  + &lt;history&gt;&lt;agent&gt;...&lt;/agent&gt;&lt;/history&gt;
+                </button>
+              </div>
+            </div>
+
+            {/* Standard Variable Tokens */}
+            <div className="space-y-1 pt-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-neutral-500">Insert Variable Token:</span>
+                <button
+                  type="button"
+                  onClick={() => setTemplate('{color_pick} {weather_desc} #eternal #colors')}
+                  className="text-[11px] text-blue-600 dark:text-blue-400 hover:underline font-medium cursor-pointer"
+                >
+                  Reset to Default Formula
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  '{color_pick}',
+                  '{weather_desc}',
+                  '{weather_tweet}',
+                  '{time_tag}',
+                  '{color_name}',
+                  '{hex}',
+                  '{rgb}',
+                  '{hsl}',
+                  '{cmyk}',
+                  '{mood}',
+                  '{swatch_bar}',
+                ].map((token) => (
+                  <button
+                    type="button"
+                    key={token}
+                    onClick={() => insertToken(token)}
+                    className={`px-2 py-0.5 text-xs font-mono rounded transition-colors cursor-pointer ${
+                      ['{color_pick}', '{weather_desc}', '{weather_tweet}'].includes(token)
+                        ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
+                        : 'bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200'
+                    }`}
+                  >
+                    + {token}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Test AI Generation Sandbox */}
+            <div className="pt-2 border-t border-neutral-100 dark:border-neutral-800 flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
+                  {hasAgentTag && (
+                    <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
+                  )}
+                  <span>Live Preview &amp; Agent Test</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={testAiGeneration}
+                  disabled={testingAi}
+                  className="px-3 py-1 text-xs font-semibold rounded-md bg-purple-600 hover:bg-purple-700 text-white transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-xs"
+                >
+                  {testingAi ? (
+                    <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <Sparkles className="w-3 h-3" />
+                  )}
+                  <span>Test AI Generation Now</span>
+                </button>
+              </div>
+
+              {aiPreviewResult && (
+                <div className="p-3 bg-purple-50/60 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/80 rounded-lg text-xs space-y-1">
+                  <div className="font-semibold text-purple-900 dark:text-purple-200 flex items-center justify-between">
+                    <span>Generated Tweet Preview:</span>
+                    <span className="font-mono text-[11px] text-purple-700 dark:text-purple-400">
+                      {aiPreviewResult.length} / 280 chars
+                    </span>
+                  </div>
+                  <div className="font-sans text-neutral-800 dark:text-neutral-200 whitespace-pre-line leading-relaxed">
+                    {aiPreviewResult}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

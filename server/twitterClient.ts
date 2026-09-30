@@ -28,6 +28,18 @@ export interface TwitterCredentials {
 export interface PostTweetOptions {
   text: string;
   replyToTweetId?: string;
+  quoteTweetId?: string;
+  engagementMode?: 'reply' | 'quote' | 'standalone';
+  autoFallbackToQuote?: boolean;
+}
+
+export interface RateLimitHeaders {
+  limit?: number;
+  remaining?: number;
+  reset?: number; // epoch timestamp in seconds
+  appDailyLimit?: number;
+  userDailyLimit?: number;
+  retryAfter?: number;
 }
 
 export interface TweetResponse {
@@ -35,10 +47,34 @@ export interface TweetResponse {
   tweetId?: string;
   text?: string;
   replyTo?: string;
+  quoteTweetId?: string;
   url?: string;
   error?: string;
   rawResponse?: any;
   simulated?: boolean;
+  engagementMode?: 'reply' | 'quote' | 'standalone';
+  fallbackTriggered?: boolean;
+  isRateLimitOrCooldown?: boolean;
+  rateLimitReset?: number;
+  rateLimitHeaders?: RateLimitHeaders;
+}
+
+export function parseRateLimitHeaders(headers: Headers): RateLimitHeaders {
+  const limit = headers.get('x-rate-limit-limit');
+  const remaining = headers.get('x-rate-limit-remaining');
+  const reset = headers.get('x-rate-limit-reset');
+  const appDaily = headers.get('x-app-limit-24hour-limit');
+  const userDaily = headers.get('x-user-limit-24hour-limit');
+  const retryAfter = headers.get('retry-after');
+
+  return {
+    limit: limit ? parseInt(limit, 10) : undefined,
+    remaining: remaining ? parseInt(remaining, 10) : undefined,
+    reset: reset ? parseInt(reset, 10) : undefined,
+    appDailyLimit: appDaily ? parseInt(appDaily, 10) : undefined,
+    userDailyLimit: userDaily ? parseInt(userDaily, 10) : undefined,
+    retryAfter: retryAfter ? parseInt(retryAfter, 10) : undefined,
+  };
 }
 
 function percentEncode(str: string): string {
@@ -249,6 +285,8 @@ export async function postColorTweet(
       tweetId: fakeTweetId,
       text: options.text,
       replyTo: options.replyToTweetId,
+      quoteTweetId: options.quoteTweetId,
+      engagementMode: options.engagementMode || (options.quoteTweetId ? 'quote' : options.replyToTweetId ? 'reply' : 'standalone'),
       url: `https://x.com/i/status/${fakeTweetId}`,
       simulated: true,
       rawResponse: {
@@ -258,84 +296,114 @@ export async function postColorTweet(
     };
   }
 
-  const endpoint = 'https://api.x.com/2/tweets';
-  const bodyPayload: Record<string, any> = {
-    text: options.text,
-  };
-
-  if (options.replyToTweetId) {
-    bodyPayload.reply = {
-      in_reply_to_tweet_id: options.replyToTweetId,
+    const endpoint = 'https://api.x.com/2/tweets';
+    const mode = options.engagementMode || (options.quoteTweetId ? 'quote' : 'reply');
+    const bodyPayload: Record<string, any> = {
+      text: options.text,
     };
-  }
 
-  let authHeader = '';
-  if (hasOAuth1) {
-    authHeader = generateOAuth1Header('POST', endpoint, {
-      apiKey: creds.apiKey!,
-      apiSecret: creds.apiSecret!,
-      accessToken: creds.accessToken!,
-      accessTokenSecret: creds.accessTokenSecret!,
-    });
-  } else if (hasOAuth2User) {
-    authHeader = `Bearer ${creds.oauth2AccessToken}`;
-  }
-
-  try {
-    let response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        Authorization: authHeader,
-        'Content-Type': 'application/json',
-        'User-Agent': 'X-ChromaBot/1.0',
-      },
-      body: JSON.stringify(bodyPayload),
-    });
-
-    // If OAuth 2.0 token expired (HTTP 401), try refreshing
-    if (response.status === 401 && creds.oauth2RefreshToken) {
-      const refreshed = await refreshOAuth2Token(creds);
-      if (refreshed) {
-        creds.oauth2AccessToken = refreshed.accessToken;
-        if (refreshed.refreshToken) creds.oauth2RefreshToken = refreshed.refreshToken;
-        authHeader = `Bearer ${creds.oauth2AccessToken}`;
-        response = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            Authorization: authHeader,
-            'Content-Type': 'application/json',
-            'User-Agent': 'X-ChromaBot/1.0',
-          },
-          body: JSON.stringify(bodyPayload),
-        });
+    if (mode === 'reply') {
+      if (!options.replyToTweetId || !/^\d+$/.test(options.replyToTweetId.trim())) {
+        return {
+          success: false,
+          error: 'Missing or invalid target Tweet ID for reply. Refusing to post as a standalone tweet to your timeline.',
+        };
       }
-    }
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      let errorMsg = data?.detail || data?.title || data?.errors?.[0]?.message || `HTTP ${response.status}: ${response.statusText}`;
-      if (response.status === 402 || data?.detail?.includes('credits depleted')) {
-        errorMsg = 'X API Error: Credits Depleted (HTTP 402 Payment Required). Your account authentication as @bhaijahndai is verified, but X now requires active credits in your developer.x.com portal under Billing to post live tweets.';
-      } else if (response.status === 403 && data?.detail?.includes('only reply to or quote posts where you are mentioned or are the author')) {
-        errorMsg = 'X API Authorization Rule: X requires that the target reply tweet must be authored by your account (@bhaijahndai) or have mentioned @bhaijahndai. Use the "Change Target Post ID" box above to enter a tweet authored by @bhaijahndai.';
-      }
-      return {
-        success: false,
-        error: errorMsg,
-        rawResponse: data,
+      bodyPayload.reply = {
+        in_reply_to_tweet_id: options.replyToTweetId.trim(),
       };
+    } else if (mode === 'quote') {
+      if (!options.quoteTweetId || !/^\d+$/.test(options.quoteTweetId.trim())) {
+        return {
+          success: false,
+          error: 'Missing or invalid target Tweet ID for quote tweet.',
+        };
+      }
+      bodyPayload.quote_tweet_id = options.quoteTweetId.trim();
     }
 
-    const postedTweetId = data?.data?.id;
-    return {
-      success: true,
-      tweetId: postedTweetId,
-      text: data?.data?.text || options.text,
-      replyTo: options.replyToTweetId,
-      url: postedTweetId ? `https://x.com/i/status/${postedTweetId}` : undefined,
-      rawResponse: data,
-    };
+    let authHeader = '';
+    if (hasOAuth1) {
+      authHeader = generateOAuth1Header('POST', endpoint, {
+        apiKey: creds.apiKey!,
+        apiSecret: creds.apiSecret!,
+        accessToken: creds.accessToken!,
+        accessTokenSecret: creds.accessTokenSecret!,
+      });
+    } else if (hasOAuth2User) {
+      authHeader = `Bearer ${creds.oauth2AccessToken}`;
+    }
+
+    try {
+      let response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          Authorization: authHeader,
+          'Content-Type': 'application/json',
+          'User-Agent': 'X-ChromaBot/1.0',
+        },
+        body: JSON.stringify(bodyPayload),
+      });
+
+      // If OAuth 2.0 token expired (HTTP 401), try refreshing
+      if (response.status === 401 && creds.oauth2RefreshToken) {
+        const refreshed = await refreshOAuth2Token(creds);
+        if (refreshed) {
+          creds.oauth2AccessToken = refreshed.accessToken;
+          if (refreshed.refreshToken) creds.oauth2RefreshToken = refreshed.refreshToken;
+          authHeader = `Bearer ${creds.oauth2AccessToken}`;
+          response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              Authorization: authHeader,
+              'Content-Type': 'application/json',
+              'User-Agent': 'X-ChromaBot/1.0',
+            },
+            body: JSON.stringify(bodyPayload),
+          });
+        }
+      }
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        let errorMsg = data?.detail || data?.title || data?.errors?.[0]?.message || `HTTP ${response.status}: ${response.statusText}`;
+        if (response.status === 402 || data?.detail?.includes('credits depleted')) {
+          errorMsg = 'X API Error: Credits Depleted (HTTP 402 Payment Required). Your account authentication as @bhaijahndai is verified, but X now requires active credits in your developer.x.com portal under Billing to post live tweets.';
+        } else if (response.status === 403 && data?.detail?.includes('only reply to or quote posts where you are mentioned or are the author')) {
+          errorMsg = 'X API Authorization Rule: X requires that the target reply tweet must be authored by your account (@bhaijahndai) or have mentioned @bhaijahndai. Use the "Change Target Post ID" box above to enter a tweet authored by @bhaijahndai.';
+        } else if (response.status === 403 && data?.detail?.includes('not permitted to access this feature')) {
+          errorMsg = 'X API Reply Cooldown: X temporarily throttled in-thread replies on your developer account ("Your account is not permitted to access this feature"). This occurs when automated replies are sent too frequently (e.g., every 1m). Standby while X resets the automated reply cooldown, or increase the interval between drops.';
+        } else if (response.status === 429) {
+          errorMsg = 'X API Rate Limit Exceeded (HTTP 429). The maximum request rate for the current 15-minute window has been reached.';
+        }
+
+        const resetHeader = response.headers.get('x-rate-limit-reset');
+        const rateLimitReset = resetHeader ? parseInt(resetHeader, 10) * 1000 : (Date.now() + 15 * 60 * 1000);
+        const isRateLimitOrCooldown = response.status === 429 || (response.status === 403 && (data?.detail?.includes('not permitted to access this feature') || data?.detail?.includes('cooldown')));
+
+        return {
+          success: false,
+          error: errorMsg,
+          rawResponse: data,
+          isRateLimitOrCooldown,
+          rateLimitReset: isRateLimitOrCooldown ? rateLimitReset : undefined,
+          rateLimitHeaders: parseRateLimitHeaders(response.headers),
+        };
+      }
+
+      const postedTweetId = data?.data?.id;
+      return {
+        success: true,
+        tweetId: postedTweetId,
+        text: data?.data?.text || options.text,
+        replyTo: options.replyToTweetId,
+        quoteTweetId: options.quoteTweetId,
+        engagementMode: options.engagementMode || (options.quoteTweetId ? 'quote' : options.replyToTweetId ? 'reply' : 'standalone'),
+        url: postedTweetId ? `https://x.com/i/status/${postedTweetId}` : undefined,
+        rawResponse: data,
+        rateLimitHeaders: parseRateLimitHeaders(response.headers),
+      };
   } catch (err: any) {
     return {
       success: false,
