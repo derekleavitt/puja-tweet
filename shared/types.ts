@@ -214,6 +214,42 @@ export interface StatusResponse extends AiStatus {
   queue?: QueueSlot[];
 }
 
+/** Outcome of one post attempt: `POST /api/post-now` and `/api/contexts/:id/trigger`. */
+export interface DropResponse {
+  success: boolean;
+  /** Set by the client when the request itself failed. */
+  error?: string;
+  result?: {
+    success?: boolean;
+    simulated?: boolean;
+    url?: string;
+    tweetId?: string;
+    error?: string;
+  };
+  log?: PostLog;
+}
+
+/** `POST /api/twitter/verify` payload. */
+export interface VerifyResult {
+  valid: boolean;
+  message?: string;
+}
+
+/** Common shape of mutation responses (`{ success, ...data }`); unlisted fields stay `unknown`. */
+export interface ApiResult {
+  success?: boolean;
+  error?: string;
+  queue?: QueueSlot[];
+  contexts?: TweetContext[];
+  context?: TweetContext;
+  settings?: BotSettings;
+  credentialsStatus?: CredentialsStatus;
+  cooldownState?: CooldownState;
+  telemetry?: RateLimitTelemetry;
+  log?: PostLog;
+  [field: string]: unknown;
+}
+
 /** `GET /api/health` payload (unauthenticated). */
 export interface HealthInfo {
   ok: boolean;

@@ -5,7 +5,8 @@
 
 import { useState, useCallback } from 'react';
 import { generateColor as apiGenerateColor, postNow } from '../api/endpoints.js';
-import { ColorData, PostLog } from '../types.js';
+import { ColorData, DropResponse, PostLog } from '../types.js';
+import { errorMessage } from '../lib/errors.js';
 
 interface UsePostingDeps {
   activeContextId: string;
@@ -16,7 +17,7 @@ interface UsePostingDeps {
 export function usePosting({ activeContextId, addLog, refresh }: UsePostingDeps) {
   const [color, setColor] = useState<ColorData | null>(null);
   const [isPosting, setIsPosting] = useState<boolean>(false);
-  const [lastPostedResult, setLastPostedResult] = useState<any>(null);
+  const [lastPostedResult, setLastPostedResult] = useState<DropResponse | null>(null);
 
   const generateColor = useCallback(
     async (slotType: 'morning' | 'evening' | 'random' = 'morning') => {
@@ -58,9 +59,9 @@ export function usePosting({ activeContextId, addLog, refresh }: UsePostingDeps)
 
       await refresh();
       return data;
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error posting now:', err);
-      const errObj = { success: false, error: err.message };
+      const errObj: DropResponse = { success: false, error: errorMessage(err) };
       setLastPostedResult(errObj);
       return errObj;
     } finally {

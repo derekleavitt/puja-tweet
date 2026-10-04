@@ -12,7 +12,7 @@ import {
   Key,
   Activity,
 } from 'lucide-react';
-import { useAuth } from '../context/AuthContext.js';
+import { useAuth } from '../context/authState.js';
 import { TweetContext, RateLimitTelemetry, CooldownState } from '../types.js';
 
 interface HeaderProps {

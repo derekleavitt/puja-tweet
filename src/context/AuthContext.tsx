@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { User, onAuthStateChanged } from 'firebase/auth';
 import {
   auth,
@@ -8,24 +8,7 @@ import {
   AUTHORIZED_EMAIL,
 } from '../lib/firebase.js';
 import { DEV_AUTH_BYPASS, devOwnerUser } from '../lib/devAuth.js';
-
-interface AuthContextType {
-  user: User | null;
-  loading: boolean;
-  isAuthorized: boolean;
-  signIn: () => Promise<void>;
-  signOut: () => Promise<void>;
-  authorizedEmail: string;
-}
-
-const AuthContext = createContext<AuthContextType>({
-  user: null,
-  loading: true,
-  isAuthorized: false,
-  signIn: async () => {},
-  signOut: async () => {},
-  authorizedEmail: AUTHORIZED_EMAIL,
-});
+import { AuthContext } from './authState.js';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(DEV_AUTH_BYPASS ? devOwnerUser() : null);
@@ -43,7 +26,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const handleSignIn = async () => {
     try {
       await loginWithGoogle();
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to log in:', err);
       throw err;
     }
@@ -52,7 +35,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const handleSignOut = async () => {
     try {
       await logoutUser();
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to log out:', err);
     }
   };
@@ -74,5 +57,3 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     </AuthContext.Provider>
   );
 };
-
-export const useAuth = () => useContext(AuthContext);

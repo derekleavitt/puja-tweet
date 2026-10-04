@@ -92,7 +92,7 @@ export function useBotStatus(onQueue: (queue: QueueSlot[]) => void) {
     try {
       const data = await clearCooldown();
       if (data) {
-        setCooldownState(data.cooldownState);
+        setCooldownState(data.cooldownState ?? null);
         await handleRefreshRateLimits();
       }
     } catch (e) {

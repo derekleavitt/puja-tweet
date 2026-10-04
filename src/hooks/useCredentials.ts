@@ -18,10 +18,12 @@ interface UseCredentialsDeps {
 
 export function useCredentials({ setCredentialsStatus, fetchStatus }: UseCredentialsDeps) {
   // Save credentials
-  const handleSaveCredentials = async (creds: any): Promise<CredentialsResult> => {
+  const handleSaveCredentials = async (
+    creds: Record<string, string>,
+  ): Promise<CredentialsResult> => {
     const data = await saveCredentials(creds);
     if (data?.success) {
-      setCredentialsStatus(data.credentialsStatus);
+      setCredentialsStatus(data.credentialsStatus ?? null);
       fetchStatus();
     }
     return { success: !!data?.success, error: data?.error };
@@ -33,7 +35,7 @@ export function useCredentials({ setCredentialsStatus, fetchStatus }: UseCredent
   ): Promise<CredentialsResult> => {
     const data = await clearCredentials(method);
     if (data?.success) {
-      setCredentialsStatus(data.credentialsStatus);
+      setCredentialsStatus(data.credentialsStatus ?? null);
       fetchStatus();
     }
     return { success: !!data?.success, error: data?.error };

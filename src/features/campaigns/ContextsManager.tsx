@@ -5,7 +5,8 @@
 
 import React, { useState } from 'react';
 import { Layers, Plus } from 'lucide-react';
-import { TweetContext } from '../../types.js';
+import { ContextNextPost, DropResponse, TweetContext } from '../../types.js';
+import { errorMessage } from '../../lib/errors.js';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog.js';
 import { ContextCard, TriggerNotice } from './ContextCard.js';
 import { ContextFormModal } from './ContextFormModal.js';
@@ -14,14 +15,14 @@ import { useContextForm } from './useContextForm.js';
 interface ContextsManagerProps {
   contexts: TweetContext[];
   activeContextId: string;
-  nextPosts?: any[];
+  nextPosts?: ContextNextPost[];
   onSelectActiveContext: (id: string) => Promise<void>;
   onCreateContext: (data: Partial<TweetContext>) => Promise<void>;
   onUpdateContext: (id: string, updates: Partial<TweetContext>) => Promise<void>;
   onDeleteContext: (id: string) => Promise<void>;
   onDuplicateContext: (id: string) => Promise<void>;
   onToggleContext: (id: string) => Promise<void>;
-  onTriggerContext: (id: string) => Promise<any>;
+  onTriggerContext: (id: string) => Promise<DropResponse>;
   onClearContextHistory?: (id: string) => Promise<void>;
 }
 
@@ -59,8 +60,8 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
           ? 'Reply posted successfully!'
           : res.result?.error || 'Failed to dispatch reply',
       });
-    } catch (err: any) {
-      setTriggerResult({ id, success: false, message: err.message || 'Trigger failed' });
+    } catch (err) {
+      setTriggerResult({ id, success: false, message: errorMessage(err, 'Trigger failed') });
     } finally {
       setTriggeringId(null);
       setTimeout(() => setTriggerResult(null), 4000);
