@@ -2,17 +2,10 @@
  * Autonomous webhook / cron ping route (GET or POST for external cron/ping services).
  */
 
-import crypto from 'crypto';
 import { Router, type Request } from 'express';
 import type { AppDeps } from '../app.js';
 import { toHttpError } from '../middleware/error.js';
-
-const secretsMatch = (provided: unknown, expected: string): boolean => {
-  if (typeof provided !== 'string' || !expected) return false;
-  const a = crypto.createHash('sha256').update(provided).digest();
-  const b = crypto.createHash('sha256').update(expected).digest();
-  return crypto.timingSafeEqual(a, b);
-};
+import { secretsMatch } from '../middleware/secret.js';
 
 export const createWebhookRouter = ({ services, drops }: AppDeps) => {
   const router = Router();

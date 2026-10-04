@@ -54,3 +54,22 @@ export const authConfig = {
     .map((email) => email.trim().toLowerCase())
     .filter(Boolean),
 };
+
+/**
+ * Scheduler wiring. `interval` (default) runs an in-process 10 s loop; `external` is for
+ * scale-to-zero hosts (Cloud Run) where Cloud Scheduler POSTs /api/cron/tick every minute.
+ */
+export type SchedulerMode = 'interval' | 'external';
+
+const positiveInt = (raw: string | undefined, fallback: number): number => {
+  const n = Math.floor(Number(raw));
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+};
+
+export const schedulerConfig = {
+  mode: (process.env.SCHEDULER_MODE?.trim().toLowerCase() === 'external'
+    ? 'external'
+    : 'interval') as SchedulerMode,
+  cronSecret: process.env.CRON_SECRET || '',
+  maxDropsPerTick: positiveInt(process.env.MAX_DROPS_PER_TICK, 5),
+};
