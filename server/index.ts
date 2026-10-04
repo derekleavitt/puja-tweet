@@ -24,7 +24,7 @@ async function startServer() {
   // Vite or Static files handling
   if (config.isProduction) {
     app.use(express.static(path.resolve(rootDir, 'dist')));
-    app.get('*', (req, res) => {
+    app.get('*', (_req, res) => {
       res.sendFile(path.resolve(rootDir, 'dist', 'index.html'));
     });
   } else {

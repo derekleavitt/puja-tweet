@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext.js';
-import { ShieldAlert, LogIn, Lock, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { ShieldAlert, Lock, AlertTriangle } from 'lucide-react';
 
 export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading, isAuthorized, signIn, signOut, authorizedEmail } = useAuth();

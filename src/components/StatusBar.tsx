@@ -1,14 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import {
-  ExternalLink,
-  Clock,
-  Radio,
-  Power,
-  Repeat,
-  ChevronDown,
-  UserCheck,
-  Layers,
-} from 'lucide-react';
+import { ExternalLink, Clock, Repeat, UserCheck } from 'lucide-react';
 import { NextPostInfo, CredentialsStatus, BotSettings, TweetContext } from '../types.js';
 
 interface StatusBarProps {
@@ -17,8 +8,6 @@ interface StatusBarProps {
   targetTweetId: string;
   schedulerEnabled: boolean;
   onToggleScheduler: () => void;
-  timezone: string;
-  scheduleTimes: string[];
   settings?: BotSettings;
   activeContext?: TweetContext;
   onChangeFrequency?: (mode: 'interval' | 'fixed_times', minutes?: number) => void;
@@ -42,8 +31,6 @@ export const StatusBar: React.FC<StatusBarProps> = ({
   targetTweetId,
   schedulerEnabled,
   onToggleScheduler,
-  timezone,
-  scheduleTimes,
   settings,
   activeContext,
   onChangeFrequency,

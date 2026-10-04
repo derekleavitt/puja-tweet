@@ -17,7 +17,9 @@
       "@/*": ["./*"]
     },
     "allowImportingTsExtensions": true,
-    "noEmit": true
+    "noEmit": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true
   },
   "include": ["src", "server", "server.ts", "scripts", "shared", "vite.config.ts", "tests"],
   "exclude": ["dist", "node_modules"]

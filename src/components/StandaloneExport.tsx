@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Copy, Check, Terminal, ExternalLink, Globe, Key, ShieldCheck, Zap } from 'lucide-react';
+import { Copy, Check, Globe, Zap } from 'lucide-react';
 import { BotSettings } from '../types.js';
 import { getExportScript, getWebhookUrl } from '../api/endpoints.js';
 

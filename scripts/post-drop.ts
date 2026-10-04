@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
 import fs from 'fs';
 import { generateColor, formatTweetText } from '../server/colorEngine.js';
-import { postColorTweet, TwitterCredentials } from '../server/twitterClient.js';
+import { postColorTweet } from '../server/twitterClient.js';
 import { storage } from '../server/storage.js';
 
 dotenv.config();

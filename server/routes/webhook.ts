@@ -63,12 +63,10 @@ export const createWebhookRouter = ({ storage, scheduler }: AppDeps) => {
 
   router.post('/settings/webhook-secret/rotate', (req, res) => {
     if (process.env.WEBHOOK_SECRET) {
-      return res
-        .status(409)
-        .json({
-          success: false,
-          error: 'Secret is set via WEBHOOK_SECRET env var; change it there.',
-        });
+      return res.status(409).json({
+        success: false,
+        error: 'Secret is set via WEBHOOK_SECRET env var; change it there.',
+      });
     }
     storage.rotateWebhookSecret();
     res.json({ success: true, url: buildUrl(req) });

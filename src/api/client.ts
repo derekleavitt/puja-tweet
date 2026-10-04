@@ -47,7 +47,7 @@ export async function apiFetch<T = any>(path: string, options: ApiRequestOptions
     body: hasBody ? JSON.stringify(body) : undefined,
   });
 
-  let data: any = null;
+  let data: any;
   try {
     data = await res.json();
   } catch {

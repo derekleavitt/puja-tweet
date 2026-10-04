@@ -362,7 +362,7 @@ export function generateSwatchBar(hex: string): string {
   const hsl = rgbToHsl(rgb.r, rgb.g, rgb.b);
 
   // Pick closest block emoji based on hue and lightness
-  let emoji = '🟦';
+  let emoji: string;
   if (hsl.l < 18) emoji = '⬛';
   else if (hsl.l > 82) emoji = '⬜';
   else if (hsl.h < 25 || hsl.h >= 340) emoji = '🟥';
