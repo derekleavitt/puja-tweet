@@ -7,6 +7,7 @@
 
 import type { ColorData, TweetContext } from '../../shared/types.js';
 import { hourInZone, slotTypeForHour } from '../../shared/time.js';
+import { checkTweetText } from '../../shared/tweetLength.js';
 import { HttpError } from '../middleware/error.js';
 import { resolveTemplateText } from '../templateAgent.js';
 import { postColorTweet } from '../twitterClient.js';
@@ -122,6 +123,10 @@ export const createDropService = (deps: DropDeps) => {
       contextId: context.id,
       targetTweetId: context.targetTweetId,
     });
+    const textCheck = checkTweetText(text);
+    if (!textCheck.ok) {
+      throw new HttpError(400, `Tweet text invalid (${textCheck.length}/280 weighted chars)`);
+    }
 
     const engagementMode = context.engagementMode || 'reply';
     const chainInfo = s.contexts.getEffectiveReplyTargetId(context);

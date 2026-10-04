@@ -97,4 +97,13 @@ describe('dropService.executeDrop', () => {
     });
     expect(post).not.toHaveBeenCalled();
   });
+
+  it('refuses to post text over 280 weighted characters', async () => {
+    const id = configure({ engagementMode: 'standalone' });
+    resolveText.mockResolvedValue('x'.repeat(281));
+    await expect(makeDrops().executeDrop({ contextId: id })).rejects.toMatchObject({
+      status: 400,
+    });
+    expect(post).not.toHaveBeenCalled();
+  });
 });
