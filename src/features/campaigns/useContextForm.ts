@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { TweetContext } from '../../types.js';
 import { extractTweetId } from '../../../shared/tweetId.js';
+import { useServerInfo } from '../../context/serverInfo.js';
 import { invalidTimes } from './schedule.js';
 
 interface UseContextFormOptions {
@@ -17,6 +18,7 @@ interface UseContextFormOptions {
 
 export function useContextForm(opts: UseContextFormOptions) {
   const { contexts, activeContext, onCreateContext, onUpdateContext } = opts;
+  const { defaultTargetTweetId } = useServerInfo();
   const [editingContext, setEditingContext] = useState<Partial<TweetContext> | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -38,7 +40,7 @@ export function useContextForm(opts: UseContextFormOptions) {
     setEditingContext({
       name: `Context #${contexts.length + 1}`,
       description: '',
-      targetTweetId: activeContext?.targetTweetId || '',
+      targetTweetId: activeContext?.targetTweetId || defaultTargetTweetId,
       enabled: true,
       dryRun: false,
       autoFallbackToQuote: false,

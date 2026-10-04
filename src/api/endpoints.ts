@@ -4,7 +4,15 @@
  */
 
 import { apiFetch, ApiError } from './client.js';
-import { ColorData, BotSettings, HealthInfo, PostLog, QueueSlot, TweetContext } from '../types.js';
+import {
+  ColorData,
+  BotSettings,
+  HealthInfo,
+  PostLog,
+  QueueSlot,
+  StatusResponse,
+  TweetContext,
+} from '../types.js';
 
 type Json = Record<string, any>;
 
@@ -30,7 +38,7 @@ async function orBody<T = Json>(request: Promise<T>): Promise<T> {
 
 // Status, telemetry
 export const getHealth = () => orNull(apiFetch<HealthInfo>('/api/health'));
-export const getStatus = () => orNull(apiFetch<Json>('/api/status'));
+export const getStatus = () => orNull(apiFetch<StatusResponse>('/api/status'));
 export const getRateLimits = () => orNull(apiFetch<Json>('/api/rate-limits'));
 export const clearCooldown = () =>
   orNull(apiFetch<Json>('/api/cooldown/clear', { method: 'POST' }));

@@ -11,6 +11,7 @@ import {
   Quote,
   Globe,
 } from 'lucide-react';
+import { useServerInfo } from '../context/serverInfo.js';
 import { extractTweetId } from '../../shared/tweetId.js';
 
 interface TargetTweetEditorProps {
@@ -36,8 +37,9 @@ export const TargetTweetEditor: React.FC<TargetTweetEditorProps> = ({
   onToggleEngagementMode,
   onResetChain,
 }) => {
+  const { defaultTargetTweetId } = useServerInfo();
   const [isEditing, setIsEditing] = useState(false);
-  const [inputValue, setInputValue] = useState(currentTargetId);
+  const [inputValue, setInputValue] = useState(currentTargetId || defaultTargetTweetId);
   const [isSaving, setIsSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);

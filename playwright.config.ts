@@ -48,6 +48,7 @@ export default defineConfig({
       AUTH_DISABLED: 'true',
       VITE_AUTH_DISABLED: 'true',
       STORE: 'memory',
+      TARGET_TWEET_ID: '1700000000000000001',
       PORT: String(PORT),
       TWITTER_API_KEY: '',
       TWITTER_API_SECRET: '',
