@@ -11,7 +11,7 @@ import { FIELD_CLASS, LABEL_CLASS } from './constants.js';
 import { ReplyModeSelector } from './ReplyModeSelector.js';
 import { EngagementModeSelector } from './EngagementModeSelector.js';
 import { ScheduleEditor } from './ScheduleEditor.js';
-import { TemplateField } from './TemplateField.js';
+import { TemplateEditor } from '../../components/TemplateEditor.js';
 
 interface ContextFormModalProps {
   form: ContextForm;
@@ -82,12 +82,11 @@ export const ContextFormModal: React.FC<ContextFormModalProps> = ({ form }) => {
             onChange={(engagementMode) => patch({ engagementMode })}
           />
           <ScheduleEditor schedule={ctx.schedule} onChange={patchSchedule} />
-          <TemplateField
+          <TemplateEditor
             template={ctx.template || ''}
             onChange={(template) => patch({ template })}
-            testingAi={form.testingAi}
-            aiPreviewResult={form.aiPreviewResult}
-            onTestAi={form.testAiGeneration}
+            contextId={ctx.id}
+            rows={3}
           />
 
           <div className="grid grid-cols-2 gap-3">

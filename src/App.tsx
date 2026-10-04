@@ -7,10 +7,10 @@
 import { useState, useCallback } from 'react';
 import { Header } from './components/Header.js';
 import { StatusBar } from './components/StatusBar.js';
-import { LiveStudio } from './components/LiveStudio.js';
+import { LiveStudio } from './features/studio/LiveStudio.js';
 import { ContextsManager } from './features/campaigns/ContextsManager.js';
 import { QueueViewer } from './components/QueueViewer.js';
-import { SettingsPanel } from './components/SettingsPanel.js';
+import { SettingsPanel } from './features/settings/SettingsPanel.js';
 import { HistoryTable } from './components/HistoryTable.js';
 import { TwitterSetup } from './components/TwitterSetup.js';
 import { StandaloneExport } from './components/StandaloneExport.js';
