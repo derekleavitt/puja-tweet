@@ -10,6 +10,7 @@
 import { GoogleGenAI } from '@google/genai';
 import { ColorData } from './colorEngine.js';
 import { storage, PostLog } from './storage.js';
+import { getGeminiTimeoutMs } from './timeouts.js';
 
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
@@ -137,19 +138,15 @@ Remember: Output ONLY the exact tweet text (no quotes, no intro, under 240 chars
 
   for (const model of modelsToTry) {
     try {
-      const response = await Promise.race([
-        ai.models.generateContent({
-          model,
-          contents,
-          config: {
-            systemInstruction: POETRY_AGENT_SYSTEM_INSTRUCTION,
-            temperature: 0.9,
-          },
-        }),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error(`Timeout with model ${model}`)), 15000)
-        ),
-      ]);
+      const response = await ai.models.generateContent({
+        model,
+        contents,
+        config: {
+          systemInstruction: POETRY_AGENT_SYSTEM_INSTRUCTION,
+          temperature: 0.9,
+          abortSignal: AbortSignal.timeout(getGeminiTimeoutMs()),
+        },
+      });
 
       let text = response.text ? response.text.trim() : '';
 
