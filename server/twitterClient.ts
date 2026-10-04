@@ -382,6 +382,8 @@ export async function postColorTweet(
     }
 
     const data = await response.json();
+    const xHandle = (process.env.X_HANDLE || '').trim().replace(/^@/, '');
+    const handleLabel = xHandle ? `@${xHandle}` : '';
 
     if (!response.ok) {
       let errorMsg =
@@ -390,16 +392,14 @@ export async function postColorTweet(
         data?.errors?.[0]?.message ||
         `HTTP ${response.status}: ${response.statusText}`;
       if (response.status === 402 || data?.detail?.includes('credits depleted')) {
-        errorMsg =
-          'X API Error: Credits Depleted (HTTP 402 Payment Required). Your account authentication as @bhaijahndai is verified, but X now requires active credits in your developer.x.com portal under Billing to post live tweets.';
+        errorMsg = `X API Error: Credits Depleted (HTTP 402 Payment Required). Your account authentication${handleLabel ? ` as ${handleLabel}` : ''} is verified, but X now requires active credits in your developer.x.com portal under Billing to post live tweets.`;
       } else if (
         response.status === 403 &&
         data?.detail?.includes(
           'only reply to or quote posts where you are mentioned or are the author',
         )
       ) {
-        errorMsg =
-          'X API Authorization Rule: X requires that the target reply tweet must be authored by your account (@bhaijahndai) or have mentioned @bhaijahndai. Use the "Change Target Post ID" box above to enter a tweet authored by @bhaijahndai.';
+        errorMsg = `X API Authorization Rule: X requires that the target reply tweet must be authored by your account${handleLabel ? ` (${handleLabel})` : ''} or have mentioned ${handleLabel || 'your account'}. Use the "Change Target Post ID" box above to enter a tweet authored by ${handleLabel || 'your account'}.`;
       } else if (
         response.status === 403 &&
         data?.detail?.includes('not permitted to access this feature')

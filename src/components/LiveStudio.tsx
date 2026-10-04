@@ -607,9 +607,8 @@ const LiveStudioReady: React.FC<LiveStudioReadyProps> = ({
                 (lastPostedResult.error || '').includes('Credits Depleted') && (
                   <div className="mt-2 pt-2 border-t border-red-200 dark:border-red-800/60 text-[11px] space-y-1">
                     <p className="font-medium text-red-900 dark:text-red-200">
-                      💡 Why this happens: Your account is verified as <strong>@bhaijahndai</strong>
-                      , but X (Twitter) now requires prepaid developer credits to send live
-                      automated tweets.
+                      💡 Why this happens: Your X account is verified, but X (Twitter) now requires
+                      prepaid developer credits to send live automated tweets.
                     </p>
                     <div className="flex items-center gap-3 pt-1">
                       <a

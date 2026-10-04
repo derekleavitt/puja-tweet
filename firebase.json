@@ -1,0 +1,6 @@
+{
+  "firestore": {
+    "database": "ai-studio-xchromabotautoma-f7df51c8-9507-4dbf-b83e-55995c4c0943",
+    "rules": "firestore.rules"
+  }
+}
