@@ -1,9 +1,14 @@
 /**
  * Service composition. `createServices(store)` wires every service over one Store;
  * the `services` singleton picks the store from the `STORE` env var
- * (`json` = default JSON file, `memory` = in-memory, used by the test setup).
+ * (`json` = default JSON file, `memory` = in-memory, used by the test setup,
+ * `firestore` = Firestore through firebase-admin, the production source of truth).
  */
 
+import { getFirestore } from 'firebase-admin/firestore';
+import { firestoreConfig } from '../config.js';
+import { getAdminApp } from '../firebaseAdmin.js';
+import { FirestoreStore } from '../store/FirestoreStore.js';
 import { JsonFileStore } from '../store/JsonFileStore.js';
 import { MemoryStore } from '../store/MemoryStore.js';
 import type { Store } from '../store/Store.js';
@@ -50,7 +55,25 @@ export const createServices = async (store: Store): Promise<Services> => {
   };
 };
 
-const storeFromEnv = (): Store =>
-  process.env.STORE === 'memory' ? new MemoryStore() : new JsonFileStore();
+export type StoreKind = 'json' | 'memory' | 'firestore';
+
+export const storeKind = (): StoreKind => {
+  const raw = (process.env.STORE || 'json').toLowerCase();
+  if (raw === 'memory' || raw === 'firestore') return raw;
+  if (raw !== 'json') console.warn(`[Store] Unknown STORE="${raw}", using json.`);
+  return 'json';
+};
+
+const storeFromEnv = (): Store => {
+  switch (storeKind()) {
+    case 'memory':
+      return new MemoryStore();
+    case 'firestore':
+      console.log(`[Store] Firestore database "${firestoreConfig.databaseId}"`);
+      return new FirestoreStore(getFirestore(getAdminApp(), firestoreConfig.databaseId));
+    default:
+      return new JsonFileStore();
+  }
+};
 
 export const services: Services = await createServices(storeFromEnv());

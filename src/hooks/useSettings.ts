@@ -1,10 +1,9 @@
 /**
  * X ChromaBot - useSettings
- * Settings mutations (persisted to the server and mirrored to Firestore).
+ * Settings mutations (persisted by the server).
  */
 
 import { saveSettings } from '../api/endpoints.js';
-import { saveFirestoreSettings, saveFirestoreContext } from '../lib/firestoreSync.js';
 import { BotSettings, QueueSlot } from '../types.js';
 
 interface UseSettingsDeps {
@@ -15,15 +14,11 @@ interface UseSettingsDeps {
 }
 
 export function useSettings({ settings, setSettings, setQueue, refresh }: UseSettingsDeps) {
-  // Save settings (persists both in local storage & cloud firestore, and clears/regenerates queue)
+  // Save settings (persisted by the server, which also clears/regenerates queue)
   const handleSaveSettings = async (newSettingsPartial: Partial<BotSettings>) => {
     const data = await saveSettings(newSettingsPartial);
     if (data) {
       setSettings(data.settings);
-      await saveFirestoreSettings(data.settings);
-      if (data.activeContext) {
-        await saveFirestoreContext(data.activeContext);
-      }
       if (Array.isArray(data.queue)) {
         setQueue(data.queue);
       }

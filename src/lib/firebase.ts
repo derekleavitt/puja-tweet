@@ -1,6 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, User } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
 import appletConfig from '../../firebase-applet-config.json';
 import { OWNER_EMAIL } from '../../shared/owner.js';
 
@@ -13,9 +12,6 @@ const firebaseConfig = {
   ...(env.VITE_FIREBASE_AUTH_DOMAIN && { authDomain: env.VITE_FIREBASE_AUTH_DOMAIN }),
   ...(env.VITE_FIREBASE_PROJECT_ID && { projectId: env.VITE_FIREBASE_PROJECT_ID }),
   ...(env.VITE_FIREBASE_APP_ID && { appId: env.VITE_FIREBASE_APP_ID }),
-  ...(env.VITE_FIREBASE_FIRESTORE_DATABASE_ID && {
-    firestoreDatabaseId: env.VITE_FIREBASE_FIRESTORE_DATABASE_ID,
-  }),
 };
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
@@ -25,9 +21,6 @@ export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({
   prompt: 'select_account',
 });
-
-// Explicitly use the provisioned firestore database ID
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId || '(default)');
 
 /** Emails allowed in the UI: VITE_AUTHORIZED_EMAILS (comma-separated), default the owner. */
 export const AUTHORIZED_EMAILS: string[] = (env.VITE_AUTHORIZED_EMAILS || OWNER_EMAIL)

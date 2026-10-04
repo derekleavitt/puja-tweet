@@ -11,7 +11,7 @@ import { OWNER_EMAIL } from '../shared/owner.js';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-const readFirebaseAppletConfig = (): { projectId?: string } => {
+const readFirebaseAppletConfig = (): { projectId?: string; firestoreDatabaseId?: string } => {
   try {
     return JSON.parse(fs.readFileSync(path.join(rootDir, 'firebase-applet-config.json'), 'utf-8'));
   } catch {
@@ -38,6 +38,13 @@ export const config = {
 };
 
 /** SEC-2: Firebase ID-token auth for /api/*. */
+/** Firestore persistence (STORE=firestore): named AI Studio database by default. */
+export const firestoreConfig = {
+  projectId: process.env.FIREBASE_PROJECT_ID || firebaseAppletConfig.projectId || undefined,
+  databaseId:
+    process.env.FIRESTORE_DATABASE_ID || firebaseAppletConfig.firestoreDatabaseId || '(default)',
+};
+
 export const authConfig = {
   disabled: process.env.AUTH_DISABLED === 'true',
   projectId: process.env.FIREBASE_PROJECT_ID || firebaseAppletConfig.projectId || undefined,
