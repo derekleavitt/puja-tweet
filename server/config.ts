@@ -25,3 +25,14 @@ export const config = {
   rootDir,
   version: process.env.APP_VERSION || readVersion(),
 };
+
+/** SEC-2: Firebase ID-token auth for /api/*. */
+export const authConfig = {
+  disabled: process.env.AUTH_DISABLED === 'true',
+  projectId: process.env.FIREBASE_PROJECT_ID || undefined,
+  serviceAccountJson: process.env.FIREBASE_SERVICE_ACCOUNT_JSON || undefined,
+  authorizedEmails: (process.env.AUTHORIZED_EMAILS || '')
+    .split(',')
+    .map(email => email.trim().toLowerCase())
+    .filter(Boolean),
+};

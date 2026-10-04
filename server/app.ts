@@ -6,6 +6,7 @@
 import express from 'express';
 import type { scheduler as schedulerInstance } from './scheduler.js';
 import type { storage as storageInstance } from './storage.js';
+import { requireAdmin, type TokenVerifier } from './middleware/auth.js';
 import { errorHandler } from './middleware/error.js';
 import { createContextsRouter } from './routes/contexts.js';
 import { createCredentialsRouter } from './routes/credentials.js';
@@ -21,6 +22,10 @@ import { createWebhookRouter } from './routes/webhook.js';
 export interface AppDeps {
   storage: typeof storageInstance;
   scheduler: typeof schedulerInstance;
+  /** Injectable Firebase ID-token verifier (tests stub it); defaults to firebase-admin. */
+  verifyToken?: TokenVerifier;
+  authorizedEmails?: string[];
+  authDisabled?: boolean;
 }
 
 export const createApp = (deps: AppDeps) => {
@@ -30,6 +35,15 @@ export const createApp = (deps: AppDeps) => {
 
   // Public; must stay above any auth middleware
   app.use('/api/health', createHealthRouter());
+
+  app.use(
+    '/api',
+    requireAdmin({
+      verifyToken: deps.verifyToken,
+      authorizedEmails: deps.authorizedEmails,
+      disabled: deps.authDisabled,
+    }),
+  );
 
   app.use('/api', createStatusRouter(deps));
   app.use('/api', createContextsRouter(deps));
