@@ -24,6 +24,7 @@ interface LiveStudioProps {
     customColor?: ColorData,
     slotType?: 'morning' | 'evening' | 'manual',
     contextId?: string,
+    opts?: { text?: string; slotId?: string },
   ) => Promise<any>;
   settings: BotSettings;
   isPosting: boolean;
@@ -163,7 +164,12 @@ const LiveStudioReady: React.FC<LiveStudioReadyProps> = ({
             isGeneratingAi={isGeneratingAi}
             isPosting={isPosting}
             onRegenerate={fetchAiPreview}
-            onPost={() => onPostNow(color, selectedSlot)}
+            onPost={() =>
+              onPostNow(color, selectedSlot, undefined, {
+                // Post exactly what the preview shows (skip an agent tag's unresolved fallback).
+                text: !hasAgentTag || aiPreviewText ? tweetText : undefined,
+              })
+            }
           />
           {lastPostedResult && <PostResultToast lastPostedResult={lastPostedResult} />}
         </div>

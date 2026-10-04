@@ -53,8 +53,13 @@ export const generateColor = (slotType: string, contextId: string) =>
       body: { slotType, contextId },
     }),
   );
-export const postNow = (body: { slotType: string; color: ColorData | null; contextId: string }) =>
-  orBody(apiFetch<Json>('/api/post-now', { method: 'POST', body }));
+export const postNow = (body: {
+  slotType: string;
+  color: ColorData | null;
+  contextId: string;
+  text?: string;
+  slotId?: string;
+}) => orBody(apiFetch<Json>('/api/post-now', { method: 'POST', body }));
 export const previewTemplate = (body: {
   template: string;
   color?: ColorData | null;

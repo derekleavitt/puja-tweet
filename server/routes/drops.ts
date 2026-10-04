@@ -5,7 +5,7 @@
 import { Router } from 'express';
 import type { AppDeps } from '../app.js';
 import { generateColor } from '../colorEngine.js';
-import { toHttpError } from '../middleware/error.js';
+import { HttpError, toHttpError } from '../middleware/error.js';
 import { resolveTemplateText } from '../templateAgent.js';
 
 export const createDropsRouter = ({ services, drops }: AppDeps) => {
@@ -48,27 +48,9 @@ export const createDropsRouter = ({ services, drops }: AppDeps) => {
     };
   };
 
-  router.post('/generate-color', async (req, res, next) => {
-    try {
-      const slotType = req.body.slotType || 'random';
-      const color = req.body.color || generateColor(slotType);
-      const { context, templateToUse, fields } = await buildPreview(
-        req.body.contextId,
-        req.body.template,
-        color,
-        slotType,
-      );
-
-      res.json({
-        ...fields,
-        contextId: context.id,
-        contextName: context.name,
-        hasAgentTag: /<agent>/i.test(templateToUse),
-        hasHistoryTag: /<history>/i.test(templateToUse),
-      });
-    } catch (err) {
-      next(toHttpError(err, 500));
-    }
+  /** Color only: never resolves the template, so it can never call Gemini. */
+  router.post('/generate-color', (req, res) => {
+    res.json({ color: req.body?.color || generateColor(req.body?.slotType || 'random') });
   });
 
   router.post('/template/preview', async (req, res, next) => {
@@ -90,13 +72,22 @@ export const createDropsRouter = ({ services, drops }: AppDeps) => {
 
   router.post('/post-now', async (req, res, next) => {
     try {
+      const { text, slotId } = req.body;
+      if (text !== undefined && typeof text !== 'string') {
+        throw new HttpError(400, 'text must be a string');
+      }
       const result = await drops.executeDrop({
         contextId: req.body.contextId,
         slotType: req.body.slotType || 'manual',
         color: req.body.color,
         forceLive: req.body.forceLive === true,
+        text,
         source: 'manual',
       });
+      // A sent queue slot is consumed on success or simulation (never on failure).
+      if (result.success && typeof slotId === 'string') {
+        services.queue.consumeQueueSlot(slotId, result.context.id);
+      }
       res.json(result);
     } catch (err) {
       next(toHttpError(err, 500));

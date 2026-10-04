@@ -18,6 +18,8 @@ export interface ExecuteDropOptions {
   slotType?: 'morning' | 'evening' | 'manual';
   color?: ColorData;
   forceLive?: boolean;
+  /** Exact text to post (e.g. the previewed text); skips template resolution. Still length-checked. */
+  text?: string;
   source?: 'scheduler' | 'webhook' | 'manual' | 'cli';
 }
 
@@ -118,11 +120,13 @@ export const createDropService = (deps: DropDeps) => {
     const color: ColorData =
       options.color ||
       s.queue.popNextQueueSlot(slotType === 'morning' ? 'morning' : 'evening', context.id);
-    const text = await deps.resolveTemplateText(context.template, color, {
-      slotLabel: isMorning ? '6:00 AM' : '6:00 PM',
-      contextId: context.id,
-      targetTweetId: context.targetTweetId,
-    });
+    const text =
+      options.text ??
+      (await deps.resolveTemplateText(context.template, color, {
+        slotLabel: isMorning ? '6:00 AM' : '6:00 PM',
+        contextId: context.id,
+        targetTweetId: context.targetTweetId,
+      }));
     const textCheck = checkTweetText(text);
     if (!textCheck.ok) {
       throw new HttpError(400, `Tweet text invalid (${textCheck.length}/280 weighted chars)`);
