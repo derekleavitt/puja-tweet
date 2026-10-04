@@ -5,6 +5,7 @@
 
 import { Router } from 'express';
 import { config } from '../config.js';
+import { storeKind } from '../services/index.js';
 
 let schedulerRunning = false;
 
@@ -21,7 +22,7 @@ export const createHealthRouter = () => {
       success: true,
       ok: true,
       version: config.version,
-      store: 'json-file',
+      store: storeKind(),
       schedulerRunning,
       uptimeSeconds: Math.round(process.uptime()),
     });

@@ -4,9 +4,9 @@
  */
 
 import type { RequestHandler } from 'express';
-import { cert, getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { authConfig } from '../config.js';
+import { getAdminApp } from '../firebaseAdmin.js';
 
 export interface VerifiedToken {
   email?: string;
@@ -21,15 +21,7 @@ const EXEMPT_PATHS = new Set(['/health', '/cron/trigger', '/webhook/trigger']);
 /** Default verifier backed by firebase-admin (ADC, GOOGLE_APPLICATION_CREDENTIALS or service-account JSON). */
 export const createFirebaseVerifier = (): TokenVerifier => {
   return async (idToken) => {
-    if (getApps().length === 0) {
-      initializeApp({
-        projectId: authConfig.projectId,
-        ...(authConfig.serviceAccountJson
-          ? { credential: cert(JSON.parse(authConfig.serviceAccountJson)) }
-          : {}),
-      });
-    }
-    return getAuth().verifyIdToken(idToken);
+    return getAuth(getAdminApp()).verifyIdToken(idToken);
   };
 };
 

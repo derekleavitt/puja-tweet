@@ -91,7 +91,7 @@ gcloud run deploy chromabot \
   --service-account="$SA" \
   --min-instances=1 --max-instances=1 --no-cpu-throttling \
   --allow-unauthenticated \
-  --set-env-vars="FIREBASE_PROJECT_ID=${PROJECT_ID},AUTHORIZED_EMAILS=the.derek.leavitt@gmail.com,SCHEDULE_TIMEZONE=America/Denver" \
+  --set-env-vars="FIREBASE_PROJECT_ID=${PROJECT_ID},AUTHORIZED_EMAILS=the.derek.leavitt@gmail.com,STORE=firestore,SCHEDULE_TIMEZONE=America/Denver" \
   --set-secrets="CREDENTIALS_ENCRYPTION_KEY=CREDENTIALS_ENCRYPTION_KEY:latest,TWITTER_API_KEY=TWITTER_API_KEY:latest,TWITTER_API_SECRET=TWITTER_API_SECRET:latest,TWITTER_ACCESS_TOKEN=TWITTER_ACCESS_TOKEN:latest,TWITTER_ACCESS_TOKEN_SECRET=TWITTER_ACCESS_TOKEN_SECRET:latest,TWITTER_BEARER_TOKEN=TWITTER_BEARER_TOKEN:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,WEBHOOK_SECRET=WEBHOOK_SECRET:latest"
 ```
 
@@ -141,15 +141,19 @@ deterministic mood fallback.
 
 Optional env vars: `X_HANDLE` (server; names your X account in error messages, blank = "your account")
 and build-time `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`,
-`VITE_FIREBASE_APP_ID`, `VITE_FIREBASE_FIRESTORE_DATABASE_ID`, which override
+`VITE_FIREBASE_APP_ID`, which override
 `firebase-applet-config.json` (the fallback). `VITE_*` values are baked into the bundle at build time.
 
 ## 7. Firestore database (for REL-2)
 
 AI Studio created a named Firestore database in this project:
 `ai-studio-xchromabotautoma-f7df51c8-9507-4dbf-b83e-55995c4c0943` (see `firebase-applet-config.json`).
-When server-side Firestore persistence lands (REL-2), the server will use that database through the
-runtime service account from step 2; no extra setup beyond the `roles/datastore.user` binding.
+With `STORE=firestore` (set in the deploy `--set-env-vars`), the server keeps all bot state in that
+database through firebase-admin and the runtime service account from step 2 (ADC; no extra setup beyond
+the `roles/datastore.user` binding). Override the database with `FIRESTORE_DATABASE_ID`. Local
+development defaults to `STORE=json` (a file under `data/`). Layout: document `chromabot/state` holds
+everything except the post logs, and the subcollection `chromabot/state/logs` holds one document per log
+(capped by `MAX_LOGS`). The rules deny all client access; only the admin SDK touches state.
 Deploy the security rules with the Firebase CLI if you change `firestore.rules`:
 
 ```bash

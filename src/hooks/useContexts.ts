@@ -1,6 +1,6 @@
 /**
  * X ChromaBot - useContexts
- * Campaign (context) mutations, mirrored to Firestore.
+ * Campaign (context) mutations.
  */
 
 import {
@@ -13,11 +13,6 @@ import {
   triggerContext,
   clearContextHistory,
 } from '../api/endpoints.js';
-import {
-  recordFirestoreLog,
-  saveFirestoreContext,
-  deleteFirestoreContext,
-} from '../lib/firestoreSync.js';
 import { PostLog, QueueSlot, TweetContext } from '../types.js';
 
 interface UseContextsDeps {
@@ -34,11 +29,8 @@ export function useContexts(deps: UseContextsDeps) {
   const { setActiveContextId, setQueue, setLogs, addLog, refresh, fetchHistory, generateColor } =
     deps;
 
-  /** Mirrors a mutation result (context + regenerated queue) then refreshes status. */
+  /** Applies a mutation result (regenerated queue) then refreshes status. */
   const applyResult = async (json: Record<string, any>) => {
-    if (json.context) {
-      await saveFirestoreContext(json.context);
-    }
     if (Array.isArray(json.queue)) {
       setQueue(json.queue);
     }
@@ -71,7 +63,6 @@ export function useContexts(deps: UseContextsDeps) {
 
   const handleDeleteContext = async (id: string) => {
     const json = await deleteContext(id);
-    await deleteFirestoreContext(id);
     if (Array.isArray(json.queue)) {
       setQueue(json.queue);
     }
@@ -91,11 +82,7 @@ export function useContexts(deps: UseContextsDeps) {
   const handleTriggerContext = async (id: string) => {
     const data = await triggerContext(id);
     if (data.log) {
-      await recordFirestoreLog(data.log);
       addLog(data.log);
-    }
-    if (data.context) {
-      await saveFirestoreContext(data.context);
     }
     await refresh();
     return data;
@@ -104,9 +91,6 @@ export function useContexts(deps: UseContextsDeps) {
   const handleClearContextHistory = async (id: string) => {
     try {
       const json = await clearContextHistory(id);
-      if (json.context) {
-        await saveFirestoreContext(json.context);
-      }
       if (Array.isArray(json.queue)) {
         setQueue(json.queue);
       }
