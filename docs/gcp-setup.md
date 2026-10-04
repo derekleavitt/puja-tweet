@@ -71,10 +71,14 @@ add_secret TWITTER_ACCESS_TOKEN_SECRET
 add_secret TWITTER_BEARER_TOKEN
 add_secret GEMINI_API_KEY
 add_secret WEBHOOK_SECRET             # any long random string, e.g. output of: openssl rand -hex 32
+add_secret CREDENTIALS_ENCRYPTION_KEY # 32 bytes as hex: openssl rand -hex 32 (encrypts keys saved via the UI)
 ```
 
 OAuth 2.0 values (`TWITTER_OAUTH2_CLIENT_ID`, `TWITTER_OAUTH2_CLIENT_SECRET`,
 `TWITTER_OAUTH2_REFRESH_TOKEN`) are optional; add them the same way only if you use OAuth 2.0.
+Environment values always take precedence and are never overwritten or returned by the API.
+`CREDENTIALS_ENCRYPTION_KEY` is needed to enter keys in the UI, and to keep rotated OAuth 2.0
+tokens across restarts (they are saved encrypted); without it the UI refuses to save keys.
 
 ## 4. Deploy to Cloud Run
 
@@ -88,7 +92,7 @@ gcloud run deploy chromabot \
   --min-instances=1 --max-instances=1 --no-cpu-throttling \
   --allow-unauthenticated \
   --set-env-vars="FIREBASE_PROJECT_ID=${PROJECT_ID},AUTHORIZED_EMAILS=the.derek.leavitt@gmail.com,SCHEDULE_TIMEZONE=America/Denver" \
-  --set-secrets="TWITTER_API_KEY=TWITTER_API_KEY:latest,TWITTER_API_SECRET=TWITTER_API_SECRET:latest,TWITTER_ACCESS_TOKEN=TWITTER_ACCESS_TOKEN:latest,TWITTER_ACCESS_TOKEN_SECRET=TWITTER_ACCESS_TOKEN_SECRET:latest,TWITTER_BEARER_TOKEN=TWITTER_BEARER_TOKEN:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,WEBHOOK_SECRET=WEBHOOK_SECRET:latest"
+  --set-secrets="CREDENTIALS_ENCRYPTION_KEY=CREDENTIALS_ENCRYPTION_KEY:latest,TWITTER_API_KEY=TWITTER_API_KEY:latest,TWITTER_API_SECRET=TWITTER_API_SECRET:latest,TWITTER_ACCESS_TOKEN=TWITTER_ACCESS_TOKEN:latest,TWITTER_ACCESS_TOKEN_SECRET=TWITTER_ACCESS_TOKEN_SECRET:latest,TWITTER_BEARER_TOKEN=TWITTER_BEARER_TOKEN:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,WEBHOOK_SECRET=WEBHOOK_SECRET:latest"
 ```
 
 `--allow-unauthenticated` only opens the web page; every `/api/*` call still requires a Firebase

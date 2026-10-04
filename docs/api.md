@@ -19,7 +19,8 @@ Errors: `{ "success": false, "error": "<message>" }` with a real HTTP status (40
 | POST | `/api/contexts/:id/clear-history` | 404 unknown id |
 | POST | `/api/contexts/:id/trigger` | Body `{ slotType?, forceLive? }`; 404 unknown id |
 | POST | `/api/settings` | Update global settings |
-| POST | `/api/credentials` | Save X credentials |
+| POST | `/api/credentials` | Save X credentials (blank/missing fields keep stored values; 400 without `CREDENTIALS_ENCRYPTION_KEY`) |
+| DELETE | `/api/credentials/:method` | Remove stored credentials for `oauth1`, `oauth2` or `bearer` |
 | POST | `/api/twitter/verify` | Verify credentials; failure is `{ valid:false, message }` |
 | POST | `/api/generate-color` | Body `{ slotType?, color?, contextId?, template? }` |
 | POST | `/api/template/preview` | Body `{ template?, color?, slotType?, contextId? }` |
