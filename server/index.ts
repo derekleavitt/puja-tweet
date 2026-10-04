@@ -40,23 +40,29 @@ async function startServer() {
     console.log(`[X-ChromaBot] Server running at http://0.0.0.0:${config.port}`);
   });
 
-  // Flush debounced state to disk before the process exits.
+  // Flush debounced state to the store before the process exits (async: Firestore has no sync write).
   let shuttingDown = false;
-  const shutdown = (signal: string) => {
+  const shutdown = async (signal: string) => {
     if (shuttingDown) return;
     shuttingDown = true;
     console.log(`[X-ChromaBot] ${signal} received, flushing state`);
     scheduler.stop?.();
     try {
-      services.flushSync();
+      // Cloud Run allows ~10 s between SIGTERM and SIGKILL.
+      await Promise.race([
+        services.flush(),
+        new Promise<void>((_, reject) =>
+          setTimeout(() => reject(new Error('flush timed out')), 8000).unref(),
+        ),
+      ]);
     } catch (err) {
       console.error('[X-ChromaBot] Shutdown flush failed:', err);
     }
     server.close();
     process.exit(0);
   };
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
-  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+  process.on('SIGINT', () => void shutdown('SIGINT'));
 }
 
 startServer().catch((err) => {
