@@ -956,6 +956,14 @@ class StorageService {
     return { clearedCount, context: ctx };
   }
 
+  /** Persist only the last fired fixed-time slot key (no queue regeneration). */
+  public setContextLastPostedSlot(contextId: string, slotKey: string) {
+    const ctx = this.getContext(contextId);
+    if (!ctx) return;
+    ctx.lastPostedSlot = slotKey;
+    this.save();
+  }
+
   public getLastPostedSlot(): string {
     return this.lastPostedSlot;
   }
