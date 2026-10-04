@@ -24,7 +24,18 @@ export interface TwitterCredentials {
 
   // App-only Bearer
   bearerToken?: string;
+
+  /** Persisted form of UI-entered credentials (AES-256-GCM blob); never plaintext. */
+  encrypted?: string;
+  /** Set by CredentialService on effective credentials: receives rotated OAuth 2.0 tokens. */
+  onTokensRefreshed?: TokensRefreshedCallback;
 }
+
+export interface RefreshedTokens {
+  accessToken: string;
+  refreshToken?: string;
+}
+export type TokensRefreshedCallback = (tokens: RefreshedTokens) => void;
 
 export interface PostTweetOptions {
   text: string;
@@ -134,7 +145,8 @@ export function generateOAuth1Header(
 
 export async function refreshOAuth2Token(
   creds: TwitterCredentials,
-): Promise<{ accessToken: string; refreshToken?: string } | null> {
+  onTokensRefreshed?: TokensRefreshedCallback,
+): Promise<RefreshedTokens | null> {
   if (!creds.oauth2ClientId || !creds.oauth2ClientSecret || !creds.oauth2RefreshToken) {
     return null;
   }
@@ -162,10 +174,17 @@ export async function refreshOAuth2Token(
 
     if (res.ok) {
       const data = await res.json();
-      return {
+      const tokens: RefreshedTokens = {
         accessToken: data.access_token,
         refreshToken: data.refresh_token,
       };
+      // X rotates refresh tokens: the new pair must be saved or the next refresh fails.
+      try {
+        (onTokensRefreshed ?? creds.onTokensRefreshed)?.(tokens);
+      } catch (err) {
+        console.error('Failed to persist refreshed OAuth 2.0 tokens:', err);
+      }
+      return tokens;
     }
   } catch (err) {
     console.error('Failed to refresh OAuth 2.0 token:', err);
@@ -175,6 +194,7 @@ export async function refreshOAuth2Token(
 
 export async function verifyTwitterCredentials(
   creds: TwitterCredentials,
+  onTokensRefreshed?: TokensRefreshedCallback,
 ): Promise<{ valid: boolean; user?: any; message: string }> {
   // 1. Try OAuth 1.0a User Context (Permanent)
   if (creds.apiKey && creds.apiSecret && creds.accessToken && creds.accessTokenSecret) {
@@ -245,11 +265,11 @@ export async function verifyTwitterCredentials(
 
       // If token expired, attempt refresh
       if (res.status === 401 && creds.oauth2RefreshToken) {
-        const refreshed = await refreshOAuth2Token(creds);
+        const refreshed = await refreshOAuth2Token(creds, onTokensRefreshed);
         if (refreshed) {
           creds.oauth2AccessToken = refreshed.accessToken;
           if (refreshed.refreshToken) creds.oauth2RefreshToken = refreshed.refreshToken;
-          return verifyTwitterCredentials(creds);
+          return verifyTwitterCredentials(creds, onTokensRefreshed);
         }
       }
 
@@ -281,6 +301,7 @@ export async function postColorTweet(
   creds: TwitterCredentials,
   options: PostTweetOptions,
   isDryRun = false,
+  onTokensRefreshed?: TokensRefreshedCallback,
 ): Promise<TweetResponse> {
   const hasOAuth1 = !!(
     creds.apiKey &&
@@ -363,7 +384,7 @@ export async function postColorTweet(
 
     // If OAuth 2.0 token expired (HTTP 401), try refreshing
     if (response.status === 401 && creds.oauth2RefreshToken) {
-      const refreshed = await refreshOAuth2Token(creds);
+      const refreshed = await refreshOAuth2Token(creds, onTokensRefreshed);
       if (refreshed) {
         creds.oauth2AccessToken = refreshed.accessToken;
         if (refreshed.refreshToken) creds.oauth2RefreshToken = refreshed.refreshToken;
