@@ -41,6 +41,7 @@ export function useContextForm(opts: UseContextFormOptions) {
       targetTweetId: activeContext?.targetTweetId || '2091597504928428416',
       enabled: true,
       dryRun: false,
+      autoFallbackToQuote: false,
       schedule: {
         mode: 'interval',
         intervalMinutes: 60,

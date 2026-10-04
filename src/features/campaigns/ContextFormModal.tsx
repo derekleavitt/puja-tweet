@@ -81,6 +81,23 @@ export const ContextFormModal: React.FC<ContextFormModalProps> = ({ form }) => {
             value={ctx.engagementMode}
             onChange={(engagementMode) => patch({ engagementMode })}
           />
+          {(ctx.engagementMode || 'reply') === 'reply' && (
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={ctx.autoFallbackToQuote ?? false}
+                onChange={(e) => patch({ autoFallbackToQuote: e.target.checked })}
+                className="mt-0.5 h-4 w-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-500"
+              />
+              <span className="text-xs text-neutral-700 dark:text-neutral-300">
+                Fall back to a Quote Tweet
+                <span className="block text-[11px] text-neutral-500">
+                  If X refuses the reply (reply cooldown or restricted thread), retry once as a
+                  quote of the target post on your timeline. Off by default.
+                </span>
+              </span>
+            </label>
+          )}
           <ScheduleEditor schedule={ctx.schedule} onChange={patchSchedule} />
           <TemplateEditor
             template={ctx.template || ''}

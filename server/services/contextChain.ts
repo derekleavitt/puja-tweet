@@ -13,10 +13,6 @@ const isQuoteLike = (l: PostLog) =>
  */
 export const sanitizeContextChain = (ctx: TweetContext, logs: PostLog[]): boolean => {
   let modified = false;
-  if (ctx.autoFallbackToQuote) {
-    ctx.autoFallbackToQuote = false;
-    modified = true;
-  }
 
   const quoteTweetIds = new Set(
     logs
