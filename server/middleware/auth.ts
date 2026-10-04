@@ -20,7 +20,7 @@ const EXEMPT_PATHS = new Set(['/health', '/cron/trigger', '/webhook/trigger']);
 
 /** Default verifier backed by firebase-admin (ADC, GOOGLE_APPLICATION_CREDENTIALS or service-account JSON). */
 export const createFirebaseVerifier = (): TokenVerifier => {
-  return async idToken => {
+  return async (idToken) => {
     if (getApps().length === 0) {
       initializeApp({
         projectId: authConfig.projectId,
@@ -41,13 +41,15 @@ export interface RequireAdminOptions {
 
 export const requireAdmin = (options: RequireAdminOptions = {}): RequestHandler => {
   const verifyToken = options.verifyToken ?? createFirebaseVerifier();
-  const authorizedEmails = (options.authorizedEmails ?? authConfig.authorizedEmails).map(e =>
+  const authorizedEmails = (options.authorizedEmails ?? authConfig.authorizedEmails).map((e) =>
     e.toLowerCase(),
   );
   const disabled = options.disabled ?? authConfig.disabled;
 
   if (disabled) {
-    console.warn('[Auth] WARNING: AUTH_DISABLED=true - every /api route is UNAUTHENTICATED. Local development only!');
+    console.warn(
+      '[Auth] WARNING: AUTH_DISABLED=true - every /api route is UNAUTHENTICATED. Local development only!',
+    );
   }
 
   return async (req, res, next) => {

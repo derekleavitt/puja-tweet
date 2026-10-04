@@ -14,9 +14,9 @@ export const createStatusRouter = ({ storage, scheduler }: AppDeps) => {
 
     const stats = {
       totalPosts: logs.length,
-      successfulPosts: logs.filter(l => l.status === 'success').length,
-      simulatedPosts: logs.filter(l => l.status === 'simulated').length,
-      failedPosts: logs.filter(l => l.status === 'error').length,
+      successfulPosts: logs.filter((l) => l.status === 'success').length,
+      simulatedPosts: logs.filter((l) => l.status === 'simulated').length,
+      failedPosts: logs.filter((l) => l.status === 'error').length,
     };
 
     res.json({

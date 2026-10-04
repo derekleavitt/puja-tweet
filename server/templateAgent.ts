@@ -11,7 +11,11 @@ import { GoogleGenAI } from '@google/genai';
 import type { ColorData, PostLog } from '../shared/types.js';
 import { storage } from './storage.js';
 import { substituteTemplate } from '../shared/template/substitute.js';
-import { COMBINED_HISTORY_AGENT_REGEX, STANDALONE_AGENT_REGEX, stripHistoryTags } from '../shared/template/agentTags.js';
+import {
+  COMBINED_HISTORY_AGENT_REGEX,
+  STANDALONE_AGENT_REGEX,
+  stripHistoryTags,
+} from '../shared/template/agentTags.js';
 import { getGeminiTimeoutMs } from './timeouts.js';
 
 const ai = new GoogleGenAI({
@@ -51,10 +55,14 @@ export function substituteVariables(text: string, color: ColorData, slotLabel?: 
 /**
  * Fetch chronological series history for context or target tweet
  */
-export function getSeriesHistory(contextId?: string, targetTweetId?: string, limitCount = 10): PostLog[] {
+export function getSeriesHistory(
+  contextId?: string,
+  targetTweetId?: string,
+  limitCount = 10,
+): PostLog[] {
   const allLogs = storage.getLogs(); // returns newest first
   // Filter for matching series
-  const filtered = allLogs.filter(log => {
+  const filtered = allLogs.filter((log) => {
     if (contextId && log.contextId === contextId) return true;
     if (targetTweetId && log.targetTweetId === targetTweetId) return true;
     return false;
@@ -93,7 +101,7 @@ export async function generatePoeticAgentText(
   userPrompt: string,
   color: ColorData,
   history: PostLog[] | null,
-  slotLabel?: string
+  slotLabel?: string,
 ): Promise<string> {
   const timeTag = slotLabel || (color.slotType === 'morning' ? '6:00 AM' : '6:00 PM');
   const resolvedPrompt = substituteVariables(userPrompt, color, timeTag);
@@ -141,7 +149,10 @@ Remember: Output ONLY the exact tweet text (no quotes, no intro, under 240 chars
         text = text.substring(1, text.length - 1).trim();
       }
       // Remove markdown code fences if present
-      text = text.replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/i, '').trim();
+      text = text
+        .replace(/^```[a-z]*\n?/i, '')
+        .replace(/\n?```$/i, '')
+        .trim();
 
       if (text) return text;
     } catch (err: any) {
@@ -166,7 +177,7 @@ Remember: Output ONLY the exact tweet text (no quotes, no intro, under 240 chars
 export async function resolveTemplateText(
   template: string,
   color: ColorData,
-  options: ResolveTemplateOptions = {}
+  options: ResolveTemplateOptions = {},
 ): Promise<string> {
   if (!template) {
     return `${color.colorPick || color.name} ${color.hex} #eternal #colors`;
@@ -183,12 +194,7 @@ export async function resolveTemplateText(
     const prompt = (match[1] || match[2] || match[3] || '').trim();
     const history = getSeriesHistory(options.contextId, options.targetTweetId);
 
-    const generated = await generatePoeticAgentText(
-      prompt,
-      color,
-      history,
-      options.slotLabel
-    );
+    const generated = await generatePoeticAgentText(prompt, color, history, options.slotLabel);
 
     processed = processed.replace(fullMatch, generated);
   }
@@ -201,12 +207,7 @@ export async function resolveTemplateText(
     const fullMatch = match[0];
     const prompt = match[1].trim();
 
-    const generated = await generatePoeticAgentText(
-      prompt,
-      color,
-      null,
-      options.slotLabel
-    );
+    const generated = await generatePoeticAgentText(prompt, color, null, options.slotLabel);
 
     processed = processed.replace(fullMatch, generated);
   }

@@ -31,7 +31,8 @@ interface UseContextsDeps {
 }
 
 export function useContexts(deps: UseContextsDeps) {
-  const { setActiveContextId, setQueue, setLogs, addLog, refresh, fetchHistory, generateColor } = deps;
+  const { setActiveContextId, setQueue, setLogs, addLog, refresh, fetchHistory, generateColor } =
+    deps;
 
   /** Mirrors a mutation result (context + regenerated queue) then refreshes status. */
   const applyResult = async (json: Record<string, any>) => {
@@ -109,7 +110,11 @@ export function useContexts(deps: UseContextsDeps) {
       if (Array.isArray(json.queue)) {
         setQueue(json.queue);
       }
-      setLogs(prev => prev.filter(l => (id === 'ctx_primary' ? l.contextId && l.contextId !== 'ctx_primary' : l.contextId !== id)));
+      setLogs((prev) =>
+        prev.filter((l) =>
+          id === 'ctx_primary' ? l.contextId && l.contextId !== 'ctx_primary' : l.contextId !== id,
+        ),
+      );
       await fetchHistory();
       await refresh();
     } catch (err: any) {

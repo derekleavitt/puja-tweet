@@ -40,7 +40,7 @@ async function startServer() {
   });
 }
 
-startServer().catch(err => {
+startServer().catch((err) => {
   console.error('Fatal server startup error:', err);
   process.exit(1);
 });

@@ -69,7 +69,11 @@ describe('contexts', () => {
 
 describe('POST /api/post-now', () => {
   it('in dry-run returns simulated:true and appends a log', async () => {
-    const ctx = storage.createContext({ name: 'Dry', targetTweetId: '1234567890123456789', dryRun: true });
+    const ctx = storage.createContext({
+      name: 'Dry',
+      targetTweetId: '1234567890123456789',
+      dryRun: true,
+    });
     const before = storage.getLogs().length;
 
     const res = await request(app)

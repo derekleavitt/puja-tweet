@@ -66,7 +66,9 @@ export const HistoryTable: React.FC<HistoryTableProps> = ({ logs, onClearHistory
 
       {filteredLogs.length === 0 ? (
         <div className="border border-neutral-200 dark:border-neutral-800 rounded-xl p-12 text-center text-neutral-500 bg-white dark:bg-neutral-900">
-          <p className="font-medium text-neutral-700 dark:text-neutral-300">No post logs recorded yet</p>
+          <p className="font-medium text-neutral-700 dark:text-neutral-300">
+            No post logs recorded yet
+          </p>
           <p className="text-xs text-neutral-400 mt-1">
             Trigger a test post in the Studio or wait for the next scheduled 6:00 AM / 6:00 PM drop.
           </p>
@@ -114,8 +116,8 @@ export const HistoryTable: React.FC<HistoryTableProps> = ({ logs, onClearHistory
                             {log.slotType === 'morning'
                               ? '6:00 AM Drop'
                               : log.slotType === 'evening'
-                              ? '6:00 PM Drop'
-                              : 'Manual Drop'}
+                                ? '6:00 PM Drop'
+                                : 'Manual Drop'}
                           </span>
                         </div>
                       </td>
@@ -157,7 +159,10 @@ export const HistoryTable: React.FC<HistoryTableProps> = ({ logs, onClearHistory
                           </div>
                         )}
                         {log.errorMessage && (
-                          <div className="text-[10px] text-red-500 font-mono mt-0.5 max-w-xs truncate" title={log.errorMessage}>
+                          <div
+                            className="text-[10px] text-red-500 font-mono mt-0.5 max-w-xs truncate"
+                            title={log.errorMessage}
+                          >
                             {log.errorMessage}
                           </div>
                         )}

@@ -19,22 +19,25 @@ export function usePosting({ activeContextId, addLog, refresh }: UsePostingDeps)
   const [isPosting, setIsPosting] = useState<boolean>(false);
   const [lastPostedResult, setLastPostedResult] = useState<any>(null);
 
-  const generateColor = useCallback(async (slotType: 'morning' | 'evening' | 'random' = 'morning') => {
-    try {
-      const data = await apiGenerateColor(slotType, activeContextId);
-      if (data) {
-        setColor(data.color);
+  const generateColor = useCallback(
+    async (slotType: 'morning' | 'evening' | 'random' = 'morning') => {
+      try {
+        const data = await apiGenerateColor(slotType, activeContextId);
+        if (data) {
+          setColor(data.color);
+        }
+      } catch (err) {
+        console.error('Error generating color:', err);
       }
-    } catch (err) {
-      console.error('Error generating color:', err);
-    }
-  }, [activeContextId]);
+    },
+    [activeContextId],
+  );
 
   // Handle post now (manual trigger)
   const handlePostNow = async (
     customColor?: ColorData,
     slotType: 'morning' | 'evening' | 'manual' = 'manual',
-    contextId?: string
+    contextId?: string,
   ) => {
     setIsPosting(true);
     setLastPostedResult(null);

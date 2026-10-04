@@ -16,7 +16,12 @@ export interface MakeAppOptions {
 
 export const makeApp = (options?: MakeAppOptions) =>
   options
-    ? createApp({ storage, scheduler, verifyToken: options.verifyToken, authorizedEmails: options.authorizedEmails })
+    ? createApp({
+        storage,
+        scheduler,
+        verifyToken: options.verifyToken,
+        authorizedEmails: options.authorizedEmails,
+      })
     : createApp({ storage, scheduler, authDisabled: true });
 
 export { storage };

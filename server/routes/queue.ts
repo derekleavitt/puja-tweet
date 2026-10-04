@@ -15,7 +15,9 @@ export const createQueueRouter = ({ storage }: AppDeps) => {
 
   router.post('/queue/regenerate', (req, res) => {
     const contextId = req.body?.contextId || req.query?.contextId;
-    const queue = storage.clearAndRegenerateQueue(contextId ? String(contextId) : storage.getActiveContext().id);
+    const queue = storage.clearAndRegenerateQueue(
+      contextId ? String(contextId) : storage.getActiveContext().id,
+    );
     res.json({ success: true, queue });
   });
 

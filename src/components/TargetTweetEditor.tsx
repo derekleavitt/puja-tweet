@@ -1,5 +1,16 @@
 import React, { useState } from 'react';
-import { ExternalLink, Check, Edit2, RotateCcw, AlertCircle, MessageSquare, Link2, Target, Quote, Globe } from 'lucide-react';
+import {
+  ExternalLink,
+  Check,
+  Edit2,
+  RotateCcw,
+  AlertCircle,
+  MessageSquare,
+  Link2,
+  Target,
+  Quote,
+  Globe,
+} from 'lucide-react';
 import { extractTweetId } from '../../shared/tweetId.js';
 
 interface TargetTweetEditorProps {
@@ -81,7 +92,10 @@ export const TargetTweetEditor: React.FC<TargetTweetEditorProps> = ({
               rel="noopener noreferrer"
               className="font-mono font-semibold text-neutral-900 dark:text-neutral-100 hover:text-blue-600 underline inline-flex items-center gap-0.5"
             >
-              #{currentTargetId.length > 12 ? `${currentTargetId.slice(0, 6)}...${currentTargetId.slice(-4)}` : currentTargetId}
+              #
+              {currentTargetId.length > 12
+                ? `${currentTargetId.slice(0, 6)}...${currentTargetId.slice(-4)}`
+                : currentTargetId}
               <ExternalLink className="w-2.5 h-2.5" />
             </a>
             <button
@@ -218,7 +232,10 @@ export const TargetTweetEditor: React.FC<TargetTweetEditorProps> = ({
             <div className="flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-400 bg-white dark:bg-neutral-900 p-2.5 rounded border border-neutral-200 dark:border-neutral-800">
               <span className="flex items-center gap-1.5">
                 <Check className="w-3.5 h-3.5 text-emerald-600" />
-                Detected Post ID: <strong className="font-mono text-neutral-900 dark:text-neutral-100">{detectedId}</strong>
+                Detected Post ID:{' '}
+                <strong className="font-mono text-neutral-900 dark:text-neutral-100">
+                  {detectedId}
+                </strong>
               </span>
               <a
                 href={`https://x.com/i/status/${detectedId}`}
@@ -310,8 +327,8 @@ export const TargetTweetEditor: React.FC<TargetTweetEditorProps> = ({
             {engagementMode === 'quote'
               ? '💡 Quote Tweet mode embeds the target post directly into your timeline drop. 100% permitted on all X developer tiers.'
               : engagementMode === 'standalone'
-              ? '💡 Standalone mode publishes chromatic drops directly to @bhaijahndai\'s feed.'
-              : '💡 Direct Reply posts into the target post\'s comments. If X restricts in-thread replies (403), auto-fallback seamlessly posts as a Quote Tweet.'}
+                ? "💡 Standalone mode publishes chromatic drops directly to @bhaijahndai's feed."
+                : "💡 Direct Reply posts into the target post's comments. If X restricts in-thread replies (403), auto-fallback seamlessly posts as a Quote Tweet."}
           </p>
         </div>
       )}
@@ -357,14 +374,25 @@ export const TargetTweetEditor: React.FC<TargetTweetEditorProps> = ({
           <div className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-normal flex items-center justify-between gap-2">
             <div>
               {replyTargetMode === 'original_post' ? (
-                <span>Every post branches directly under root post <strong className="font-mono">#{currentTargetId}</strong>.</span>
+                <span>
+                  Every post branches directly under root post{' '}
+                  <strong className="font-mono">#{currentTargetId}</strong>.
+                </span>
               ) : (
                 <span>
                   Each next drop replies to the previous comment made by us.
                   {lastPostedTweetId ? (
-                    <span> Next drop attaches to <strong className="font-mono">#{lastPostedTweetId}</strong>.</span>
+                    <span>
+                      {' '}
+                      Next drop attaches to{' '}
+                      <strong className="font-mono">#{lastPostedTweetId}</strong>.
+                    </span>
                   ) : (
-                    <span> Debut drop initiates chain at <strong className="font-mono">#{currentTargetId}</strong>.</span>
+                    <span>
+                      {' '}
+                      Debut drop initiates chain at{' '}
+                      <strong className="font-mono">#{currentTargetId}</strong>.
+                    </span>
                   )}
                 </span>
               )}

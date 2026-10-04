@@ -36,14 +36,15 @@ function ChromaBotDashboard() {
 
   const { queue, setQueue, fetchQueue, handleRerollSlot, handleRegenerateQueue } = useQueue();
   const status = useBotStatus(setQueue);
-  const { settings, setSettings, contexts, activeContextId, setActiveContextId, fetchStatus } = status;
+  const { settings, setSettings, contexts, activeContextId, setActiveContextId, fetchStatus } =
+    status;
   const { logs, setLogs, fetchHistory, handleClearHistory } = useHistory();
 
   const refresh = useCallback(async () => {
     await fetchStatus();
     await fetchQueue();
   }, [fetchStatus, fetchQueue]);
-  const addLog = (log: PostLog) => setLogs(prev => [log, ...prev]);
+  const addLog = (log: PostLog) => setLogs((prev) => [log, ...prev]);
 
   const { color, isPosting, lastPostedResult, generateColor, handlePostNow } = usePosting({
     activeContextId,
@@ -59,9 +60,21 @@ function ChromaBotDashboard() {
     handleToggleContext,
     handleTriggerContext,
     handleClearContextHistory,
-  } = useContexts({ setActiveContextId, setQueue, setLogs, addLog, refresh, fetchHistory, generateColor });
-  const { handleSaveSettings, handleToggleDryRun, handleToggleScheduler, handleUpdateTargetTweetId } =
-    useSettings({ settings, setSettings, setQueue, refresh });
+  } = useContexts({
+    setActiveContextId,
+    setQueue,
+    setLogs,
+    addLog,
+    refresh,
+    fetchHistory,
+    generateColor,
+  });
+  const {
+    handleSaveSettings,
+    handleToggleDryRun,
+    handleToggleScheduler,
+    handleUpdateTargetTweetId,
+  } = useSettings({ settings, setSettings, setQueue, refresh });
   const { handleSaveCredentials, handleVerifyCredentials } = useCredentials({
     setCredentialsStatus: status.setCredentialsStatus,
     fetchStatus,
@@ -70,15 +83,20 @@ function ChromaBotDashboard() {
   // Initial load: check Firestore for saved cloud contexts & settings (runs once on mount)
   const { isLoading } = useCloudBootstrap({
     setSettings,
-    loadInitialData: () => Promise.all([fetchStatus(), fetchQueue(), fetchHistory(), generateColor('morning')]),
+    loadInitialData: () =>
+      Promise.all([fetchStatus(), fetchQueue(), fetchHistory(), generateColor('morning')]),
   });
 
   // Heartbeat poll every 8 seconds
-  usePolling(() => {
-    fetchStatus();
-    fetchHistory();
-    fetchQueue();
-  }, 8000, true);
+  usePolling(
+    () => {
+      fetchStatus();
+      fetchHistory();
+      fetchQueue();
+    },
+    8000,
+    true,
+  );
 
   const {
     allNextPosts,
@@ -90,8 +108,7 @@ function ChromaBotDashboard() {
     handleClearCooldown,
   } = status;
 
-
-  const activeContext = contexts.find(c => c.id === activeContextId) || contexts[0];
+  const activeContext = contexts.find((c) => c.id === activeContextId) || contexts[0];
 
   return (
     <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-neutral-100/60 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 flex flex-col font-sans antialiased">
@@ -152,7 +169,9 @@ function ChromaBotDashboard() {
         {isLoading ? (
           <div className="py-24 text-center text-neutral-500">
             <div className="w-8 h-8 mx-auto mb-3 rounded-full border-2 border-neutral-300 border-t-neutral-800 dark:border-neutral-700 dark:border-t-neutral-200 animate-spin" />
-            <p className="text-sm font-medium">Connecting to Cloud Firestore &amp; Multi-Context Engine...</p>
+            <p className="text-sm font-medium">
+              Connecting to Cloud Firestore &amp; Multi-Context Engine...
+            </p>
           </div>
         ) : (
           <>
@@ -197,7 +216,9 @@ function ChromaBotDashboard() {
                 contexts={contexts}
                 activeContextId={activeContextId}
                 onSelectContext={handleSelectActiveContext}
-                onRegenerateQueue={(contextId) => handleRegenerateQueue(contextId || activeContextId)}
+                onRegenerateQueue={(contextId) =>
+                  handleRegenerateQueue(contextId || activeContextId)
+                }
               />
             )}
 
@@ -223,7 +244,10 @@ function ChromaBotDashboard() {
       </main>
 
       {/* Clean Unboxed Footer */}
-      <Footer activeName={activeContext?.name || 'Primary'} targetTweetId={settings.targetTweetId} />
+      <Footer
+        activeName={activeContext?.name || 'Primary'}
+        targetTweetId={settings.targetTweetId}
+      />
 
       {/* Rate Limits & Anti-Spam Telemetry Modal */}
       <RateLimitModal
@@ -247,4 +271,3 @@ export default function App() {
     </AuthProvider>
   );
 }
-
