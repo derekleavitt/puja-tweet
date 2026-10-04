@@ -7,6 +7,14 @@
  *  - Dispatches targeted replies to each context's specific targetTweetId.
  */
 
+import {
+  hourInZone,
+  matchFixedTime,
+  normalizeHHmm,
+  resolveTimezone,
+  slotTypeForHour,
+  zonedParts,
+} from '../shared/time.js';
 import { ColorData } from './colorEngine.js';
 import { resolveTemplateText } from './templateAgent.js';
 import { HttpError } from './middleware/error.js';
@@ -25,6 +33,10 @@ export interface ExecuteDropOptions {
 class SchedulerService {
   private timer: NodeJS.Timeout | null = null;
   private isProcessing = false;
+  private pendingFires = new Map<
+    string,
+    { slotKey: string; slotType: 'morning' | 'evening'; matchedTime: string; fireAt: number }
+  >();
 
   public start() {
     if (this.timer) {
@@ -57,7 +69,7 @@ class SchedulerService {
 
     const isMorning = options.slotType
       ? options.slotType === 'morning'
-      : (new Date().getUTCHours() - 7 + 24) % 24 < 12;
+      : slotTypeForHour(hourInZone(new Date(), context.schedule?.timezone)) === 'morning';
 
     const slotType = options.slotType || (isMorning ? 'morning' : 'evening');
     const color: ColorData =
@@ -289,40 +301,49 @@ class SchedulerService {
     }
 
     // MODE 2: FIXED TIMES (e.g. ["06:00", "18:00"])
-    const nowDate = new Date(now);
-    const timezone = schedule.timezone || 'America/Denver';
-
-    const timeInZone = new Intl.DateTimeFormat('en-US', {
-      timeZone: timezone,
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    }).format(nowDate);
-
-    const dateInZone = new Intl.DateTimeFormat('en-CA', {
-      timeZone: timezone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(nowDate);
-
-    const currentSlotKey = `${dateInZone}-${timeInZone}`;
-    const matchedTime = (schedule.scheduleTimes || []).find((t) => t === timeInZone);
-
-    if (matchedTime && context.lastPostedSlot !== currentSlotKey) {
-      const isMorning = matchedTime.startsWith('06') || matchedTime.startsWith('6');
-      context.lastPostedSlot = currentSlotKey;
-      services.contexts.updateContext(context.id, { lastPostedSlot: currentSlotKey });
-
-      console.log(
-        `[Scheduler] Context "${context.name}" fixed time reached (${matchedTime}). Firing drop...`,
-      );
-      await this.executeDrop({
-        contextId: context.id,
-        slotType: isMorning ? 'morning' : 'evening',
-        source: 'scheduler',
-      });
+    // A slot is armed when its HH:mm (normalised, in the context timezone) is reached, then fires
+    // after the context's jitter delay. Pending fires are in-memory; only lastPostedSlot persists.
+    const pending = this.pendingFires.get(context.id);
+    if (pending) {
+      if (now < pending.fireAt) return;
+      this.pendingFires.delete(context.id);
+      await this.fireFixedSlot(context, pending.slotKey, pending.slotType, pending.matchedTime);
+      return;
     }
+
+    const match = matchFixedTime(schedule.scheduleTimes, new Date(now), schedule.timezone);
+    if (!match || context.lastPostedSlot === match.slotKey) return;
+
+    const slotType = slotTypeForHour(match.parts.hour);
+    const jitterMs = schedule.humanizeJitterEnabled ? context.currentJitterMs || 0 : 0;
+    if (jitterMs > 0) {
+      this.pendingFires.set(context.id, {
+        slotKey: match.slotKey,
+        slotType,
+        matchedTime: match.matchedTime,
+        fireAt: now + jitterMs,
+      });
+      console.log(
+        `[Scheduler] Context "${context.name}" fixed time ${match.matchedTime} (${resolveTimezone(schedule.timezone)}) reached; ` +
+          `delaying ${Math.round(jitterMs / 1000)}s for jitter.`,
+      );
+      return;
+    }
+    await this.fireFixedSlot(context, match.slotKey, slotType, match.matchedTime);
+  }
+
+  private async fireFixedSlot(
+    context: TweetContext,
+    slotKey: string,
+    slotType: 'morning' | 'evening',
+    matchedTime: string,
+  ) {
+    // Record before posting so a slow/failed post can never double-fire the same slot.
+    services.contexts.setContextLastPostedSlot(context.id, slotKey);
+    console.log(
+      `[Scheduler] Context "${context.name}" fixed time reached (${matchedTime}). Firing drop...`,
+    );
+    await this.executeDrop({ contextId: context.id, slotType, source: 'scheduler' });
   }
 
   public getNextScheduledPost(contextId?: string) {
@@ -389,28 +410,13 @@ class SchedulerService {
     }
 
     // Fixed Times Mode
-    const nowDate = new Date(now);
-    const timezone = schedule.timezone || 'America/Denver';
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: timezone,
-      year: 'numeric',
-      month: 'numeric',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: 'numeric',
-      second: 'numeric',
-      hour12: false,
-    });
-
-    const parts = formatter.formatToParts(nowDate);
-    const getVal = (type: string) => parseInt(parts.find((p) => p.type === type)?.value || '0', 10);
-    const curHour = getVal('hour');
-    const curMinute = getVal('minute');
-    const curSecond = getVal('second');
-
-    const curSecondsOfDay = curHour * 3600 + curMinute * 60 + curSecond;
+    const timezone = resolveTimezone(schedule.timezone);
+    const zoned = zonedParts(new Date(now), timezone);
+    const curSecondsOfDay = zoned.hour * 3600 + zoned.minute * 60 + zoned.second;
 
     const parsedSlots = (schedule.scheduleTimes || ['06:00', '18:00'])
+      .map((raw) => normalizeHHmm(raw))
+      .filter((t): t is string => t !== null)
       .map((timeStr) => {
         const [h, m] = timeStr.split(':').map(Number);
         return {

@@ -51,14 +51,24 @@ const INTERVAL_PRESETS = [
   { label: 'Every 12 hours (Twice Daily)', value: 720 },
 ];
 
-export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSettings }) => {
+/**
+ * Keyed by the active campaign so the form fully remounts (and resyncs) when
+ * the active campaign changes.
+ */
+export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => (
+  <SettingsForm key={props.settings.activeContextId ?? 'default'} {...props} />
+);
+
+const SettingsForm: React.FC<SettingsPanelProps> = ({ settings, onSaveSettings }) => {
   const [targetTweetId, setTargetTweetId] = useState(settings.targetTweetId);
   const [replyTargetMode, setReplyTargetMode] = useState<'original_post' | 'last_comment'>(
     settings.replyTargetMode || 'original_post',
   );
-  const [lastPostedTweetId, setLastPostedTweetId] = useState(settings.lastPostedTweetId);
+  // The chain anchor is server-owned; the form only tracks an explicit "Reset to Root" click.
+  const [anchorReset, setAnchorReset] = useState(false);
+  const lastPostedTweetId = anchorReset ? undefined : settings.lastPostedTweetId;
   const [intervalMode, setIntervalMode] = useState<'fixed_times' | 'interval'>(
-    settings.intervalMode || 'fixed_times',
+    settings.intervalMode || 'interval',
   );
   const [intervalMinutes, setIntervalMinutes] = useState<number>(settings.intervalMinutes || 720);
   const [scheduleTimes, setScheduleTimes] = useState(settings.scheduleTimes.join(', '));
@@ -106,10 +116,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
 
       const cleanedTargetId = extractTweetId(targetTweetId) || targetTweetId.trim();
 
-      await onSaveSettings({
+      const next: Partial<BotSettings> = {
         targetTweetId: cleanedTargetId,
         replyTargetMode,
-        lastPostedTweetId,
         intervalMode,
         intervalMinutes: Number(intervalMinutes),
         scheduleTimes: times.length > 0 ? times : ['06:00', '18:00'],
@@ -119,7 +128,20 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
         template,
         humanizeJitterEnabled,
         jitterPercentage: Number(jitterPercentage),
-      });
+      };
+      // Send only changed fields; never send the chain anchor unless explicitly reset.
+      const changed: Record<string, unknown> = {};
+      for (const key of Object.keys(next) as (keyof BotSettings)[]) {
+        if (JSON.stringify(next[key]) !== JSON.stringify(settings[key])) {
+          changed[key] = next[key];
+        }
+      }
+      if (anchorReset) changed.lastPostedTweetId = null;
+
+      if (Object.keys(changed).length > 0) {
+        await onSaveSettings(changed as Partial<BotSettings>);
+      }
+      setAnchorReset(false);
 
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 2500);
@@ -286,7 +308,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
                 {lastPostedTweetId && (
                   <button
                     type="button"
-                    onClick={() => setLastPostedTweetId(undefined)}
+                    onClick={() => setAnchorReset(true)}
                     className="px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/60 rounded border border-amber-300 dark:border-amber-800 hover:bg-amber-200 cursor-pointer flex items-center gap-1 shrink-0"
                     title="Reset chain anchor back to original post"
                   >
