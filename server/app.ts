@@ -11,6 +11,7 @@ import { createContextsRouter } from './routes/contexts.js';
 import { createCredentialsRouter } from './routes/credentials.js';
 import { createDropsRouter } from './routes/drops.js';
 import { createExportRouter } from './routes/export.js';
+import { createHealthRouter } from './routes/health.js';
 import { createHistoryRouter } from './routes/history.js';
 import { createQueueRouter } from './routes/queue.js';
 import { createSettingsRouter } from './routes/settings.js';
@@ -26,6 +27,9 @@ export const createApp = (deps: AppDeps) => {
   const app = express();
 
   app.use(express.json());
+
+  // Public; must stay above any auth middleware
+  app.use('/api/health', createHealthRouter());
 
   app.use('/api', createStatusRouter(deps));
   app.use('/api', createContextsRouter(deps));
