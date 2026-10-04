@@ -11,7 +11,9 @@ import {
   Quote,
   Globe,
 } from 'lucide-react';
+import { useServerInfo } from '../context/serverInfo.js';
 import { extractTweetId } from '../../shared/tweetId.js';
+import { errorMessage } from '../lib/errors.js';
 
 interface TargetTweetEditorProps {
   currentTargetId: string;
@@ -36,8 +38,9 @@ export const TargetTweetEditor: React.FC<TargetTweetEditorProps> = ({
   onToggleEngagementMode,
   onResetChain,
 }) => {
+  const { defaultTargetTweetId } = useServerInfo();
   const [isEditing, setIsEditing] = useState(false);
-  const [inputValue, setInputValue] = useState(currentTargetId);
+  const [inputValue, setInputValue] = useState(currentTargetId || defaultTargetTweetId);
   const [isSaving, setIsSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,8 +59,8 @@ export const TargetTweetEditor: React.FC<TargetTweetEditorProps> = ({
       setSavedSuccess(true);
       setIsEditing(false);
       setTimeout(() => setSavedSuccess(false), 2500);
-    } catch (err: any) {
-      setError(err.message || 'Failed to save target tweet ID');
+    } catch (err) {
+      setError(errorMessage(err, 'Failed to save target tweet ID'));
     } finally {
       setIsSaving(false);
     }
@@ -136,7 +139,7 @@ export const TargetTweetEditor: React.FC<TargetTweetEditorProps> = ({
               Target Reply Post
             </h3>
             <p className="text-xs text-neutral-500">
-              The X post where ChromaBot posts automated 6am/6pm chromatic color drops.
+              The X post where ChromaBot posts automated chromatic color drops.
             </p>
           </div>
         </div>

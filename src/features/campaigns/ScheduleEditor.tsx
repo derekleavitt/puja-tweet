@@ -6,7 +6,8 @@
 import React, { useState } from 'react';
 import { Flame } from 'lucide-react';
 import { TweetContext } from '../../types.js';
-import { FIELD_CLASS, INTERVAL_PRESETS, LABEL_CLASS, TIMEZONES } from './constants.js';
+import { DEFAULT_TIMEZONE, timezoneOptions } from '../../../shared/time.js';
+import { FIELD_CLASS, INTERVAL_PRESETS, LABEL_CLASS } from './constants.js';
 import { invalidTimes, normalizeHHmm, parseTimesList } from './schedule.js';
 
 type Schedule = TweetContext['schedule'];
@@ -109,7 +110,7 @@ export const ScheduleEditor: React.FC<ScheduleEditorProps> = ({ schedule, onChan
               onChange={(e) => onChange({ timezone: e.target.value })}
               className={FIELD_CLASS}
             >
-              {TIMEZONES.map((tz) => (
+              {timezoneOptions(schedule.timezone || DEFAULT_TIMEZONE).map((tz) => (
                 <option key={tz} value={tz}>
                   {tz}
                 </option>

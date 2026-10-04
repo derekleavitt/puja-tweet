@@ -30,7 +30,7 @@ export const HistoryTable: React.FC<HistoryTableProps> = ({ logs, onClearHistory
             Post Logs & History
           </h2>
           <p className="text-sm text-neutral-500 mt-0.5">
-            Audit trail of all automated 6am/6pm drops and manual test replies sent to X.
+            Audit trail of all automated scheduled drops and manual test replies sent to X.
           </p>
         </div>
 

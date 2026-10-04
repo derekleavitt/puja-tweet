@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { User, onAuthStateChanged } from 'firebase/auth';
 import {
   auth,
@@ -7,30 +7,15 @@ import {
   logoutUser,
   AUTHORIZED_EMAIL,
 } from '../lib/firebase.js';
-
-interface AuthContextType {
-  user: User | null;
-  loading: boolean;
-  isAuthorized: boolean;
-  signIn: () => Promise<void>;
-  signOut: () => Promise<void>;
-  authorizedEmail: string;
-}
-
-const AuthContext = createContext<AuthContextType>({
-  user: null,
-  loading: true,
-  isAuthorized: false,
-  signIn: async () => {},
-  signOut: async () => {},
-  authorizedEmail: AUTHORIZED_EMAIL,
-});
+import { DEV_AUTH_BYPASS, devOwnerUser } from '../lib/devAuth.js';
+import { AuthContext } from './authState.js';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [user, setUser] = useState<User | null>(DEV_AUTH_BYPASS ? devOwnerUser() : null);
+  const [loading, setLoading] = useState<boolean>(!DEV_AUTH_BYPASS);
 
   useEffect(() => {
+    if (DEV_AUTH_BYPASS) return;
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setLoading(false);
@@ -41,7 +26,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const handleSignIn = async () => {
     try {
       await loginWithGoogle();
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to log in:', err);
       throw err;
     }
@@ -50,7 +35,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const handleSignOut = async () => {
     try {
       await logoutUser();
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to log out:', err);
     }
   };
@@ -72,5 +57,3 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     </AuthContext.Provider>
   );
 };
-
-export const useAuth = () => useContext(AuthContext);

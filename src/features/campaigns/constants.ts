@@ -3,18 +3,6 @@
  * Shared lists and class strings for the campaign feature.
  */
 
-export const TIMEZONES = [
-  'America/Denver',
-  'America/Los_Angeles',
-  'America/New_York',
-  'America/Chicago',
-  'America/Phoenix',
-  'Europe/London',
-  'Europe/Paris',
-  'Asia/Tokyo',
-  'UTC',
-];
-
 export const INTERVAL_PRESETS = [
   { label: 'Every 1 minute (Test)', minutes: 1 },
   { label: 'Every 15 minutes', minutes: 15 },

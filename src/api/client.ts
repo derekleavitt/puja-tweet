@@ -5,13 +5,15 @@
  */
 
 import { auth, logoutUser } from '../lib/firebase.js';
+import { DEV_AUTH_BYPASS } from '../lib/devAuth.js';
+import type { ApiResult } from '../types.js';
 import { toast } from '../components/ui/toastStore.js';
 
 export class ApiError extends Error {
   status: number;
-  body: any;
+  body: unknown;
 
-  constructor(message: string, status: number, body: any) {
+  constructor(message: string, status: number, body: unknown) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
@@ -32,14 +34,15 @@ async function buildHeaders(hasBody: boolean): Promise<Record<string, string>> {
   if (hasBody) {
     headers['Content-Type'] = 'application/json';
   }
-  const token = await auth.currentUser?.getIdToken();
+  // Dev auth bypass: the server runs with AUTH_DISABLED, so never send a token.
+  const token = DEV_AUTH_BYPASS ? undefined : await auth.currentUser?.getIdToken();
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
   return headers;
 }
 
-export async function apiFetch<T = any>(path: string, options: ApiRequestOptions = {}): Promise<T> {
+export async function apiFetch<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
   const { method = 'GET', body, errorMessage } = options;
   const hasBody = body !== undefined;
   let res: Response;
@@ -54,7 +57,7 @@ export async function apiFetch<T = any>(path: string, options: ApiRequestOptions
     throw err;
   }
 
-  let data: any;
+  let data: (ApiResult & Record<string, unknown>) | null;
   try {
     data = await res.json();
   } catch {

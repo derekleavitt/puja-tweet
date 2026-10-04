@@ -5,9 +5,10 @@
 
 import React from 'react';
 import { Check, ExternalLink, AlertCircle } from 'lucide-react';
+import { DropResponse } from '../../types.js';
 
 interface PostResultToastProps {
-  lastPostedResult: any;
+  lastPostedResult: DropResponse;
 }
 
 export const PostResultToast: React.FC<PostResultToastProps> = ({ lastPostedResult }) => (

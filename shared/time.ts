@@ -5,6 +5,27 @@
 
 export const DEFAULT_TIMEZONE = 'America/Denver';
 
+/** Timezones offered in every schedule picker (campaign form and Timing settings). */
+export const TIMEZONES: readonly string[] = [
+  DEFAULT_TIMEZONE,
+  'America/Los_Angeles',
+  'America/Chicago',
+  'America/New_York',
+  'America/Phoenix',
+  'Europe/London',
+  'Europe/Paris',
+  'Europe/Berlin',
+  'Asia/Tokyo',
+  'Asia/Singapore',
+  'Australia/Sydney',
+  'UTC',
+];
+
+/** `TIMEZONES`, plus `current` when it is a stored zone outside the list (e.g. legacy "MST"). */
+export function timezoneOptions(current?: string | null): string[] {
+  return current && !TIMEZONES.includes(current) ? [current, ...TIMEZONES] : [...TIMEZONES];
+}
+
 /** Resolve a user-supplied timezone to a valid IANA zone ("MST"/empty/invalid -> America/Denver). */
 export function resolveTimezone(tz?: string | null): string {
   const raw = (tz || '').trim();

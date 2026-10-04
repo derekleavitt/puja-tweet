@@ -17,7 +17,7 @@ export function useSettings({ settings, setSettings, setQueue, refresh }: UseSet
   // Save settings (persisted by the server, which also clears/regenerates queue)
   const handleSaveSettings = async (newSettingsPartial: Partial<BotSettings>) => {
     const data = await saveSettings(newSettingsPartial);
-    if (data) {
+    if (data?.settings) {
       setSettings(data.settings);
       if (Array.isArray(data.queue)) {
         setQueue(data.queue);

@@ -7,6 +7,7 @@ import type { RequestHandler } from 'express';
 import { getAuth } from 'firebase-admin/auth';
 import { authConfig } from '../config.js';
 import { getAdminApp } from '../firebaseAdmin.js';
+import { errorCode, errorMessage } from '../errorMessage.js';
 
 export interface VerifiedToken {
   email?: string;
@@ -55,8 +56,8 @@ export const requireAdmin = (options: RequireAdminOptions = {}): RequestHandler 
     let decoded: VerifiedToken;
     try {
       decoded = await verifyToken(match[1]);
-    } catch (err: any) {
-      console.warn(`[Auth] Token verification failed: ${err?.code || err?.message}`);
+    } catch (err) {
+      console.warn(`[Auth] Token verification failed: ${errorCode(err) || errorMessage(err)}`);
       return res.status(401).json({ success: false, error: 'Invalid or expired token.' });
     }
 

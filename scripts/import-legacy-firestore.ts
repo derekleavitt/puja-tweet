@@ -50,7 +50,7 @@ const parseArgs = (argv: string[]): ImportArgs => {
 const toDocs = (v: unknown): LegacyDoc[] => {
   if (Array.isArray(v)) return v.map((d, i) => ({ id: String(d?.id ?? `doc_${i}`), data: d }));
   if (v && typeof v === 'object') {
-    return Object.entries(v).map(([id, data]) => ({ id, data: data as Record<string, any> }));
+    return Object.entries(v).map(([id, data]) => ({ id, data: data as Record<string, unknown> }));
   }
   return [];
 };

@@ -17,13 +17,13 @@ import type { BotState } from '../store/Store.js';
 
 export interface LegacyDoc {
   id: string;
-  data: Record<string, any>;
+  data: Record<string, unknown>;
 }
 
 export interface LegacyData {
   contexts: LegacyDoc[];
   postLogs: LegacyDoc[];
-  settings: Record<string, any> | null;
+  settings: Record<string, unknown> | null;
 }
 
 export interface ImportReport {
@@ -34,7 +34,7 @@ export interface ImportReport {
   notes: string[];
 }
 
-type Raw = Record<string, any>;
+type Raw = Record<string, unknown>;
 
 /** Fields that must never be copied from legacy data (credentials, webhook secrets). */
 const SECRET_KEY = /secret|token|api[-_]?key|password|credential|bearer|authorization/i;
@@ -47,6 +47,10 @@ const STATUSES = ['success', 'simulated', 'error'] as const;
 
 const oneOf = <T extends string>(v: unknown, allowed: readonly T[]): T | undefined =>
   typeof v === 'string' && (allowed as readonly string[]).includes(v) ? (v as T) : undefined;
+
+/** The value as a plain object (arrays excluded), otherwise an empty one. */
+const obj = (v: unknown): Raw =>
+  v && typeof v === 'object' && !Array.isArray(v) ? (v as Raw) : {};
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v ? v : undefined);
 
@@ -72,7 +76,7 @@ const droppedSecrets = (raw: Raw, label: string, warnings: string[]): void => {
 
 const mapSchedule = (raw: Raw, label: string, warnings: string[]): TweetContext['schedule'] => {
   const d = createDefaultSettings();
-  const s: Raw = raw.schedule && typeof raw.schedule === 'object' ? raw.schedule : {};
+  const s = obj(raw.schedule);
   const times: string[] = [];
   for (const t of Array.isArray(s.scheduleTimes) ? s.scheduleTimes : []) {
     const norm = typeof t === 'string' ? normalizeHHmm(t) : null;
@@ -94,12 +98,13 @@ const mapSchedule = (raw: Raw, label: string, warnings: string[]): TweetContext[
 
 const mapStats = (raw: Raw): TweetContext['stats'] => {
   if (!raw.stats || typeof raw.stats !== 'object') return undefined;
+  const stats = obj(raw.stats);
   const n = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);
   return {
-    totalPosts: n(raw.stats.totalPosts),
-    successfulPosts: n(raw.stats.successfulPosts),
-    simulatedPosts: n(raw.stats.simulatedPosts),
-    failedPosts: n(raw.stats.failedPosts),
+    totalPosts: n(stats.totalPosts),
+    successfulPosts: n(stats.successfulPosts),
+    simulatedPosts: n(stats.simulatedPosts),
+    failedPosts: n(stats.failedPosts),
   };
 };
 
@@ -137,7 +142,7 @@ export const mapLegacyContext = (
 
   const ctx: TweetContext = {
     id,
-    name: str(raw.name)?.trim() ? raw.name : id,
+    name: str(raw.name)?.trim() ? (raw.name as string) : id,
     description: str(raw.description),
     targetTweetId,
     replyTargetMode: oneOf(raw.replyTargetMode, REPLY_MODES) ?? 'original_post',
@@ -147,7 +152,7 @@ export const mapLegacyContext = (
     enabled: false,
     dryRun: true,
     schedule: mapSchedule(raw, label, warnings),
-    template: str(raw.template)?.trim() ? raw.template : d.template,
+    template: str(raw.template)?.trim() ? (raw.template as string) : d.template,
     themePreference: oneOf(raw.themePreference, THEMES) ?? 'dynamic',
     lastPostedTimestamp: Number.isFinite(Number(raw.lastPostedTimestamp))
       ? Number(raw.lastPostedTimestamp)

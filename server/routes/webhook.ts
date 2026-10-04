@@ -3,7 +3,7 @@
  */
 
 import crypto from 'crypto';
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import type { AppDeps } from '../app.js';
 import { toHttpError } from '../middleware/error.js';
 
@@ -31,7 +31,9 @@ export const createWebhookRouter = ({ services, drops }: AppDeps) => {
       // Live posting is only honoured on POST; GET pings can never post live.
       const forceLive =
         req.method === 'POST' && (req.query.forceLive === 'true' || req.body?.forceLive === true);
-      const slotType = (req.query.slot as any) || req.body?.slot || undefined;
+      const slot = req.query.slot ?? req.body?.slot;
+      const slotType =
+        slot === 'morning' || slot === 'evening' || slot === 'manual' ? slot : undefined;
       const contextId = (req.query.contextId as string) || req.body?.contextId || undefined;
 
       console.log(
@@ -54,7 +56,7 @@ export const createWebhookRouter = ({ services, drops }: AppDeps) => {
   });
 
   // Admin routes: the secret is only ever returned here (never in /status or /settings).
-  const buildUrl = (req: any) =>
+  const buildUrl = (req: Request) =>
     `${req.protocol}://${req.get('host')}/api/cron/trigger?secret=${encodeURIComponent(services.credentials.getWebhookSecret())}`;
 
   router.get('/webhook/url', (req, res) => {

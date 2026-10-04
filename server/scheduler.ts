@@ -17,19 +17,18 @@ import {
 } from '../shared/time.js';
 import { dropService } from './services/dropService.js';
 import { services } from './services/index.js';
-import type { TweetContext } from '../shared/types.js';
+import type { PendingFire, TweetContext } from '../shared/types.js';
 
 /** Minimum spacing between any two live drops across all campaigns. */
 const MIN_LIVE_SPACING_MS = 60 * 1000;
+
+/** A persisted pending fire older than this at boot/tick is dropped rather than fired late. */
+const STALE_PENDING_MS = 60 * 60 * 1000;
 
 class SchedulerService {
   private timer: NodeJS.Timeout | null = null;
   private isProcessing = false;
   private tickGeneration = 0;
-  private pendingFires = new Map<
-    string,
-    { slotKey: string; slotType: 'morning' | 'evening'; matchedTime: string; fireAt: number }
-  >();
 
   public start() {
     if (this.timer) {
@@ -89,6 +88,13 @@ class SchedulerService {
   }
 
   private async runTick(generation: number): Promise<'done'> {
+    // Reads are side-effect free (REL-3), so the tick keeps every queue topped up.
+    try {
+      services.queue.ensureQueue();
+    } catch (err) {
+      console.error('[Scheduler] Failed to top up the queue:', err);
+    }
+
     // 0. Global pause: nothing scheduled runs until the owner resumes.
     if (services.settings.isGlobalPaused()) return 'done';
 
@@ -148,11 +154,17 @@ class SchedulerService {
 
     // MODE 2: FIXED TIMES (e.g. ["06:00", "18:00"])
     // A slot is armed when its HH:mm (normalised, in the context timezone) is reached, then fires
-    // after the context's jitter delay. Pending fires are in-memory; only lastPostedSlot persists.
-    const pending = this.pendingFires.get(context.id);
+    // after the context's jitter delay. The armed fire is stored on the context (`pendingFire`) so a restart inside the jitter window still fires it once.
+    const pending = context.pendingFire;
     if (pending) {
-      if (now < pending.fireAt || !this.canFireNow()) return;
-      this.pendingFires.delete(context.id);
+      if (now < pending.fireAt) return;
+      // Already posted (or missed by more than an hour of downtime): discard instead of firing late.
+      if (context.lastPostedSlot === pending.slotKey || now - pending.fireAt > STALE_PENDING_MS) {
+        this.setPending(context, undefined);
+        return;
+      }
+      if (!this.canFireNow()) return;
+      this.setPending(context, undefined);
       await this.fireFixedSlot(context, pending.slotKey, pending.slotType, pending.matchedTime);
       return;
     }
@@ -163,7 +175,7 @@ class SchedulerService {
     const slotType = slotTypeForHour(match.parts.hour);
     const jitterMs = schedule.humanizeJitterEnabled ? context.currentJitterMs || 0 : 0;
     if (jitterMs > 0 || !this.canFireNow()) {
-      this.pendingFires.set(context.id, {
+      this.setPending(context, {
         slotKey: match.slotKey,
         slotType,
         matchedTime: match.matchedTime,
@@ -176,6 +188,11 @@ class SchedulerService {
       return;
     }
     await this.fireFixedSlot(context, match.slotKey, slotType, match.matchedTime);
+  }
+
+  private setPending(context: TweetContext, pending: PendingFire | undefined) {
+    context.pendingFire = pending;
+    services.contexts.setContextPendingFire(context.id, pending);
   }
 
   private async fireFixedSlot(

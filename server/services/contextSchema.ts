@@ -55,7 +55,10 @@ export type ContextUpdateInput = Partial<
   >
 > & { schedule?: Partial<TweetContext['schedule']> };
 
-/** Validates a client update body; throws HttpError(400) on bad input and strips unknown keys. */
+/**
+ * Validates a client create/update body; throws HttpError(400) on bad input and strips unknown keys.
+ * Create and update share one whitelist so neither can write server-owned fields.
+ */
 export const parseContextUpdate = (body: unknown): ContextUpdateInput => {
   const result = contextUpdateSchema.safeParse(body ?? {});
   if (!result.success) {
@@ -69,3 +72,6 @@ export const parseContextUpdate = (body: unknown): ContextUpdateInput => {
   if (lastPostedTweetId !== undefined) parsed.lastPostedTweetId = lastPostedTweetId ?? undefined;
   return parsed;
 };
+
+/** Validates a client create body (same whitelist as updates). */
+export const parseContextCreate = parseContextUpdate;

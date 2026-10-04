@@ -7,6 +7,8 @@
 import React from 'react';
 import { Sparkles } from 'lucide-react';
 import { TEMPLATE_TOKENS } from '../../shared/template/substitute.js';
+import { AiUnavailableBadge } from './AiUnavailableBadge.js';
+import { AI_UNAVAILABLE_HINT, useAiUnavailable } from '../context/serverInfo.js';
 import { useTemplatePreview } from '../hooks/useTemplatePreview.js';
 import { AGENT_SNIPPETS, DEFAULT_TEMPLATE, TEMPLATE_PRESETS } from './templatePresets.js';
 
@@ -31,6 +33,7 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
 }) => {
   const { testing, result, test } = useTemplatePreview(template, contextId);
   const append = (snippet: string) => onChange(`${template} ${snippet}`);
+  const aiUnavailable = useAiUnavailable();
   const hasAgentTag = /<agent>/i.test(template);
 
   return (
@@ -55,6 +58,7 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
         <span className={`${LABEL} flex items-center gap-1.5`}>
           <Sparkles className="w-3.5 h-3.5 text-amber-500" />
           <span>AI Poetry Agent Presets (Gemini Engine):</span>
+          <AiUnavailableBadge />
         </span>
         <div className="flex flex-wrap gap-2">
           {TEMPLATE_PRESETS.map((p) => (
@@ -120,11 +124,13 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
           <span className="text-xs font-medium text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
             {hasAgentTag && <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />}
             <span>Live Preview &amp; Agent Test</span>
+            <AiUnavailableBadge />
           </span>
           <button
             type="button"
             onClick={test}
-            disabled={testing}
+            disabled={testing || aiUnavailable}
+            title={aiUnavailable ? AI_UNAVAILABLE_HINT : undefined}
             className="px-3 py-1 text-xs font-semibold rounded-md bg-purple-600 hover:bg-purple-700 text-white transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-xs"
           >
             {testing ? (

@@ -8,3 +8,5 @@ firebase-applet-config.json
 firebase-blueprint.json
 metadata.json
 .claude
+test-results
+playwright-report

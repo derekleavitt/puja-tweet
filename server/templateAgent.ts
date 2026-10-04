@@ -29,6 +29,7 @@ import {
   truncateAtWordBoundary,
   weightedTweetLength,
 } from '../shared/tweetLength.js';
+import { errorMessage } from './errorMessage.js';
 
 let aiClient: GoogleGenAI | null = null;
 function getClient(): GoogleGenAI {
@@ -182,8 +183,11 @@ Remember: Output ONLY the exact tweet text (no quotes, no intro, under 240 chars
         text = truncateAtWordBoundary(text, AGENT_TARGET_LENGTH);
       }
       if (text) return text;
-    } catch (err: any) {
-      console.warn(`[TemplateAgent] Model ${model} encountered an issue:`, err.message || err);
+    } catch (err) {
+      console.warn(
+        `[TemplateAgent] Model ${model} encountered an issue:`,
+        errorMessage(err) || err,
+      );
       // continue to next model in loop
     }
   }

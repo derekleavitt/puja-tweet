@@ -4,6 +4,7 @@
  */
 
 import { useState, useCallback } from 'react';
+import { ServerInfo } from '../context/serverInfo.js';
 import { getStatus, getRateLimits, clearCooldown } from '../api/endpoints.js';
 import {
   BotSettings,
@@ -13,6 +14,7 @@ import {
   TweetContext,
   CooldownState,
   RateLimitTelemetry,
+  ContextNextPost,
 } from '../types.js';
 
 export function useBotStatus(onQueue: (queue: QueueSlot[]) => void) {
@@ -32,7 +34,8 @@ export function useBotStatus(onQueue: (queue: QueueSlot[]) => void) {
   const [contexts, setContexts] = useState<TweetContext[]>([]);
   const [activeContextId, setActiveContextId] = useState<string>('ctx_primary');
   const [nextPost, setNextPost] = useState<NextPostInfo | null>(null);
-  const [allNextPosts, setAllNextPosts] = useState<any[]>([]);
+  const [allNextPosts, setAllNextPosts] = useState<ContextNextPost[]>([]);
+  const [serverInfo, setServerInfo] = useState<ServerInfo>({ defaultTargetTweetId: '' });
   const [credentialsStatus, setCredentialsStatus] = useState<CredentialsStatus | null>(null);
   const [cooldownState, setCooldownState] = useState<CooldownState | null>(null);
   const [rateLimitTelemetry, setRateLimitTelemetry] = useState<RateLimitTelemetry | null>(null);
@@ -43,6 +46,10 @@ export function useBotStatus(onQueue: (queue: QueueSlot[]) => void) {
       const data = await getStatus();
       if (data) {
         setSettings(data.settings);
+        setServerInfo({
+          defaultTargetTweetId: data.defaultTargetTweetId ?? '',
+          geminiConfigured: data.geminiConfigured,
+        });
         if (data.contexts && data.contexts.length > 0) {
           setContexts(data.contexts);
         }
@@ -85,7 +92,7 @@ export function useBotStatus(onQueue: (queue: QueueSlot[]) => void) {
     try {
       const data = await clearCooldown();
       if (data) {
-        setCooldownState(data.cooldownState);
+        setCooldownState(data.cooldownState ?? null);
         await handleRefreshRateLimits();
       }
     } catch (e) {
@@ -101,6 +108,7 @@ export function useBotStatus(onQueue: (queue: QueueSlot[]) => void) {
     setActiveContextId,
     nextPost,
     allNextPosts,
+    serverInfo,
     credentialsStatus,
     setCredentialsStatus,
     cooldownState,

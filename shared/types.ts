@@ -47,6 +47,8 @@ export interface TweetContext {
   lastPostedTimestamp?: number;
   currentJitterMs?: number;
   lastPostedSlot?: string;
+  /** Armed fixed-time slot waiting out its jitter; persisted so a restart still fires it once. */
+  pendingFire?: PendingFire;
   consecutiveErrors?: number;
   /** Set when the circuit breaker disabled this campaign (cleared on resume). */
   autoPausedReason?: string;
@@ -187,4 +189,80 @@ export interface QueueSlot {
   previewText?: string;
   targetTweetId?: string;
   replyTargetMode?: 'original_post' | 'last_comment';
+}
+
+/** AI availability fields on `GET /api/status` (`geminiConfigured` is false when GEMINI_API_KEY is unset). */
+export interface AiStatus {
+  geminiConfigured?: boolean;
+}
+
+/** Per-campaign entry of `allNextPosts` on `GET /api/status`. */
+export type ContextNextPost = NextPostInfo & { enabled: boolean; targetTweetId: string };
+
+/** `GET /api/status` payload as consumed by the UI. */
+export interface StatusResponse extends AiStatus {
+  /** Server default target tweet (env TARGET_TWEET_ID); empty when unset. */
+  defaultTargetTweetId?: string;
+  settings: BotSettings;
+  activeContext?: TweetContext | null;
+  contexts?: TweetContext[];
+  nextPost: NextPostInfo | null;
+  allNextPosts?: ContextNextPost[];
+  credentialsStatus: CredentialsStatus;
+  cooldownState?: CooldownState;
+  rateLimitTelemetry?: RateLimitTelemetry;
+  queue?: QueueSlot[];
+}
+
+/** Outcome of one post attempt: `POST /api/post-now` and `/api/contexts/:id/trigger`. */
+export interface DropResponse {
+  success: boolean;
+  /** Set by the client when the request itself failed. */
+  error?: string;
+  result?: {
+    success?: boolean;
+    simulated?: boolean;
+    url?: string;
+    tweetId?: string;
+    error?: string;
+  };
+  log?: PostLog;
+}
+
+/** `POST /api/twitter/verify` payload. */
+export interface VerifyResult {
+  valid: boolean;
+  message?: string;
+}
+
+/** Common shape of mutation responses (`{ success, ...data }`); unlisted fields stay `unknown`. */
+export interface ApiResult {
+  success?: boolean;
+  error?: string;
+  queue?: QueueSlot[];
+  contexts?: TweetContext[];
+  context?: TweetContext;
+  settings?: BotSettings;
+  credentialsStatus?: CredentialsStatus;
+  cooldownState?: CooldownState;
+  telemetry?: RateLimitTelemetry;
+  log?: PostLog;
+  [field: string]: unknown;
+}
+
+/** `GET /api/health` payload (unauthenticated). */
+export interface HealthInfo {
+  ok: boolean;
+  version?: string;
+  /** Persistence backend the server runs on. */
+  store?: 'json' | 'memory' | 'firestore';
+  schedulerRunning?: boolean;
+}
+
+/** A fixed-time slot that was reached and is waiting (jitter / anti-burst) to fire. */
+export interface PendingFire {
+  slotKey: string;
+  slotType: 'morning' | 'evening';
+  matchedTime: string;
+  fireAt: number;
 }

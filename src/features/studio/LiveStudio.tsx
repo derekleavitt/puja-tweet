@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { ColorData, BotSettings, TweetContext } from '../../types.js';
+import { ColorData, BotSettings, DropResponse, TweetContext } from '../../types.js';
 import { TargetTweetEditor } from '../../components/TargetTweetEditor.js';
 import { substituteTemplate } from '../../../shared/template/substitute.js';
 import { formatTimeInZone } from '../../../shared/time.js';
@@ -26,10 +26,10 @@ interface LiveStudioProps {
     slotType?: 'morning' | 'evening' | 'manual',
     contextId?: string,
     opts?: { text?: string; slotId?: string },
-  ) => Promise<any>;
+  ) => Promise<DropResponse | undefined>;
   settings: BotSettings;
   isPosting: boolean;
-  lastPostedResult: any;
+  lastPostedResult: DropResponse | null;
   onUpdateTargetTweetId: (newId: string) => Promise<void>;
   contexts?: TweetContext[];
   activeContextId?: string;

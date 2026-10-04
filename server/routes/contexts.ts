@@ -6,6 +6,7 @@
 import { Router } from 'express';
 import type { AppDeps } from '../app.js';
 import { HttpError, toHttpError } from '../middleware/error.js';
+import { parseContextCreate } from '../services/contextSchema.js';
 
 export const createContextsRouter = ({ services, scheduler, drops }: AppDeps) => {
   const router = Router();
@@ -27,7 +28,7 @@ export const createContextsRouter = ({ services, scheduler, drops }: AppDeps) =>
 
   router.post('/contexts', (req, res, next) => {
     try {
-      const created = services.contexts.createContext(req.body);
+      const created = services.contexts.createContext(parseContextCreate(req.body));
       res.json({
         success: true,
         context: created,

@@ -8,6 +8,7 @@
 
 import crypto from 'crypto';
 import { getXTimeoutMs, isTimeoutError } from './timeouts.js';
+import { errorMessage } from './errorMessage.js';
 
 export interface TwitterCredentials {
   // OAuth 1.0a (Permanent)
@@ -64,7 +65,7 @@ export interface TweetResponse {
   error?: string;
   /** HTTP status of a failed X response (absent for network errors and timeouts). */
   httpStatus?: number;
-  rawResponse?: any;
+  rawResponse?: { status?: number; [key: string]: unknown };
   simulated?: boolean;
   engagementMode?: 'reply' | 'quote' | 'standalone';
   fallbackTriggered?: boolean;
@@ -197,7 +198,7 @@ export async function refreshOAuth2Token(
 export async function verifyTwitterCredentials(
   creds: TwitterCredentials,
   onTokensRefreshed?: TokensRefreshedCallback,
-): Promise<{ valid: boolean; user?: any; message: string }> {
+): Promise<{ valid: boolean; user?: Record<string, unknown>; message: string }> {
   // 1. Try OAuth 1.0a User Context (Permanent)
   if (creds.apiKey && creds.apiSecret && creds.accessToken && creds.accessTokenSecret) {
     const url = 'https://api.x.com/2/users/me';
@@ -236,10 +237,10 @@ export async function verifyTwitterCredentials(
           message: `OAuth 1.0a verification failed: ${errMsg}.`,
         };
       }
-    } catch (err: any) {
+    } catch (err) {
       return {
         valid: false,
-        message: `Network error connecting to X API: ${err.message}`,
+        message: `Network error connecting to X API: ${errorMessage(err)}`,
       };
     }
   }
@@ -279,8 +280,8 @@ export async function verifyTwitterCredentials(
         valid: false,
         message: `OAuth 2.0 verification: ${body?.detail || body?.title || `HTTP ${res.status}`}`,
       };
-    } catch (err: any) {
-      return { valid: false, message: err.message };
+    } catch (err) {
+      return { valid: false, message: errorMessage(err) };
     }
   }
 
@@ -335,7 +336,7 @@ export async function postColorTweet(
 
   const endpoint = 'https://api.x.com/2/tweets';
   const mode = options.engagementMode || (options.quoteTweetId ? 'quote' : 'reply');
-  const bodyPayload: Record<string, any> = {
+  const bodyPayload: Record<string, unknown> = {
     text: options.text,
   };
 
@@ -469,7 +470,7 @@ export async function postColorTweet(
       rawResponse: data,
       rateLimitHeaders: parseRateLimitHeaders(response.headers),
     };
-  } catch (err: any) {
+  } catch (err) {
     if (isTimeoutError(err)) {
       return {
         success: false,
@@ -479,7 +480,7 @@ export async function postColorTweet(
     }
     return {
       success: false,
-      error: err.message || 'Failed to communicate with X API endpoint',
+      error: errorMessage(err) || 'Failed to communicate with X API endpoint',
     };
   }
 }
