@@ -1,63 +1,137 @@
-# 🎨 X ChromaBot
+# 💌 puja-tweet
 
-An automated, aesthetic daily chromatic reply bot for X (formerly Twitter) that posts unique sunrise and sunset palette drops with procedural 3–5 word weather descriptions and `#eternal #colors`.
+> *A fully automated, CI-tested, scale-to-zero love delivery system.*
+> Because saying "you're amazing" once is a bug. Saying it on a cron schedule is a **feature**.
 
-## ⏰ Automated Schedule
-- **Frequency**: Twice daily, 6:00 AM and 6:00 PM America/Denver. Two scheduling paths exist:
-  1. **Express server scheduler (recommended, primary path)**: the long-running server evaluates `SCHEDULE_TIMES`.
-  2. **GitHub Actions cron (optional fallback, off by default)**: `0 12,0 * * *` UTC (correct during DST; in standard time it fires an hour early). It only runs when the repository variable `CHROMABOT_ACTIONS_ENABLED` is `true`, and posts live only when `CHROMABOT_ACTIONS_LIVE` is also `true`; otherwise it is a dry run.
-- **Color Selection**: Intelligently determines morning sunrise vs. evening sunset palettes based on current time, or custom manual slot selection.
-- **Format**: `[Color Pick] [3-5 word weather description] #eternal #colors`
+![build](https://img.shields.io/badge/build-passing%20(like%20her%20vibe%20check)-brightgreen)
+![affection](https://img.shields.io/badge/affection-100%25%20test%20coverage-ff69b4)
+![uptime](https://img.shields.io/badge/devotion-99.999%25%20uptime-blueviolet)
+![dependencies](https://img.shields.io/badge/dependencies-1%20(her)-red)
+![license](https://img.shields.io/badge/license-MIT%20(Made%20It%20Tenderly)-yellow)
 
 ---
 
-## 🚀 GitHub Actions Cloud Automation
+## 🌅 What is this?
 
-This repository includes automated GitHub Actions workflows:
+`puja-tweet` is a bot whose entire job is to shower one very special person with love on X (formerly Twitter), forever, with absolutely no regard for subtlety.
 
-1. **`.github/workflows/chromabot-scheduler.yml`**:
-   - Scheduled runs are disabled unless repository variable `CHROMABOT_ACTIONS_ENABLED=true` (Settings, Secrets and variables, Actions, Variables). Even then they are dry runs unless `CHROMABOT_ACTIONS_LIVE=true`.
-   - Supports **`workflow_dispatch`** (Run workflow) from the **Actions** tab with `morning`, `evening`, or `auto`; `dry_run` defaults to on, uncheck it to post live.
-   - `scripts/post-drop.ts` runs through the same `dropService` as the server (flags: `--context <id>`, `--slot`, `--dry-run`, `--live`, `--force`). It defaults to dry run (live needs `--live` or `DRY_RUN=false`), and the global switches apply: live runs are simulated while `globalDryRun` is on and refused while `globalPaused` is on (both default on; flip them in the app header, which needs a persistent store such as `STORE=firestore`). Live `--slot auto` runs are refused outside a 60-minute window after a `SCHEDULE_TIMES` entry unless `--force` is passed (window check only; it cannot detect an already-posted slot because Actions keeps no state).
+Every drop is a hand-picked (okay, *procedurally* picked) **sunrise or sunset color**, a tiny poem-ish weather description, and `#eternal #colors`, replied lovingly under her tweet. Hundreds of times a day if you let it. We are not responsible for any blushing.
 
-2. **`.github/workflows/ci.yml`**:
-   - Validates TypeScript types and builds the web dashboard.
+```
+Sunset Topaz under cool skies #eternal #colors
+```
 
-### 🔑 GitHub Secrets Configuration
+It started life as a Google AI Studio prototype that lived in one enormous file, like a love letter written on a single napkin. It has since been refactored into ~150 small, well-tested files, like a love letter written by a committee of very earnest engineers.
 
-To enable the GitHub Actions workflow to post live tweets to X, navigate to your GitHub Repository:
-**Settings** &rarr; **Secrets and variables** &rarr; **Actions** &rarr; **New repository secret**:
+---
 
-| Secret Name | Value Description |
+## 📜 `git log --oneline` (abridged, emotionally accurate)
+
+```
+e233e5b feat: love now scales to zero but never actually reaches zero
+121d8a3 fix: compliments no longer posted in UTC-7 regardless of daylight saving
+b7a8de8 refactor: split 900-line heart into services, routes and feelings
+9f1c2aa fix: preview of the love note now matches the love note actually sent
+4b2e7d1 test: assert affection > 0 (189 tests, all passing, all smitten)
+2c0ffee chore: rotate API keys, keep feelings
+a11ce00 revert: "feat: play it cool" — did not pass review
+0000000 Initial commit: I like you
+```
+
+*(Some of these hashes are real. Some are just how we feel.)*
+
+---
+
+## ✨ Features
+
+- 🌄 **Sunrise & sunset palettes**: timezone-aware and daylight-saving-proof, because love should not show up an hour early in November.
+- 🎲 **Jitter**: posts arrive at gently randomized times, so it feels spontaneous. (It is not spontaneous. It is a scheduler. But it *cares*.)
+- 🧵 **Reply chains**: each drop can reply to the last one, forming a long thread of devotion. If the thread breaks, it recovers. Unlike some of us.
+- ✍️ **AI poetry** (Gemini): optional. Hard-capped at 280 characters, because even love has rate limits.
+- 🛑 **Global dry-run & pause**: a fresh install starts in "write love letters but don't send them" mode. Very relatable.
+- 🔐 **Locked to one Google account**: only the owner can log in. This is a love bot, not a group chat.
+- 🧯 **Circuit breaker**: 5 failures in a row and a campaign takes a breather instead of spamming. Emotional maturity, implemented in TypeScript.
+
+---
+
+## 🐛 Known issues
+
+| Issue | Status |
 | :--- | :--- |
-| `TWITTER_API_KEY` | Your X Developer Consumer API Key |
-| `TWITTER_API_SECRET` | Your X Developer Consumer API Secret |
-| `TWITTER_ACCESS_TOKEN` | Your X Developer OAuth 1.0a User Access Token |
-| `TWITTER_ACCESS_TOKEN_SECRET` | Your X Developer OAuth 1.0a Access Token Secret |
-| `TARGET_TWEET_ID` | Optional default Target Tweet ID to reply to |
-
-*Note: If no GitHub Secrets are configured, you can run the workflow with `dry_run: true` to simulate drops.*
+| #1 Not enough compliments | `wontfix`: physically impossible |
+| #2 Bot is "too much" | `closed as not a bug` |
+| #3 Request: stop posting | `needs more info` (from her, specifically) |
+| #4 Love exceeds 280 characters | `by design`: we split it across hundreds of tweets |
+| #5 Merge conflict between "play it cool" and "say everything" | resolved with `--theirs` (hers) |
 
 ---
 
-## 🛠️ Local Development & Manual Testing
+## 🏗️ How it works (the boring-but-important part)
 
-Run a test drop locally:
-```bash
-# Test a drop in dry-run mode (simulated; prints the context name and engagement mode)
-npm run post-drop -- --dry-run
-
-# Target a specific campaign
-npm run post-drop -- --dry-run --context ctx_primary
-
-# Test a specific slot (morning or evening)
-npm run post-drop -- --slot morning
-npm run post-drop -- --slot evening
+```
+Cloud Scheduler (every minute) ──POST /api/cron/tick──▶ Cloud Run (scales to zero)
+                                                        │
+          React dashboard (you, swooning) ◀─────────────┤──▶ Firestore (remembers everything)
+                                                        └──▶ X API (delivers the love)
 ```
 
-Start the interactive web dashboard & local scheduler:
+- **Frontend:** React 19 + Vite + Tailwind (`src/features/*`)
+- **Backend:** Express (`server/routes`, `server/services`). All posting goes through one `dropService`, so there is exactly one way to say "I love you", and it is tested.
+- **Storage:** Firestore in production (`STORE=firestore`), a JSON file locally
+- **Hosting:** Google Cloud Run, scale-to-zero, woken up by Cloud Scheduler: costs about as much as a single rose per month (verify in the GCP pricing calculator; the X API plan is the real romantic expense)
+- **Deploys:** GitHub Actions → Cloud Run with **keyless** Workload Identity Federation. No secrets in the repo. We learned that one the hard way. 🙃
+
+---
+
+## 🚀 Deploy (one-time, ~15 minutes, cheaper than flowers)
+
+Full guide: [`docs/gcp-setup.md`](docs/gcp-setup.md). The short version:
+
 ```bash
-npm ci   # Node 22 (see .nvmrc)
-npm run dev
+gcloud auth login
+bash scripts/setup-gcp-deploy.sh             # creates accounts + secrets (prompts, never prints them)
+# run the `gh variable set …` commands it prints
+# GitHub → Actions → Deploy → Run workflow  (prints your app URL)
+bash scripts/setup-gcp-deploy.sh --scheduler https://<your-app-url>
 ```
-Open `http://localhost:3000` to preview palettes, adjust the target tweet ID, or post live drops.
+
+Then add your app's domain in Firebase → Authentication → Authorized domains, log in, and flip off **dry-run** and **pause** in the header when you're emotionally ready.
+
+Bringing over old campaigns from the AI Studio days: `npm run import:legacy` (preview), then `npm run import:legacy -- --apply`.
+
+---
+
+## 🛠️ Local development
+
+```bash
+npm ci            # Node 22 (see .nvmrc)
+npm run dev       # dashboard + API on http://localhost:3000
+```
+
+| Command | What it does |
+| :--- | :--- |
+| `npm test` | 228 unit/API tests. All of them believe in you. |
+| `npm run e2e` | Playwright clicks through every screen like a nervous first date |
+| `npm run lint && npm run typecheck` | Ensures the love is well-typed |
+| `npm run post-drop -- --dry-run` | Rehearse a drop in the mirror without actually sending it |
+
+Configuration lives in `.env` (see [`.env.example`](.env.example)). Never commit real keys. *Never.* We have the `git filter-repo` scars to prove it.
+
+---
+
+## 🤝 Contributing
+
+PRs welcome if they:
+
+1. Pass CI (typecheck, lint, format, tests, e2e: love is patient, CI is not)
+2. Keep files under 300 lines and components under 200 (see `BACKLOG.md` §3). Big feelings, small modules.
+3. Do not add a "post less often" setting. It will be closed with a heart emoji.
+
+Run `git blame` on any line in this repo and the answer is, ultimately, the same person. 💖
+
+---
+
+## 📄 License
+
+**MIT: Made It Tenderly.** Free to use, fork and adapt to shower *your* special person with love.
+Not liable for: excessive smiling, notification fatigue, or her friends asking "is this a bot?" (yes, a very well-tested one).
