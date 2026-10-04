@@ -65,6 +65,29 @@ export function hourInZone(date: Date, timeZone?: string | null): number {
   return zonedParts(date, timeZone).hour;
 }
 
+/** Format a loose "HH:mm" as "h:mm AM/PM" ("18:00" -> "6:00 PM"). Returns the input when invalid. */
+export function formatHHmm12h(hhmm: string): string {
+  const norm = normalizeHHmm(hhmm);
+  if (!norm) return hhmm;
+  const [h, m] = norm.split(':').map(Number);
+  const suffix = h < 12 ? 'AM' : 'PM';
+  return `${h % 12 === 0 ? 12 : h % 12}:${String(m).padStart(2, '0')} ${suffix}`;
+}
+
+/** Local time of `date` in `timeZone` as "h:mm AM/PM" (the {time_tag} format). */
+export function formatTimeInZone(date: Date, timeZone?: string | null): string {
+  return formatHHmm12h(zonedParts(date, timeZone).hhmm);
+}
+
+/** Short timezone abbreviation for `date` in `timeZone` ("MST"/"MDT" for America/Denver). */
+export function tzAbbreviation(date: Date, timeZone?: string | null): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: resolveTimezone(timeZone),
+    timeZoneName: 'short',
+  }).formatToParts(date);
+  return parts.find((p) => p.type === 'timeZoneName')?.value ?? '';
+}
+
 export function slotTypeForHour(hour: number): 'morning' | 'evening' {
   return hour < 12 ? 'morning' : 'evening';
 }

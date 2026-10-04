@@ -70,7 +70,7 @@ export const HistoryTable: React.FC<HistoryTableProps> = ({ logs, onClearHistory
             No post logs recorded yet
           </p>
           <p className="text-xs text-neutral-400 mt-1">
-            Trigger a test post in the Studio or wait for the next scheduled 6:00 AM / 6:00 PM drop.
+            Trigger a test post in the Studio or wait for the next scheduled drop.
           </p>
         </div>
       ) : (
@@ -94,6 +94,7 @@ export const HistoryTable: React.FC<HistoryTableProps> = ({ logs, onClearHistory
                     hour: '2-digit',
                     minute: '2-digit',
                     second: '2-digit',
+                    timeZoneName: 'short',
                   });
 
                   return (
@@ -114,9 +115,9 @@ export const HistoryTable: React.FC<HistoryTableProps> = ({ logs, onClearHistory
                           )}
                           <span>
                             {log.slotType === 'morning'
-                              ? '6:00 AM Drop'
+                              ? 'Morning Drop'
                               : log.slotType === 'evening'
-                                ? '6:00 PM Drop'
+                                ? 'Evening Drop'
                                 : 'Manual Drop'}
                           </span>
                         </div>

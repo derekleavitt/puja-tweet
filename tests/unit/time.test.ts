@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  formatHHmm12h,
+  formatTimeInZone,
+  tzAbbreviation,
   hourInZone,
   matchFixedTime,
   normalizeHHmm,
@@ -78,5 +81,23 @@ describe('matchFixedTime with fake timers', () => {
     expect(
       matchFixedTime(['06:00'], new Date('2026-03-08T12:01:00Z'), 'America/Denver'),
     ).toBeNull();
+  });
+});
+
+describe('time labels', () => {
+  it('formats HH:mm as h:mm AM/PM', () => {
+    expect(formatHHmm12h('06:00')).toBe('6:00 AM');
+    expect(formatHHmm12h('18:30')).toBe('6:30 PM');
+    expect(formatHHmm12h('00:05')).toBe('12:05 AM');
+    expect(formatHHmm12h('12:00')).toBe('12:00 PM');
+    expect(formatHHmm12h('nope')).toBe('nope');
+  });
+  it('formats the local time in a zone, DST-aware', () => {
+    expect(formatTimeInZone(new Date('2026-01-15T13:00:00Z'), 'America/Denver')).toBe('6:00 AM');
+    expect(formatTimeInZone(new Date('2026-07-15T13:00:00Z'), 'America/Denver')).toBe('7:00 AM');
+  });
+  it('gives a timezone abbreviation', () => {
+    expect(tzAbbreviation(new Date('2026-01-15T13:00:00Z'), 'America/Denver')).toBe('MST');
+    expect(tzAbbreviation(new Date('2026-07-15T13:00:00Z'), 'MST')).toBe('MDT');
   });
 });

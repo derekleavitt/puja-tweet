@@ -7,6 +7,7 @@ import type { AppDeps } from '../app.js';
 import { generateColor } from '../colorEngine.js';
 import { HttpError, toHttpError } from '../middleware/error.js';
 import { resolveTemplateText } from '../templateAgent.js';
+import { formatTimeInZone } from '../../shared/time.js';
 
 export const createDropsRouter = ({ services, drops }: AppDeps) => {
   const router = Router();
@@ -15,13 +16,11 @@ export const createDropsRouter = ({ services, drops }: AppDeps) => {
     contextId: string | undefined,
     template: string | undefined,
     color: any,
-    slotType: string | undefined,
   ) => {
     const context = contextId
       ? services.contexts.getContext(contextId) || services.contexts.getActiveContext()
       : services.contexts.getActiveContext();
-    const timeTag =
-      slotType === 'morning' ? '6:00 AM' : slotType === 'evening' ? '6:00 PM' : 'Drop';
+    const timeTag = formatTimeInZone(new Date(), context.schedule?.timezone);
     const templateToUse = template || context.template;
 
     const previewText = await resolveTemplateText(templateToUse, color, {
@@ -57,7 +56,7 @@ export const createDropsRouter = ({ services, drops }: AppDeps) => {
     try {
       const { template, color, slotType, contextId } = req.body;
       const targetColor = color || generateColor(slotType || 'random');
-      const { fields } = await buildPreview(contextId, template, targetColor, slotType);
+      const { fields } = await buildPreview(contextId, template, targetColor);
 
       res.json({
         success: true,

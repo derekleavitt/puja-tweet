@@ -6,8 +6,11 @@ import { DEFAULT_TWEET_TEMPLATE } from '../colorEngine.js';
 import type { BotSettings } from '../../shared/types.js';
 import type { BotState } from './Store.js';
 
+/** Single source of truth for the default target tweet ID (env TARGET_TWEET_ID; empty when unset). */
+export const getDefaultTargetTweetId = (): string => (process.env.TARGET_TWEET_ID || '').trim();
+
 export const createDefaultSettings = (): BotSettings => ({
-  targetTweetId: process.env.TARGET_TWEET_ID || '2091597504928428416',
+  targetTweetId: getDefaultTargetTweetId(),
   scheduleTimes: (process.env.SCHEDULE_TIMES || '06:00,18:00').split(',').map((s) => s.trim()),
   timezone: process.env.SCHEDULE_TIMEZONE || 'America/Denver',
   schedulerEnabled: true,

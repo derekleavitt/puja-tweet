@@ -2,6 +2,7 @@
  * The ONE implementation of {token} substitution for tweet templates.
  */
 import type { ColorData } from '../types.js';
+import { formatTimeInZone } from '../time.js';
 
 export const TEMPLATE_TOKENS = [
   '{color_pick}',
@@ -18,7 +19,7 @@ export const TEMPLATE_TOKENS = [
 ] as const;
 
 export interface SubstituteOptions {
-  /** Label for {time_tag}/{time_slot}; defaults to 6:00 AM / 6:00 PM by slot type. */
+  /** Label for {time_tag}/{time_slot}; defaults to the current time in the default timezone (h:mm A). */
   slotLabel?: string;
   /** Used for {weather_desc} when the color has none (evaluated lazily). */
   fallbackWeatherDesc?: string | (() => string);
@@ -29,7 +30,7 @@ export function substituteTemplate(
   color: ColorData,
   options: SubstituteOptions = {},
 ): string {
-  const timeTag = options.slotLabel || (color.slotType === 'morning' ? '6:00 AM' : '6:00 PM');
+  const timeTag = options.slotLabel || formatTimeInZone(new Date());
   const colorPick = color.colorPick || color.name;
   const fallback = options.fallbackWeatherDesc ?? 'atmospheric stillness';
   const weatherDesc = color.weatherDesc || (typeof fallback === 'function' ? fallback() : fallback);

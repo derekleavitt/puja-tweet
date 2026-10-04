@@ -10,8 +10,8 @@ import { TweetContext } from '../../types.js';
 export type StudioSlot = 'morning' | 'evening' | 'manual';
 
 const SLOTS = [
-  { slot: 'morning', label: '6:00 AM Dawn', Icon: Sun, iconClass: 'text-amber-500' },
-  { slot: 'evening', label: '6:00 PM Dusk', Icon: Moon, iconClass: 'text-indigo-400' },
+  { slot: 'morning', label: 'Morning Dawn', Icon: Sun, iconClass: 'text-amber-500' },
+  { slot: 'evening', label: 'Evening Dusk', Icon: Moon, iconClass: 'text-indigo-400' },
   { slot: 'manual', label: 'Random Pick', Icon: Shuffle, iconClass: 'text-rose-500' },
 ] as const;
 

@@ -68,7 +68,7 @@ export const ContextFormModal: React.FC<ContextFormModalProps> = ({ form }) => {
               required
               value={ctx.targetTweetId || ''}
               onChange={(e) => patch({ targetTweetId: e.target.value })}
-              placeholder="e.g. 2091597504928428416 or https://x.com/user/status/2091597504928428416"
+              placeholder="Tweet ID or https://x.com/user/status/..."
               className={`${FIELD_CLASS} font-mono`}
             />
             <p className="text-[11px] text-neutral-500">

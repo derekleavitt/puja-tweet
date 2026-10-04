@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 import { ColorData, BotSettings, TweetContext } from '../../types.js';
 import { TargetTweetEditor } from '../../components/TargetTweetEditor.js';
 import { substituteTemplate } from '../../../shared/template/substitute.js';
+import { formatTimeInZone } from '../../../shared/time.js';
 import {
   hasAgentTag as templateHasAgentTag,
   hasHistoryTag as templateHasHistoryTag,
@@ -39,14 +40,9 @@ interface LiveStudioProps {
 type LiveStudioReadyProps = Omit<LiveStudioProps, 'color'> & { color: ColorData };
 
 const SLOT_BADGE: Record<StudioSlot, string> = {
-  morning: '6:00 AM Slot',
-  evening: '6:00 PM Slot',
+  morning: 'Morning Slot',
+  evening: 'Evening Slot',
   manual: 'Custom Slot',
-};
-const SLOT_LABEL: Record<StudioSlot, string> = {
-  morning: '6:00 AM',
-  evening: '6:00 PM',
-  manual: 'Live Drop',
 };
 
 /**
@@ -96,7 +92,7 @@ const LiveStudioReady: React.FC<LiveStudioReadyProps> = ({
   const hasHistoryTag = templateHasHistoryTag(settings.template);
 
   const staticTweetText = substituteTemplate(settings.template, color, {
-    slotLabel: SLOT_LABEL[selectedSlot],
+    slotLabel: formatTimeInZone(new Date(), settings.timezone),
     fallbackWeatherDesc: 'warming crisp morning air',
   });
   const { aiPreviewText, isGeneratingAi, fetchAiPreview } = useAiPreview({

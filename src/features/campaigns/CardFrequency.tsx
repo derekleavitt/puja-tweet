@@ -6,6 +6,7 @@
 import React from 'react';
 import { Clock } from 'lucide-react';
 import { TweetContext } from '../../types.js';
+import { formatHHmm12h, tzAbbreviation } from '../../../shared/time.js';
 
 interface CardFrequencyProps {
   context: TweetContext;
@@ -42,7 +43,7 @@ export const CardFrequency: React.FC<CardFrequencyProps> = ({
         <span className="text-indigo-600 dark:text-indigo-400 font-mono text-[11px]">
           {ctx.schedule.mode === 'interval'
             ? `Every ${ctx.schedule.intervalMinutes}m`
-            : `${(ctx.schedule.scheduleTimes || ['06:00', '18:00']).join(', ')} MST`}
+            : `${(ctx.schedule.scheduleTimes || ['06:00', '18:00']).map(formatHHmm12h).join(', ')} ${tzAbbreviation(new Date(), ctx.schedule.timezone)}`}
         </span>
       </div>
 
@@ -87,9 +88,9 @@ export const CardFrequency: React.FC<CardFrequencyProps> = ({
           })
         }
         className={`${CHIP_BASE} ${ctx.schedule.mode === 'fixed_times' ? CHIP_ON : CHIP_OFF}`}
-        title="Post at 6:00 AM & 6:00 PM Mountain Standard Time (MST)"
+        title="Post at 6:00 AM & 6:00 PM in the campaign timezone"
       >
-        6am/6pm MST
+        6am/6pm
       </button>
     </div>
   </div>

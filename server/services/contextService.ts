@@ -5,6 +5,7 @@
 import { DEFAULT_TWEET_TEMPLATE } from '../colorEngine.js';
 import { HttpError } from '../middleware/error.js';
 import { extractTweetId } from '../../shared/tweetId.js';
+import { getDefaultTargetTweetId } from '../store/defaults.js';
 import type { TweetContext, TweetContextSchedule } from '../../shared/types.js';
 import {
   generateJitterForContext,
@@ -91,7 +92,7 @@ export class ContextService {
       name: data.name?.trim() || `Context #${s.contexts.length + 1}`,
       description: data.description?.trim() || '',
       targetTweetId: cleanTweetId(
-        data.targetTweetId || s.settings.targetTweetId || '2091597504928428416',
+        data.targetTweetId || s.settings.targetTweetId || getDefaultTargetTweetId(),
       ),
       replyTargetMode: data.replyTargetMode || 'original_post',
       engagementMode: data.engagementMode || 'reply',
