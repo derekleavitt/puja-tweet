@@ -1,5 +1,15 @@
 import React, { useState } from 'react';
-import { ExternalLink, CheckCircle2, AlertCircle, Key, RefreshCw, ShieldCheck, Check, Info, Sparkles, Shield } from 'lucide-react';
+import {
+  ExternalLink,
+  CheckCircle2,
+  AlertCircle,
+  Key,
+  RefreshCw,
+  ShieldCheck,
+  Check,
+  Sparkles,
+  Shield,
+} from 'lucide-react';
 import { CredentialsStatus } from '../types.js';
 
 interface TwitterSetupProps {
@@ -33,9 +43,11 @@ export const TwitterSetup: React.FC<TwitterSetupProps> = ({
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   React.useEffect(() => {
-    onVerifyCredentials().then((res) => {
-      if (res) setVerifyResult(res);
-    }).catch(() => {});
+    onVerifyCredentials()
+      .then((res) => {
+        if (res) setVerifyResult(res);
+      })
+      .catch(() => {});
   }, []);
 
   const handleSaveOAuth2 = async (e: React.FormEvent) => {
@@ -94,7 +106,8 @@ export const TwitterSetup: React.FC<TwitterSetupProps> = ({
             Twitter / X Developer Account Integration
           </h2>
           <p className="text-sm text-neutral-500 mt-0.5">
-            Manage your X API credentials securely. Credentials in your environment variables or encrypted secrets are automatically utilized.
+            Manage your X API credentials securely. Credentials in your environment variables or
+            encrypted secrets are automatically utilized.
           </p>
         </div>
 
@@ -112,9 +125,13 @@ export const TwitterSetup: React.FC<TwitterSetupProps> = ({
       <div className="p-4 rounded-xl bg-neutral-900 border border-neutral-800 text-xs text-neutral-300 flex items-start gap-3">
         <Shield className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
         <div className="leading-relaxed">
-          <p className="font-semibold text-neutral-100 mb-0.5">Open Source &amp; Public Repo Safe</p>
+          <p className="font-semibold text-neutral-100 mb-0.5">
+            Open Source &amp; Public Repo Safe
+          </p>
           <p className="text-neutral-400">
-            Your real API tokens are stored in server-side environment variables (`.env`) and GitHub Encrypted Secrets, which are ignored by Git. They are masked across the client and never rendered in public HTML.
+            Your real API tokens are stored in server-side environment variables (`.env`) and GitHub
+            Encrypted Secrets, which are ignored by Git. They are masked across the client and never
+            rendered in public HTML.
           </p>
         </div>
       </div>
@@ -217,14 +234,18 @@ export const TwitterSetup: React.FC<TwitterSetupProps> = ({
 
         {/* Tab 1: OAuth 1.0a (Permanent) */}
         {authTab === 'oauth1' && (
-          <form onSubmit={handleSaveOAuth1} className="border border-neutral-200 dark:border-neutral-800 rounded-xl p-6 bg-white dark:bg-neutral-900 space-y-5 shadow-xs">
+          <form
+            onSubmit={handleSaveOAuth1}
+            className="border border-neutral-200 dark:border-neutral-800 rounded-xl p-6 bg-white dark:bg-neutral-900 space-y-5 shadow-xs"
+          >
             <div className="flex items-center justify-between pb-3 border-b border-neutral-100 dark:border-neutral-800">
               <div>
                 <h3 className="font-bold text-neutral-900 dark:text-neutral-100 text-sm">
                   OAuth 1.0a Permanent Keys (Never Expire)
                 </h3>
                 <p className="text-xs text-neutral-500">
-                  Consumer Keys and permanent Access Token &amp; Secret from your "Keys and tokens" tab.
+                  Consumer Keys and permanent Access Token &amp; Secret from your "Keys and tokens"
+                  tab.
                 </p>
               </div>
 
@@ -257,7 +278,9 @@ export const TwitterSetup: React.FC<TwitterSetupProps> = ({
                   type="password"
                   value={apiSecret}
                   onChange={(e) => setApiSecret(e.target.value)}
-                  placeholder={credentialsStatus?.hasApiSecret ? '••••••••••••••••' : 'Enter API Secret...'}
+                  placeholder={
+                    credentialsStatus?.hasApiSecret ? '••••••••••••••••' : 'Enter API Secret...'
+                  }
                   className="w-full px-3 py-2 font-mono border border-neutral-300 dark:border-neutral-700 rounded-lg bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-neutral-400 dark:focus:ring-neutral-600"
                 />
               </div>
@@ -283,7 +306,11 @@ export const TwitterSetup: React.FC<TwitterSetupProps> = ({
                   type="password"
                   value={accessTokenSecret}
                   onChange={(e) => setAccessTokenSecret(e.target.value)}
-                  placeholder={credentialsStatus?.hasAccessTokenSecret ? '••••••••••••••••' : 'Enter Access Token Secret...'}
+                  placeholder={
+                    credentialsStatus?.hasAccessTokenSecret
+                      ? '••••••••••••••••'
+                      : 'Enter Access Token Secret...'
+                  }
                   className="w-full px-3 py-2 font-mono border border-neutral-300 dark:border-neutral-700 rounded-lg bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-neutral-400 dark:focus:ring-neutral-600"
                 />
               </div>
@@ -295,7 +322,11 @@ export const TwitterSetup: React.FC<TwitterSetupProps> = ({
                 disabled={isSaving}
                 className="px-5 py-2 text-xs font-semibold text-white bg-neutral-900 hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
-                {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Key className="w-3.5 h-3.5" />}
+                {isSaving ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Key className="w-3.5 h-3.5" />
+                )}
                 Update OAuth 1.0a Keys
               </button>
             </div>
@@ -304,7 +335,10 @@ export const TwitterSetup: React.FC<TwitterSetupProps> = ({
 
         {/* Tab 2: OAuth 2.0 */}
         {authTab === 'oauth2' && (
-          <form onSubmit={handleSaveOAuth2} className="border border-neutral-200 dark:border-neutral-800 rounded-xl p-6 bg-white dark:bg-neutral-900 space-y-5 shadow-xs">
+          <form
+            onSubmit={handleSaveOAuth2}
+            className="border border-neutral-200 dark:border-neutral-800 rounded-xl p-6 bg-white dark:bg-neutral-900 space-y-5 shadow-xs"
+          >
             <div className="flex items-center justify-between pb-3 border-b border-neutral-100 dark:border-neutral-800">
               <div>
                 <h3 className="font-bold text-neutral-900 dark:text-neutral-100 text-sm">
@@ -380,7 +414,11 @@ export const TwitterSetup: React.FC<TwitterSetupProps> = ({
                 disabled={isSaving}
                 className="px-5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-xs"
               >
-                {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                {isSaving ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Check className="w-3.5 h-3.5" />
+                )}
                 Save OAuth 2.0
               </button>
             </div>

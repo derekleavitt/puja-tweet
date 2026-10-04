@@ -1,5 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Check, ExternalLink, RefreshCw, Clock, Repeat, Globe, Key, ShieldCheck, Sparkles, UserCheck, Target, Link2, RotateCcw } from 'lucide-react';
+import {
+  Save,
+  Check,
+  ExternalLink,
+  RefreshCw,
+  Clock,
+  Repeat,
+  Globe,
+  Key,
+  Sparkles,
+  UserCheck,
+  Target,
+  Link2,
+  RotateCcw,
+} from 'lucide-react';
 import { BotSettings } from '../types.js';
 import { extractTweetId } from '../../shared/tweetId.js';
 import { TEMPLATE_TOKENS } from '../../shared/template/substitute.js';
@@ -39,9 +53,13 @@ const INTERVAL_PRESETS = [
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSettings }) => {
   const [targetTweetId, setTargetTweetId] = useState(settings.targetTweetId);
-  const [replyTargetMode, setReplyTargetMode] = useState<'original_post' | 'last_comment'>(settings.replyTargetMode || 'original_post');
+  const [replyTargetMode, setReplyTargetMode] = useState<'original_post' | 'last_comment'>(
+    settings.replyTargetMode || 'original_post',
+  );
   const [lastPostedTweetId, setLastPostedTweetId] = useState(settings.lastPostedTweetId);
-  const [intervalMode, setIntervalMode] = useState<'fixed_times' | 'interval'>(settings.intervalMode || 'fixed_times');
+  const [intervalMode, setIntervalMode] = useState<'fixed_times' | 'interval'>(
+    settings.intervalMode || 'fixed_times',
+  );
   const [intervalMinutes, setIntervalMinutes] = useState<number>(settings.intervalMinutes || 720);
   const [scheduleTimes, setScheduleTimes] = useState(settings.scheduleTimes.join(', '));
   const [timezone, setTimezone] = useState(settings.timezone);
@@ -49,7 +67,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
   const [schedulerEnabled, setSchedulerEnabled] = useState(settings.schedulerEnabled);
   const [dryRun, setDryRun] = useState(settings.dryRun);
   const [template, setTemplate] = useState(settings.template);
-  const [humanizeJitterEnabled, setHumanizeJitterEnabled] = useState<boolean>(settings.humanizeJitterEnabled ?? true);
+  const [humanizeJitterEnabled, setHumanizeJitterEnabled] = useState<boolean>(
+    settings.humanizeJitterEnabled ?? true,
+  );
   const [jitterPercentage, setJitterPercentage] = useState<number>(settings.jitterPercentage ?? 25);
   const [isSaving, setIsSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
@@ -74,7 +94,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
   };
 
   const hasAgentTag = /<agent>/i.test(template);
-  const hasHistoryTag = /<history>/i.test(template);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -120,7 +139,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
   }, []);
 
   const handleRotateSecret = async () => {
-    if (!window.confirm('Rotate the webhook secret? Existing cron jobs using the old URL will stop working.')) return;
+    if (
+      !window.confirm(
+        'Rotate the webhook secret? Existing cron jobs using the old URL will stop working.',
+      )
+    )
+      return;
     try {
       const r = await rotateWebhookSecret();
       setWebhookUrl(r.url);
@@ -137,7 +161,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
             Timing & Autonomous Reply Settings
           </h2>
           <p className="text-sm text-neutral-500 mt-0.5">
-            Configure how often ChromaBot drops colors: by interval (1m, 15m, 1h, 3h, 6h, 12h) or at fixed clock times.
+            Configure how often ChromaBot drops colors: by interval (1m, 15m, 1h, 3h, 6h, 12h) or at
+            fixed clock times.
           </p>
         </div>
 
@@ -166,7 +191,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
           </div>
 
           <p className="text-xs text-neutral-500">
-            Paste a numeric Tweet ID or a full post URL (e.g. <span className="font-mono">https://x.com/username/status/2091597504928428416</span>).
+            Paste a numeric Tweet ID or a full post URL (e.g.{' '}
+            <span className="font-mono">https://x.com/username/status/2091597504928428416</span>).
           </p>
 
           <input
@@ -210,7 +236,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
                   <span>Reply to Original Post</span>
                 </div>
                 <div className="text-[11px] text-neutral-500 dark:text-neutral-400 font-normal mt-1 leading-snug">
-                  All automated drops attach directly under root post (#{extractTweetId(targetTweetId) || targetTweetId || '...'}).
+                  All automated drops attach directly under root post (#
+                  {extractTweetId(targetTweetId) || targetTweetId || '...'}).
                 </div>
               </button>
 
@@ -228,7 +255,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
                   <span>Reply to Last Comment</span>
                 </div>
                 <div className="text-[11px] text-neutral-500 dark:text-neutral-400 font-normal mt-1 leading-snug">
-                  Each next drop replies to the previous comment made by us, forming an unbroken cascading thread.
+                  Each next drop replies to the previous comment made by us, forming an unbroken
+                  cascading thread.
                 </div>
               </button>
             </div>
@@ -240,11 +268,16 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
                   <div className="truncate text-purple-900 dark:text-purple-200 text-[11px]">
                     {lastPostedTweetId ? (
                       <span>
-                        Current chain anchor: <strong className="font-mono">#{lastPostedTweetId}</strong>
+                        Current chain anchor:{' '}
+                        <strong className="font-mono">#{lastPostedTweetId}</strong>
                       </span>
                     ) : (
                       <span>
-                        No prior comment recorded. First drop will reply to root post <strong className="font-mono">#{extractTweetId(targetTweetId) || targetTweetId}</strong> to begin the chain.
+                        No prior comment recorded. First drop will reply to root post{' '}
+                        <strong className="font-mono">
+                          #{extractTweetId(targetTweetId) || targetTweetId}
+                        </strong>{' '}
+                        to begin the chain.
                       </span>
                     )}
                   </div>
@@ -303,7 +336,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
           {intervalMode === 'interval' ? (
             <div className="space-y-4">
               <p className="text-xs text-neutral-500">
-                Choose how often ChromaBot automatically drops a new color reply. The internal server timer counts down and triggers a fresh post every time the interval elapses.
+                Choose how often ChromaBot automatically drops a new color reply. The internal
+                server timer counts down and triggers a fresh post every time the interval elapses.
               </p>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
@@ -321,8 +355,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
                       }`}
                     >
                       <div className="text-xs">{preset.label}</div>
-                      <div className={`text-[11px] mt-1 font-mono ${isSelected ? 'text-neutral-300 dark:text-neutral-600' : 'text-neutral-400'}`}>
-                        {preset.value < 60 ? `${preset.value} min` : `${preset.value / 60} hr${preset.value === 60 ? '' : 's'}`}
+                      <div
+                        className={`text-[11px] mt-1 font-mono ${isSelected ? 'text-neutral-300 dark:text-neutral-600' : 'text-neutral-400'}`}
+                      >
+                        {preset.value < 60
+                          ? `${preset.value} min`
+                          : `${preset.value / 60} hr${preset.value === 60 ? '' : 's'}`}
                       </div>
                     </button>
                   );
@@ -332,7 +370,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
               <div className="p-3 bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/40 rounded-lg text-xs text-blue-800 dark:text-blue-300 flex items-center gap-2">
                 <Check className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
                 <span>
-                  Active Repeat: <strong>Every {intervalMinutes < 60 ? `${intervalMinutes} minutes` : `${intervalMinutes / 60} hours`}</strong>. The server counts down continuously.
+                  Active Repeat:{' '}
+                  <strong>
+                    Every{' '}
+                    {intervalMinutes < 60
+                      ? `${intervalMinutes} minutes`
+                      : `${intervalMinutes / 60} hours`}
+                  </strong>
+                  . The server counts down continuously.
                 </span>
               </div>
             </div>
@@ -393,12 +438,16 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
               </label>
 
               <span className="text-[11px] font-mono font-medium px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300">
-                {humanizeJitterEnabled ? `Active (0 to +${jitterPercentage}%)` : 'Disabled (Clockwork)'}
+                {humanizeJitterEnabled
+                  ? `Active (0 to +${jitterPercentage}%)`
+                  : 'Disabled (Clockwork)'}
               </span>
             </div>
 
             <p className="text-xs text-neutral-500 leading-relaxed">
-              Adds a randomized human-like delay from 0 seconds up to {jitterPercentage}% of each repeat window. This breaks rigid mathematical robotic posting patterns on X and mimics genuine human intervals.
+              Adds a randomized human-like delay from 0 seconds up to {jitterPercentage}% of each
+              repeat window. This breaks rigid mathematical robotic posting patterns on X and mimics
+              genuine human intervals.
             </p>
 
             {humanizeJitterEnabled && (
@@ -432,10 +481,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
                     1m test: <strong>0 - {Math.round(60 * (jitterPercentage / 100))}s delay</strong>
                   </span>
                   <span>
-                    15m cycle: <strong>0 - {Math.round((15 * 60) * (jitterPercentage / 100) / 60)}m delay</strong>
+                    15m cycle:{' '}
+                    <strong>
+                      0 - {Math.round((15 * 60 * (jitterPercentage / 100)) / 60)}m delay
+                    </strong>
                   </span>
                   <span>
-                    1h cycle: <strong>0 - {Math.round(60 * (jitterPercentage / 100))}m delay</strong>
+                    1h cycle:{' '}
+                    <strong>0 - {Math.round(60 * (jitterPercentage / 100))}m delay</strong>
                   </span>
                 </div>
               </div>
@@ -456,15 +509,27 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
           </div>
 
           <p className="text-xs text-neutral-500 leading-relaxed">
-            Because this web app already has working X credentials, you can ping this URL from any free recurring cron tool (e.g.{' '}
-            <a href="https://cron-job.org" target="_blank" rel="noreferrer" className="text-blue-600 dark:text-blue-400 underline">
+            Because this web app already has working X credentials, you can ping this URL from any
+            free recurring cron tool (e.g.{' '}
+            <a
+              href="https://cron-job.org"
+              target="_blank"
+              rel="noreferrer"
+              className="text-blue-600 dark:text-blue-400 underline"
+            >
               cron-job.org
             </a>{' '}
             or{' '}
-            <a href="https://uptimerobot.com" target="_blank" rel="noreferrer" className="text-blue-600 dark:text-blue-400 underline">
+            <a
+              href="https://uptimerobot.com"
+              target="_blank"
+              rel="noreferrer"
+              className="text-blue-600 dark:text-blue-400 underline"
+            >
               UptimeRobot
             </a>
-            ) at your desired frequency. Each ping wakes the app and immediately publishes a live chromatic reply.
+            ) at your desired frequency. Each ping wakes the app and immediately publishes a live
+            chromatic reply.
           </p>
 
           <div className="space-y-1.5">
@@ -514,7 +579,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
                 Automated Background Scheduler
               </div>
               <p className="text-xs text-neutral-500">
-                When active, the server monitors interval or clock ticks and automatically fires replies.
+                When active, the server monitors interval or clock ticks and automatically fires
+                replies.
               </p>
             </div>
           </label>
@@ -543,9 +609,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
             <label className="text-xs font-bold uppercase tracking-wider text-neutral-700 dark:text-neutral-300">
               Tweet Text Template (280 char limit)
             </label>
-            <span className="text-xs text-neutral-400 font-mono">
-              Available variables below
-            </span>
+            <span className="text-xs text-neutral-400 font-mono">Available variables below</span>
           </div>
 
           <textarea
@@ -567,21 +631,33 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
-                  onClick={() => setTemplate('<history><agent>consider whats already and been said and respond with just the body of a tweet that is unique pablo neruda like expression that plays on the series thats been written thus far</agent></history>')}
+                  onClick={() =>
+                    setTemplate(
+                      '<history><agent>consider whats already and been said and respond with just the body of a tweet that is unique pablo neruda like expression that plays on the series thats been written thus far</agent></history>',
+                    )
+                  }
                   className="px-2.5 py-1 text-xs font-medium rounded-lg bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-950/70 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-800 transition-colors cursor-pointer text-left"
                 >
                   📜 Neruda Arc with History
                 </button>
                 <button
                   type="button"
-                  onClick={() => setTemplate('<agent>respond with just the body of a tweet that is unique pablo neruda like expression</agent>')}
+                  onClick={() =>
+                    setTemplate(
+                      '<agent>respond with just the body of a tweet that is unique pablo neruda like expression</agent>',
+                    )
+                  }
                   className="px-2.5 py-1 text-xs font-medium rounded-lg bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-950/70 text-purple-800 dark:text-purple-200 border border-purple-300 dark:border-purple-800 transition-colors cursor-pointer text-left"
                 >
                   ✍️ Neruda Solo Poem
                 </button>
                 <button
                   type="button"
-                  onClick={() => setTemplate('🎨 {color_pick} | <history><agent>Write a 2-line visceral Neruda-style poem connecting this new hue to previous drops</agent></history> #eternal #colors')}
+                  onClick={() =>
+                    setTemplate(
+                      '🎨 {color_pick} | <history><agent>Write a 2-line visceral Neruda-style poem connecting this new hue to previous drops</agent></history> #eternal #colors',
+                    )
+                  }
                   className="px-2.5 py-1 text-xs font-medium rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-950/70 text-indigo-800 dark:text-indigo-200 border border-indigo-300 dark:border-indigo-800 transition-colors cursor-pointer text-left"
                 >
                   ✨ Swatch + History Arc
@@ -591,18 +667,26 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
 
             {/* AI Agent Tokens */}
             <div className="space-y-1">
-              <span className="text-[11px] font-semibold text-neutral-500">Insert AI Agent Expressions:</span>
+              <span className="text-[11px] font-semibold text-neutral-500">
+                Insert AI Agent Expressions:
+              </span>
               <div className="flex flex-wrap gap-1.5">
                 <button
                   type="button"
-                  onClick={() => insertToken('<agent>Write a poetic expression for {color_pick}</agent>')}
+                  onClick={() =>
+                    insertToken('<agent>Write a poetic expression for {color_pick}</agent>')
+                  }
                   className="px-2 py-0.5 text-xs font-mono rounded bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/60 dark:hover:bg-purple-900 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-800 transition-colors cursor-pointer"
                 >
                   + &lt;agent&gt;...&lt;/agent&gt;
                 </button>
                 <button
                   type="button"
-                  onClick={() => insertToken('<history><agent>Consider prior tweets and write a poem for {color_pick}</agent></history>')}
+                  onClick={() =>
+                    insertToken(
+                      '<history><agent>Consider prior tweets and write a poem for {color_pick}</agent></history>',
+                    )
+                  }
                   className="px-2 py-0.5 text-xs font-mono rounded bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 dark:hover:bg-amber-900 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800 transition-colors cursor-pointer"
                 >
                   + &lt;history&gt;&lt;agent&gt;...&lt;/agent&gt;&lt;/history&gt;
@@ -613,7 +697,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
             {/* Standard Variable Tokens */}
             <div className="space-y-1 pt-1">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-neutral-500">Insert Variable Token:</span>
+                <span className="text-[11px] font-semibold text-neutral-500">
+                  Insert Variable Token:
+                </span>
                 <button
                   type="button"
                   onClick={() => setTemplate('{color_pick} {weather_desc} #eternal #colors')}
@@ -688,7 +774,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
             disabled={isSaving}
             className="px-5 py-2 text-sm font-semibold text-white bg-neutral-900 hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200 rounded-lg transition-colors flex items-center gap-2 cursor-pointer shadow-xs disabled:opacity-50"
           >
-            {isSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {isSaving ? (
+              <RefreshCw className="w-4 h-4 animate-spin" />
+            ) : (
+              <Save className="w-4 h-4" />
+            )}
             Save Settings
           </button>
         </div>

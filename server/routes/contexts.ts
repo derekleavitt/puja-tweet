@@ -10,14 +10,14 @@ import { HttpError, toHttpError } from '../middleware/error.js';
 export const createContextsRouter = ({ storage, scheduler }: AppDeps) => {
   const router = Router();
 
-  router.param('id', (req, res, next, id) => {
+  router.param('id', (_req, _res, next, id) => {
     if (!storage.getContext(id)) {
       return next(new HttpError(404, `Context ${id} not found`));
     }
     next();
   });
 
-  router.get('/contexts', (req, res) => {
+  router.get('/contexts', (_req, res) => {
     res.json({
       contexts: storage.getContexts(),
       activeContextId: storage.getActiveContext().id,

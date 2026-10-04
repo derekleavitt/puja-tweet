@@ -1,6 +1,12 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, onAuthStateChanged } from 'firebase/auth';
-import { auth, isUserAuthorized, loginWithGoogle, logoutUser, AUTHORIZED_EMAIL } from '../lib/firebase.js';
+import {
+  auth,
+  isUserAuthorized,
+  loginWithGoogle,
+  logoutUser,
+  AUTHORIZED_EMAIL,
+} from '../lib/firebase.js';
 
 interface AuthContextType {
   user: User | null;

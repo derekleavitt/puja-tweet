@@ -43,12 +43,18 @@ export function useSettings({ settings, setSettings, setQueue, refresh }: UseSet
   const handleToggleDryRun = () => toggleSetting({ dryRun: !settings.dryRun }, 'dry run');
 
   // Toggle scheduler active/paused
-  const handleToggleScheduler = () => toggleSetting({ schedulerEnabled: !settings.schedulerEnabled }, 'scheduler');
+  const handleToggleScheduler = () =>
+    toggleSetting({ schedulerEnabled: !settings.schedulerEnabled }, 'scheduler');
 
   // Update Target Tweet ID
   const handleUpdateTargetTweetId = async (newId: string) => {
     await handleSaveSettings({ targetTweetId: newId });
   };
 
-  return { handleSaveSettings, handleToggleDryRun, handleToggleScheduler, handleUpdateTargetTweetId };
+  return {
+    handleSaveSettings,
+    handleToggleDryRun,
+    handleToggleScheduler,
+    handleUpdateTargetTweetId,
+  };
 }

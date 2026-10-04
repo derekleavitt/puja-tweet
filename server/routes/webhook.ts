@@ -29,11 +29,14 @@ export const createWebhookRouter = ({ storage, scheduler }: AppDeps) => {
       }
 
       // Live posting is only honoured on POST; GET pings can never post live.
-      const forceLive = req.method === 'POST' && (req.query.forceLive === 'true' || req.body?.forceLive === true);
+      const forceLive =
+        req.method === 'POST' && (req.query.forceLive === 'true' || req.body?.forceLive === true);
       const slotType = (req.query.slot as any) || req.body?.slot || undefined;
       const contextId = (req.query.contextId as string) || req.body?.contextId || undefined;
 
-      console.log(`[Webhook Trigger] Received autonomous ping! Executing drop... (context: ${contextId || 'active'})`);
+      console.log(
+        `[Webhook Trigger] Received autonomous ping! Executing drop... (context: ${contextId || 'active'})`,
+      );
       const result = await scheduler.executeDrop({
         contextId,
         slotType,
@@ -60,7 +63,10 @@ export const createWebhookRouter = ({ storage, scheduler }: AppDeps) => {
 
   router.post('/settings/webhook-secret/rotate', (req, res) => {
     if (process.env.WEBHOOK_SECRET) {
-      return res.status(409).json({ success: false, error: 'Secret is set via WEBHOOK_SECRET env var; change it there.' });
+      return res.status(409).json({
+        success: false,
+        error: 'Secret is set via WEBHOOK_SECRET env var; change it there.',
+      });
     }
     storage.rotateWebhookSecret();
     res.json({ success: true, url: buildUrl(req) });

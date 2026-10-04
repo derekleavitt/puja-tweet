@@ -16,7 +16,9 @@ export const Footer: React.FC<FooterProps> = ({ activeName, targetTweetId }) => 
         <div className="flex items-center gap-2">
           <span className="font-semibold text-neutral-700 dark:text-neutral-300">X ChromaBot</span>
           <span>·</span>
-          <span>Active: {activeName} (#{targetTweetId})</span>
+          <span>
+            Active: {activeName} (#{targetTweetId})
+          </span>
         </div>
         <div className="flex items-center gap-4 text-neutral-400 font-mono text-[11px]">
           <span>Cloud State &amp; Google Auth Active</span>

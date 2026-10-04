@@ -106,7 +106,12 @@ export interface RateLimitTelemetry {
   postsLast24Hours: number;
   estimatedDailyCap: number; // 17 (Free), 100 (Basic), 10000 (Pay-Per-Use)
   lastUpdatedIso: string;
-  tierDetected: 'Free (Legacy)' | 'Basic ($200/mo)' | 'Pay-Per-Use ($0.015/tweet)' | 'Pro ($5k/mo)' | 'Enterprise';
+  tierDetected:
+    | 'Free (Legacy)'
+    | 'Basic ($200/mo)'
+    | 'Pay-Per-Use ($0.015/tweet)'
+    | 'Pro ($5k/mo)'
+    | 'Enterprise';
   headersCaptured: boolean;
   activeCooldown?: CooldownState;
 }

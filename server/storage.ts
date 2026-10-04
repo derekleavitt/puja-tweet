@@ -34,12 +34,14 @@ export type {
   RateLimitTelemetry,
 } from '../shared/types.js';
 
-const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.resolve(process.cwd(), 'data');
+const DATA_DIR = process.env.DATA_DIR
+  ? path.resolve(process.env.DATA_DIR)
+  : path.resolve(process.cwd(), 'data');
 const STORE_FILE = path.join(DATA_DIR, 'bot-store.json');
 
 const DEFAULT_SETTINGS: BotSettings = {
   targetTweetId: process.env.TARGET_TWEET_ID || '2091597504928428416',
-  scheduleTimes: (process.env.SCHEDULE_TIMES || '06:00,18:00').split(',').map(s => s.trim()),
+  scheduleTimes: (process.env.SCHEDULE_TIMES || '06:00,18:00').split(',').map((s) => s.trim()),
   timezone: process.env.SCHEDULE_TIMEZONE || 'America/Denver',
   schedulerEnabled: true,
   dryRun: false,
@@ -83,7 +85,9 @@ class StorageService {
     if (process.env.WEBHOOK_SECRET || this.settings.webhookSecret) return;
     this.settings.webhookSecret = crypto.randomBytes(32).toString('hex');
     this.save();
-    console.log('[Storage] Generated a new webhook secret (stored in the data file; fetch it via GET /api/webhook/url).');
+    console.log(
+      '[Storage] Generated a new webhook secret (stored in the data file; fetch it via GET /api/webhook/url).',
+    );
   }
 
   public getWebhookSecret(): string {
@@ -101,7 +105,7 @@ class StorageService {
     if (!fs.existsSync(DATA_DIR)) {
       try {
         fs.mkdirSync(DATA_DIR, { recursive: true });
-      } catch (e) {
+      } catch {
         // ignore
       }
     }
@@ -134,16 +138,16 @@ class StorageService {
         updatedAt: new Date().toISOString(),
         stats: {
           totalPosts: this.logs.length,
-          successfulPosts: this.logs.filter(l => l.status === 'success').length,
-          simulatedPosts: this.logs.filter(l => l.status === 'simulated').length,
-          failedPosts: this.logs.filter(l => l.status === 'error').length,
+          successfulPosts: this.logs.filter((l) => l.status === 'success').length,
+          simulatedPosts: this.logs.filter((l) => l.status === 'simulated').length,
+          failedPosts: this.logs.filter((l) => l.status === 'error').length,
         },
       };
       this.contexts.push(primary);
       this.activeContextId = primary.id;
       this.save();
     } else {
-      if (!this.contexts.some(c => c.id === this.activeContextId)) {
+      if (!this.contexts.some((c) => c.id === this.activeContextId)) {
         this.activeContextId = this.contexts[0].id;
       }
       // Sanitize contexts to ensure no cross-campaign or quote-tweet chain pollution
@@ -168,13 +172,16 @@ class StorageService {
 
     const quoteTweetIds = new Set(
       this.logs
-        .filter(l => l.engagementMode === 'quote' || l.engagementMode === 'standalone' || !!l.quoteTweetId)
-        .map(l => l.tweetId)
-        .filter(Boolean)
+        .filter(
+          (l) =>
+            l.engagementMode === 'quote' || l.engagementMode === 'standalone' || !!l.quoteTweetId,
+        )
+        .map((l) => l.tweetId)
+        .filter(Boolean),
     );
 
     if (ctx.lastPostedTweetId) {
-      const matchingLog = this.logs.find(l => l.tweetId === ctx.lastPostedTweetId);
+      const matchingLog = this.logs.find((l) => l.tweetId === ctx.lastPostedTweetId);
       const isPolluted =
         !/^\d+$/.test(ctx.lastPostedTweetId) ||
         quoteTweetIds.has(ctx.lastPostedTweetId) ||
@@ -187,7 +194,7 @@ class StorageService {
 
       if (isPolluted) {
         const validReplyLogs = this.logs.filter(
-          l =>
+          (l) =>
             l.contextId === ctx.id &&
             l.targetTweetId === ctx.targetTweetId &&
             l.status === 'success' &&
@@ -196,7 +203,7 @@ class StorageService {
             !l.quoteTweetId &&
             l.tweetId &&
             /^\d+$/.test(l.tweetId) &&
-            (!l.replyToTweetId || !quoteTweetIds.has(l.replyToTweetId))
+            (!l.replyToTweetId || !quoteTweetIds.has(l.replyToTweetId)),
         );
         const latestValid = validReplyLogs[validReplyLogs.length - 1];
         ctx.lastPostedTweetId = latestValid?.tweetId || undefined;
@@ -344,7 +351,10 @@ class StorageService {
     // Calculate 24-hour live post volume
     const oneDayAgo = now - 24 * 60 * 60 * 1000;
     const postsLast24Hours = this.logs.filter(
-      l => l.status === 'success' && !l.tweetId?.startsWith('sim_') && new Date(l.timestamp).getTime() >= oneDayAgo
+      (l) =>
+        l.status === 'success' &&
+        !l.tweetId?.startsWith('sim_') &&
+        new Date(l.timestamp).getTime() >= oneDayAgo,
     ).length;
 
     const headers = this.lastCapturedRateLimitHeaders;
@@ -355,7 +365,12 @@ class StorageService {
     const resetDateIso = new Date(resetEpochSeconds * 1000).toISOString();
 
     // Identify account tier based on response headers
-    let tierDetected: 'Free (Legacy)' | 'Basic ($200/mo)' | 'Pay-Per-Use ($0.015/tweet)' | 'Pro ($5k/mo)' | 'Enterprise' = 'Pay-Per-Use ($0.015/tweet)';
+    let tierDetected:
+      | 'Free (Legacy)'
+      | 'Basic ($200/mo)'
+      | 'Pay-Per-Use ($0.015/tweet)'
+      | 'Pro ($5k/mo)'
+      | 'Enterprise' = 'Pay-Per-Use ($0.015/tweet)';
     let estimatedDailyCap = 10000;
 
     if (limit <= 17 || headers?.appDailyLimit === 17) {
@@ -371,9 +386,16 @@ class StorageService {
 
     // Determine status
     let status: 'optimal' | 'warning' | 'throttled' = 'optimal';
-    if (cooldown.isThrottled || remaining === 0 || (estimatedDailyCap <= 100 && postsLast24Hours >= estimatedDailyCap)) {
+    if (
+      cooldown.isThrottled ||
+      remaining === 0 ||
+      (estimatedDailyCap <= 100 && postsLast24Hours >= estimatedDailyCap)
+    ) {
       status = 'throttled';
-    } else if (remaining < 5 || (estimatedDailyCap <= 100 && postsLast24Hours >= estimatedDailyCap * 0.8)) {
+    } else if (
+      remaining < 5 ||
+      (estimatedDailyCap <= 100 && postsLast24Hours >= estimatedDailyCap * 0.8)
+    ) {
       status = 'warning';
     }
 
@@ -386,7 +408,9 @@ class StorageService {
       status,
       postsLast24Hours,
       estimatedDailyCap,
-      lastUpdatedIso: this.lastRateLimitCaptureTimestamp ? new Date(this.lastRateLimitCaptureTimestamp).toISOString() : new Date().toISOString(),
+      lastUpdatedIso: this.lastRateLimitCaptureTimestamp
+        ? new Date(this.lastRateLimitCaptureTimestamp).toISOString()
+        : new Date().toISOString(),
       tierDetected,
       headersCaptured: !!this.lastCapturedRateLimitHeaders,
       activeCooldown: cooldown.isThrottled ? cooldown : undefined,
@@ -400,17 +424,17 @@ class StorageService {
   }
 
   public getContext(id: string): TweetContext | undefined {
-    return this.contexts.find(c => c.id === id);
+    return this.contexts.find((c) => c.id === id);
   }
 
   public getActiveContext(): TweetContext {
-    const found = this.contexts.find(c => c.id === this.activeContextId);
+    const found = this.contexts.find((c) => c.id === this.activeContextId);
     if (found) return found;
     return this.contexts[0];
   }
 
   public setActiveContextId(id: string): TweetContext {
-    const found = this.contexts.find(c => c.id === id);
+    const found = this.contexts.find((c) => c.id === id);
     if (found) {
       this.activeContextId = id;
       this.settings.activeContextId = id;
@@ -424,8 +448,10 @@ class StorageService {
 
   public createContext(data: Partial<TweetContext>): TweetContext {
     const id = data.id || `ctx_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const targetTweetId = this.cleanTweetId(data.targetTweetId || this.settings.targetTweetId || '2091597504928428416');
-    
+    const targetTweetId = this.cleanTweetId(
+      data.targetTweetId || this.settings.targetTweetId || '2091597504928428416',
+    );
+
     const newContext: TweetContext = {
       id,
       name: data.name?.trim() || `Context #${this.contexts.length + 1}`,
@@ -471,7 +497,7 @@ class StorageService {
   }
 
   public updateContext(id: string, updates: Partial<TweetContext>): TweetContext {
-    const idx = this.contexts.findIndex(c => c.id === id);
+    const idx = this.contexts.findIndex((c) => c.id === id);
     if (idx === -1) {
       // Upsert if context from cloud sync does not exist locally yet
       return this.createContext({ ...updates, id });
@@ -491,20 +517,27 @@ class StorageService {
     const scheduleChanged =
       (updates.schedule?.intervalMinutes !== undefined &&
         updates.schedule.intervalMinutes !== current.schedule.intervalMinutes) ||
-      (updates.schedule?.mode !== undefined &&
-        updates.schedule.mode !== current.schedule.mode);
+      (updates.schedule?.mode !== undefined && updates.schedule.mode !== current.schedule.mode);
 
     const updated: TweetContext = {
       ...current,
       ...updates,
       id: current.id, // Never allow id to be overwritten
       targetTweetId,
-      replyTargetMode: updates.replyTargetMode !== undefined ? updates.replyTargetMode : (current.replyTargetMode || 'original_post'),
-      engagementMode: updates.engagementMode !== undefined ? updates.engagementMode : (current.engagementMode || 'reply'),
+      replyTargetMode:
+        updates.replyTargetMode !== undefined
+          ? updates.replyTargetMode
+          : current.replyTargetMode || 'original_post',
+      engagementMode:
+        updates.engagementMode !== undefined
+          ? updates.engagementMode
+          : current.engagementMode || 'reply',
       autoFallbackToQuote: false,
       lastPostedTweetId: targetChanged
-        ? (updates.lastPostedTweetId || undefined)
-        : ('lastPostedTweetId' in updates ? (updates.lastPostedTweetId || undefined) : current.lastPostedTweetId),
+        ? updates.lastPostedTweetId || undefined
+        : 'lastPostedTweetId' in updates
+          ? updates.lastPostedTweetId || undefined
+          : current.lastPostedTweetId,
       schedule: mergedSchedule,
       updatedAt: new Date().toISOString(),
     };
@@ -532,11 +565,11 @@ class StorageService {
     if (this.contexts.length <= 1) {
       throw new Error('Cannot delete the only tweet context. At least one context must remain.');
     }
-    const idx = this.contexts.findIndex(c => c.id === id);
+    const idx = this.contexts.findIndex((c) => c.id === id);
     if (idx === -1) return false;
 
     this.contexts.splice(idx, 1);
-    this.queue = this.queue.filter(q => q.contextId !== id);
+    this.queue = this.queue.filter((q) => q.contextId !== id);
     if (this.activeContextId === id) {
       this.activeContextId = this.contexts[0].id;
       this.syncActiveContextToSettings(this.contexts[0]);
@@ -603,7 +636,7 @@ class StorageService {
       return undefined;
     }
 
-    const matchingLog = this.logs.find(l => l.tweetId === candidateId);
+    const matchingLog = this.logs.find((l) => l.tweetId === candidateId);
     if (matchingLog) {
       if (
         matchingLog.engagementMode === 'quote' ||
@@ -657,9 +690,12 @@ class StorageService {
       return 0;
     }
     const intervalMinutes = context.schedule.intervalMinutes || 60;
-    const windowMs = context.schedule.mode === 'interval'
-      ? intervalMinutes * 60 * 1000
-      : (context.schedule.scheduleTimes.length > 1 ? (24 / context.schedule.scheduleTimes.length) * 3600 * 1000 : 12 * 3600 * 1000);
+    const windowMs =
+      context.schedule.mode === 'interval'
+        ? intervalMinutes * 60 * 1000
+        : context.schedule.scheduleTimes.length > 1
+          ? (24 / context.schedule.scheduleTimes.length) * 3600 * 1000
+          : 12 * 3600 * 1000;
 
     const maxPercent = (context.schedule.jitterPercentage ?? 25) / 100;
     const maxJitterMs = Math.floor(windowMs * maxPercent);
@@ -672,7 +708,7 @@ class StorageService {
     contextId: string,
     status: 'success' | 'simulated' | 'error',
     postedTweetId?: string,
-    engagementMode: 'reply' | 'quote' | 'standalone' = 'reply'
+    engagementMode: 'reply' | 'quote' | 'standalone' = 'reply',
   ) {
     const context = this.getContext(contextId);
     if (!context) return;
@@ -701,7 +737,12 @@ class StorageService {
     }
 
     // Only update lastPostedTweetId if this was a genuine in-thread reply
-    if (postedTweetId && status === 'success' && engagementMode === 'reply' && /^\d+$/.test(postedTweetId)) {
+    if (
+      postedTweetId &&
+      status === 'success' &&
+      engagementMode === 'reply' &&
+      /^\d+$/.test(postedTweetId)
+    ) {
       context.lastPostedTweetId = postedTweetId;
       if (this.activeContextId === contextId) {
         this.settings.lastPostedTweetId = postedTweetId;
@@ -766,20 +807,26 @@ class StorageService {
     if (newSettings.intervalMinutes) scheduleUpdates.intervalMinutes = newSettings.intervalMinutes;
     if (newSettings.scheduleTimes) scheduleUpdates.scheduleTimes = newSettings.scheduleTimes;
     if (newSettings.timezone) scheduleUpdates.timezone = newSettings.timezone;
-    if (newSettings.humanizeJitterEnabled !== undefined) scheduleUpdates.humanizeJitterEnabled = newSettings.humanizeJitterEnabled;
-    if (newSettings.jitterPercentage !== undefined) scheduleUpdates.jitterPercentage = newSettings.jitterPercentage;
+    if (newSettings.humanizeJitterEnabled !== undefined)
+      scheduleUpdates.humanizeJitterEnabled = newSettings.humanizeJitterEnabled;
+    if (newSettings.jitterPercentage !== undefined)
+      scheduleUpdates.jitterPercentage = newSettings.jitterPercentage;
 
     const contextUpdates: Partial<TweetContext> = {};
     if (newSettings.targetTweetId) contextUpdates.targetTweetId = newSettings.targetTweetId;
     if (newSettings.replyTargetMode) contextUpdates.replyTargetMode = newSettings.replyTargetMode;
     if (newSettings.engagementMode) contextUpdates.engagementMode = newSettings.engagementMode;
-    if (newSettings.autoFallbackToQuote !== undefined) contextUpdates.autoFallbackToQuote = newSettings.autoFallbackToQuote;
-    if (newSettings.lastPostedTweetId !== undefined) contextUpdates.lastPostedTweetId = newSettings.lastPostedTweetId;
-    if (newSettings.schedulerEnabled !== undefined) contextUpdates.enabled = newSettings.schedulerEnabled;
+    if (newSettings.autoFallbackToQuote !== undefined)
+      contextUpdates.autoFallbackToQuote = newSettings.autoFallbackToQuote;
+    if (newSettings.lastPostedTweetId !== undefined)
+      contextUpdates.lastPostedTweetId = newSettings.lastPostedTweetId;
+    if (newSettings.schedulerEnabled !== undefined)
+      contextUpdates.enabled = newSettings.schedulerEnabled;
     if (newSettings.dryRun !== undefined) contextUpdates.dryRun = newSettings.dryRun;
     if (newSettings.template) contextUpdates.template = newSettings.template;
     if (newSettings.themePreference) contextUpdates.themePreference = newSettings.themePreference;
-    if (Object.keys(scheduleUpdates).length > 0) contextUpdates.schedule = { ...active.schedule, ...scheduleUpdates };
+    if (Object.keys(scheduleUpdates).length > 0)
+      contextUpdates.schedule = { ...active.schedule, ...scheduleUpdates };
 
     this.updateContext(active.id, contextUpdates);
 
@@ -793,11 +840,16 @@ class StorageService {
       apiKey: process.env.TWITTER_API_KEY || this.userCredentials.apiKey || '',
       apiSecret: process.env.TWITTER_API_SECRET || this.userCredentials.apiSecret || '',
       accessToken: process.env.TWITTER_ACCESS_TOKEN || this.userCredentials.accessToken || '',
-      accessTokenSecret: process.env.TWITTER_ACCESS_TOKEN_SECRET || this.userCredentials.accessTokenSecret || '',
-      oauth2ClientId: process.env.TWITTER_OAUTH2_CLIENT_ID || this.userCredentials.oauth2ClientId || '',
-      oauth2ClientSecret: process.env.TWITTER_OAUTH2_CLIENT_SECRET || this.userCredentials.oauth2ClientSecret || '',
-      oauth2AccessToken: process.env.TWITTER_OAUTH2_ACCESS_TOKEN || this.userCredentials.oauth2AccessToken || '',
-      oauth2RefreshToken: process.env.TWITTER_OAUTH2_REFRESH_TOKEN || this.userCredentials.oauth2RefreshToken || '',
+      accessTokenSecret:
+        process.env.TWITTER_ACCESS_TOKEN_SECRET || this.userCredentials.accessTokenSecret || '',
+      oauth2ClientId:
+        process.env.TWITTER_OAUTH2_CLIENT_ID || this.userCredentials.oauth2ClientId || '',
+      oauth2ClientSecret:
+        process.env.TWITTER_OAUTH2_CLIENT_SECRET || this.userCredentials.oauth2ClientSecret || '',
+      oauth2AccessToken:
+        process.env.TWITTER_OAUTH2_ACCESS_TOKEN || this.userCredentials.oauth2AccessToken || '',
+      oauth2RefreshToken:
+        process.env.TWITTER_OAUTH2_REFRESH_TOKEN || this.userCredentials.oauth2RefreshToken || '',
       bearerToken: process.env.TWITTER_BEARER_TOKEN || this.userCredentials.bearerToken || '',
     };
   }
@@ -810,8 +862,16 @@ class StorageService {
       return `${val.substring(0, 3)}••••${val.substring(val.length - 3)}`;
     };
 
-    const hasOAuth1 = !!(creds.apiKey && creds.apiSecret && creds.accessToken && creds.accessTokenSecret);
-    const hasOAuth2 = !!(creds.oauth2AccessToken || (creds.oauth2ClientId && creds.oauth2RefreshToken));
+    const hasOAuth1 = !!(
+      creds.apiKey &&
+      creds.apiSecret &&
+      creds.accessToken &&
+      creds.accessTokenSecret
+    );
+    const hasOAuth2 = !!(
+      creds.oauth2AccessToken ||
+      (creds.oauth2ClientId && creds.oauth2RefreshToken)
+    );
 
     return {
       hasApiKey: !!creds.apiKey,
@@ -826,9 +886,17 @@ class StorageService {
       hasOAuth2AccessToken: !!creds.oauth2AccessToken,
       hasOAuth2RefreshToken: !!creds.oauth2RefreshToken,
       hasBearerToken: !!creds.bearerToken,
-      authMethod: hasOAuth1 ? 'OAuth 1.0a (Permanent)' : hasOAuth2 ? 'OAuth 2.0 User Context' : 'None',
+      authMethod: hasOAuth1
+        ? 'OAuth 1.0a (Permanent)'
+        : hasOAuth2
+          ? 'OAuth 2.0 User Context'
+          : 'None',
       isFullyConfigured: hasOAuth1 || hasOAuth2,
-      source: process.env.TWITTER_API_KEY ? 'environment_variables' : this.userCredentials.apiKey ? 'server_config' : 'none',
+      source: process.env.TWITTER_API_KEY
+        ? 'environment_variables'
+        : this.userCredentials.apiKey
+          ? 'server_config'
+          : 'none',
     };
   }
 
@@ -859,7 +927,7 @@ class StorageService {
   public clearContextHistory(contextId: string): { clearedCount: number; context?: TweetContext } {
     const beforeCount = this.logs.length;
     // Filter out logs matching contextId (and if primary context, logs with ctx_primary or no contextId)
-    this.logs = this.logs.filter(l => {
+    this.logs = this.logs.filter((l) => {
       if (contextId === 'ctx_primary') {
         return l.contextId && l.contextId !== 'ctx_primary';
       }
@@ -943,17 +1011,22 @@ class StorageService {
     return finalPreview || weatherTweet;
   }
 
-  private createQueueSlotForContext(ctx: TweetContext, slotIndex: number, baseTimeMs = Date.now()): QueueSlot {
-    const tz = (!ctx.schedule?.timezone || ctx.schedule.timezone === 'MST')
-      ? 'America/Denver'
-      : ctx.schedule.timezone;
+  private createQueueSlotForContext(
+    ctx: TweetContext,
+    slotIndex: number,
+    baseTimeMs = Date.now(),
+  ): QueueSlot {
+    const tz =
+      !ctx.schedule?.timezone || ctx.schedule.timezone === 'MST'
+        ? 'America/Denver'
+        : ctx.schedule.timezone;
 
     if (ctx.schedule?.mode === 'interval') {
       const intervalMins = Math.max(1, ctx.schedule.intervalMinutes || 15);
       const futureDate = new Date(baseTimeMs + (slotIndex + 1) * intervalMins * 60 * 1000);
       let dateStr = futureDate.toISOString().split('T')[0];
-      let timeSlot = '06:00';
-      let isMorning = true;
+      let timeSlot: string;
+      let isMorning: boolean;
 
       try {
         const parts = new Intl.DateTimeFormat('en-CA', {
@@ -965,11 +1038,11 @@ class StorageService {
           minute: '2-digit',
           hour12: false,
         }).formatToParts(futureDate);
-        const y = parts.find(p => p.type === 'year')?.value || '2026';
-        const m = parts.find(p => p.type === 'month')?.value || '01';
-        const d = parts.find(p => p.type === 'day')?.value || '01';
-        const hr = parseInt(parts.find(p => p.type === 'hour')?.value || '6', 10) % 24;
-        const mn = parts.find(p => p.type === 'minute')?.value || '00';
+        const y = parts.find((p) => p.type === 'year')?.value || '2026';
+        const m = parts.find((p) => p.type === 'month')?.value || '01';
+        const d = parts.find((p) => p.type === 'day')?.value || '01';
+        const hr = parseInt(parts.find((p) => p.type === 'hour')?.value || '6', 10) % 24;
+        const mn = parts.find((p) => p.type === 'minute')?.value || '00';
         dateStr = `${y}-${m}-${d}`;
         timeSlot = `${hr.toString().padStart(2, '0')}:${mn}`;
         isMorning = hr < 12;
@@ -999,7 +1072,9 @@ class StorageService {
     }
 
     // Fixed times mode
-    const times = ctx.schedule?.scheduleTimes?.length ? ctx.schedule.scheduleTimes : ['06:00', '18:00'];
+    const times = ctx.schedule?.scheduleTimes?.length
+      ? ctx.schedule.scheduleTimes
+      : ['06:00', '18:00'];
     const dayOffset = Math.floor(slotIndex / times.length);
     const timeIdx = slotIndex % times.length;
     const timeSlot = times[timeIdx] || '06:00';
@@ -1036,12 +1111,12 @@ class StorageService {
       const ctx = this.getContext(contextId);
       if (!ctx) return this.getQueue();
       // Remove all slots belonging to this context (and any legacy untagged slots)
-      this.queue = this.queue.filter(q => q.contextId && q.contextId !== contextId);
+      this.queue = this.queue.filter((q) => q.contextId && q.contextId !== contextId);
       for (let i = 0; i < requiredCount; i++) {
         this.queue.push(this.createQueueSlotForContext(ctx, i, nowMs));
       }
       this.save();
-      return this.queue.filter(q => q.contextId === contextId);
+      return this.queue.filter((q) => q.contextId === contextId);
     }
 
     // Regenerate for all contexts
@@ -1058,14 +1133,16 @@ class StorageService {
   public getQueue(contextId?: string): QueueSlot[] {
     const targetId = contextId || this.activeContextId;
     this.syncQueue(targetId);
-    return this.queue.filter(q => q.contextId === targetId);
+    return this.queue.filter((q) => q.contextId === targetId);
   }
 
   public rerollQueueSlot(slotId: string): QueueSlot | null {
-    const idx = this.queue.findIndex(q => q.slotId === slotId);
+    const idx = this.queue.findIndex((q) => q.slotId === slotId);
     if (idx === -1) return null;
     const current = this.queue[idx];
-    const ctx = (current.contextId ? this.getContext(current.contextId) : undefined) || this.getActiveContext();
+    const ctx =
+      (current.contextId ? this.getContext(current.contextId) : undefined) ||
+      this.getActiveContext();
     const newColor = generateColor(current.slotType);
     const previewText = this.formatSlotPreviewText(ctx.template, newColor, current.timeSlot);
     this.queue[idx] = {
@@ -1084,7 +1161,7 @@ class StorageService {
   public popNextQueueSlot(slotType: 'morning' | 'evening', contextId?: string): ColorData {
     const targetId = contextId || this.activeContextId;
     this.syncQueue(targetId);
-    const nextIdx = this.queue.findIndex(q => q.contextId === targetId);
+    const nextIdx = this.queue.findIndex((q) => q.contextId === targetId);
     if (nextIdx !== -1) {
       const item = this.queue.splice(nextIdx, 1)[0];
       this.syncQueue(targetId);
@@ -1099,9 +1176,9 @@ class StorageService {
     const nowMs = Date.now();
 
     // Remove legacy untagged slots that lack contextId or previewText
-    const hasLegacySlots = this.queue.some(q => !q.contextId || !q.previewText);
+    const hasLegacySlots = this.queue.some((q) => !q.contextId || !q.previewText);
     if (hasLegacySlots) {
-      this.queue = this.queue.filter(q => !!q.contextId && !!q.previewText);
+      this.queue = this.queue.filter((q) => !!q.contextId && !!q.previewText);
     }
 
     const contextsToSync = contextId
@@ -1111,7 +1188,7 @@ class StorageService {
     let modified = hasLegacySlots;
     for (const ctx of contextsToSync) {
       if (!ctx) continue;
-      const existing = this.queue.filter(q => q.contextId === ctx.id);
+      const existing = this.queue.filter((q) => q.contextId === ctx.id);
       let idx = existing.length;
       while (idx < requiredCount) {
         this.queue.push(this.createQueueSlotForContext(ctx, idx, nowMs));
