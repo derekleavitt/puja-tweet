@@ -4,6 +4,8 @@
  * error-mapped. Auth headers (Firebase ID token, SEC-2) will be attached here.
  */
 
+import { auth, logoutUser } from '../lib/firebase.js';
+
 export class ApiError extends Error {
   status: number;
   body: any;
@@ -23,11 +25,15 @@ export interface ApiRequestOptions {
   errorMessage?: string;
 }
 
-/** Builds request headers. SEC-2: attach `Authorization: Bearer <Firebase ID token>` here. */
+/** Builds request headers, including `Authorization: Bearer <Firebase ID token>` when signed in. */
 async function buildHeaders(hasBody: boolean): Promise<Record<string, string>> {
   const headers: Record<string, string> = {};
   if (hasBody) {
     headers['Content-Type'] = 'application/json';
+  }
+  const token = await auth.currentUser?.getIdToken();
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
   }
   return headers;
 }
@@ -46,6 +52,11 @@ export async function apiFetch<T = any>(path: string, options: ApiRequestOptions
     data = await res.json();
   } catch {
     data = null;
+  }
+
+  if (res.status === 401 && auth.currentUser) {
+    // Token rejected: end the session so the UI returns to the login screen.
+    void logoutUser();
   }
 
   if (!res.ok) {
