@@ -188,3 +188,8 @@ export interface QueueSlot {
   targetTweetId?: string;
   replyTargetMode?: 'original_post' | 'last_comment';
 }
+
+/** AI availability fields on `GET /api/status` (`geminiConfigured` is false when GEMINI_API_KEY is unset). */
+export interface AiStatus {
+  geminiConfigured?: boolean;
+}
