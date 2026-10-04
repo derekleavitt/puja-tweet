@@ -13,7 +13,6 @@ import { QueueViewer } from './components/QueueViewer.js';
 import { SettingsPanel } from './components/SettingsPanel.js';
 import { HistoryTable } from './components/HistoryTable.js';
 import { TwitterSetup } from './components/TwitterSetup.js';
-import { StandaloneExport } from './components/StandaloneExport.js';
 import { RateLimitModal } from './components/RateLimitModal.js';
 import { Footer } from './components/Footer.js';
 import { CooldownBanner } from './components/CooldownBanner.js';
@@ -235,8 +234,6 @@ function ChromaBotDashboard() {
                 onVerifyCredentials={handleVerifyCredentials}
               />
             )}
-
-            {activeTab === 'export' && <StandaloneExport settings={settings} />}
           </>
         )}
       </main>
