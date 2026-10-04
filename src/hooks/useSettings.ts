@@ -34,12 +34,13 @@ export function useSettings({ settings, setSettings, setQueue, refresh }: UseSet
     }
   };
 
-  // Toggle dry run
-  const handleToggleDryRun = () => toggleSetting({ dryRun: !settings.dryRun }, 'dry run');
+  // Global dry-run (overrides every campaign); unset means on
+  const handleToggleDryRun = () =>
+    toggleSetting({ globalDryRun: settings.globalDryRun === false }, 'global dry run');
 
-  // Toggle scheduler active/paused
-  const handleToggleScheduler = () =>
-    toggleSetting({ schedulerEnabled: !settings.schedulerEnabled }, 'scheduler');
+  // Global pause of all scheduled drops; unset means on
+  const handleToggleGlobalPause = () =>
+    toggleSetting({ globalPaused: settings.globalPaused === false }, 'global pause');
 
   // Update Target Tweet ID
   const handleUpdateTargetTweetId = async (newId: string) => {
@@ -49,7 +50,7 @@ export function useSettings({ settings, setSettings, setQueue, refresh }: UseSet
   return {
     handleSaveSettings,
     handleToggleDryRun,
-    handleToggleScheduler,
+    handleToggleGlobalPause,
     handleUpdateTargetTweetId,
   };
 }

@@ -37,7 +37,7 @@ export interface TweetContext {
   targetTweetId: string; // The numeric Tweet ID to reply to (root post)
   replyTargetMode?: 'original_post' | 'last_comment'; // 'original_post' = reply to root post; 'last_comment' = cascading reply to last comment made by us
   engagementMode?: 'reply' | 'quote' | 'standalone'; // 'reply' = comment thread, 'quote' = Quote Tweet (embeds post), 'standalone' = timeline post
-  autoFallbackToQuote?: boolean; // If true, automatically falls back to Quote Tweet if X restricts direct comments (403)
+  autoFallbackToQuote?: boolean; // Default false. If true, a reply X refuses (cooldown / reply-restricted 403) is retried once as a quote of targetTweetId
   lastPostedTweetId?: string; // Latest tweet ID generated and posted in this campaign
   enabled: boolean; // Whether automatic scheduling is active for this context
   dryRun?: boolean; // Dry-run simulation vs live posting on X
@@ -70,6 +70,10 @@ export interface BotSettings {
   timezone: string;
   schedulerEnabled: boolean;
   dryRun: boolean;
+  /** Master switch: when true (the default) no path posts live to X, whatever the campaign says. */
+  globalDryRun?: boolean;
+  /** Master switch: when true (the default) scheduled drops (scheduler, webhook, CLI) do not run. */
+  globalPaused?: boolean;
   template: string;
   themePreference: 'dynamic' | 'vibrant' | 'minimal' | 'poetic';
   intervalMode?: 'fixed_times' | 'interval';
@@ -168,6 +172,8 @@ export interface PostLog {
   errorMessage?: string;
   contextId?: string;
   contextName?: string;
+  /** True when a restricted reply was retried as a quote tweet (autoFallbackToQuote). */
+  fallbackTriggered?: boolean;
 }
 
 export interface QueueSlot {

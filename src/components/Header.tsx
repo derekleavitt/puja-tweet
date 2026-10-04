@@ -22,6 +22,8 @@ interface HeaderProps {
   isPosting: boolean;
   dryRun: boolean;
   onToggleDryRun: () => void;
+  paused: boolean;
+  onTogglePaused: () => void;
   targetTweetId: string;
   onUpdateTargetTweetId: (newId: string) => Promise<void>;
   contexts?: TweetContext[];
@@ -39,6 +41,8 @@ export const Header: React.FC<HeaderProps> = ({
   isPosting,
   dryRun,
   onToggleDryRun,
+  paused,
+  onTogglePaused,
   contexts = [],
   activeContextId = '',
   onSelectContext,
@@ -184,7 +188,9 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               onClick={onToggleDryRun}
               title={
-                dryRun ? 'Dry run mode: replies simulated' : 'Live mode: replies sent to X API'
+                dryRun
+                  ? 'Global dry run is ON: every post is simulated, whatever the campaigns say. Click to allow live posting.'
+                  : 'Global dry run is OFF: campaigns set to Live post to X. Click to simulate everything.'
               }
               className={`px-2 py-1 text-xs font-mono rounded-md border transition-colors flex items-center gap-1.5 cursor-pointer shrink-0 ${
                 dryRun
@@ -197,6 +203,26 @@ export const Header: React.FC<HeaderProps> = ({
               />
               <span className="hidden sm:inline">{dryRun ? 'Dry Run' : 'Live X API'}</span>
               <span className="sm:hidden">{dryRun ? 'Sim' : 'Live'}</span>
+            </button>
+
+            {/* Global Pause Indicator: stops all scheduled drops */}
+            <button
+              onClick={onTogglePaused}
+              title={
+                paused
+                  ? 'Global pause is ON: no scheduled drops run. Click to resume.'
+                  : 'Scheduler running for enabled campaigns. Click to pause everything.'
+              }
+              className={`px-2 py-1 text-xs font-mono rounded-md border transition-colors flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                paused
+                  ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-800 hover:bg-rose-100 dark:hover:bg-rose-950/60'
+                  : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-950/60'
+              }`}
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full shrink-0 ${paused ? 'bg-rose-500' : 'bg-emerald-500'}`}
+              />
+              <span>{paused ? 'Paused' : 'Running'}</span>
             </button>
 
             {/* Quick Trigger CTA */}

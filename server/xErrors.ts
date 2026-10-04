@@ -7,6 +7,7 @@
 export type XErrorClass =
   | 'rate_limit'
   | 'cooldown'
+  | 'reply_restricted'
   | 'auth'
   | 'payment'
   | 'target_missing'
@@ -37,6 +38,9 @@ export const classifyXError = (status: number | undefined, body?: unknown): XErr
     }
     if (/referenced (tweet|post)|(tweet|post)[^.]*(not exist|deleted|not found)/.test(detail)) {
       return 'target_missing';
+    }
+    if (/reply to this conversation is not allowed|not been mentioned or engaged/.test(detail)) {
+      return 'reply_restricted';
     }
     if (detail.includes('duplicate')) return 'text_invalid';
     return 'unknown';

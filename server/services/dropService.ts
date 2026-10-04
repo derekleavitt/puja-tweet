@@ -18,14 +18,23 @@ export interface ExecuteDropOptions {
   contextId?: string;
   slotType?: 'morning' | 'evening' | 'manual';
   color?: ColorData;
+  /**
+   * Overrides the per-campaign dry-run only. It never overrides the global dry-run switch,
+   * which only the owner can turn off (Settings / `globalDryRun`).
+   */
   forceLive?: boolean;
+  /** Forces a simulation for this call (CLI `--dry-run`); a pure preview, so it ignores global pause. */
+  forceDryRun?: boolean;
   /** Exact text to post (e.g. the previewed text); skips template resolution. Still length-checked. */
   text?: string;
   source?: 'scheduler' | 'webhook' | 'manual' | 'cli';
 }
 
 export interface DropDeps {
-  services: Pick<Services, 'contexts' | 'queue' | 'logs' | 'credentials' | 'rateLimit'>;
+  services: Pick<
+    Services,
+    'contexts' | 'queue' | 'logs' | 'credentials' | 'rateLimit' | 'settings'
+  >;
   postColorTweet: typeof postColorTweet;
   resolveTemplateText: typeof resolveTemplateText;
 }
@@ -96,6 +105,28 @@ export const createDropService = (deps: DropDeps) => {
     return fallback.success ? fallback : first;
   };
 
+  /** One quote-tweet retry of a reply X refused (cooldown / reply restriction), opt-in per campaign. */
+  const quoteFallback = async (
+    context: TweetContext,
+    first: TweetResult,
+    text: string,
+    creds: Creds,
+    isDryRun: boolean,
+  ): Promise<TweetResult | undefined> => {
+    const errorClass = classify(first);
+    if (errorClass !== 'cooldown' && errorClass !== 'reply_restricted') return undefined;
+    if (!/^\d+$/.test(context.targetTweetId)) return undefined;
+    console.log(
+      `[Drop] Reply for context "${context.name}" refused (${errorClass}: ${first.error}). Retrying once as a quote of #${context.targetTweetId}.`,
+    );
+    const retry = await deps.postColorTweet(
+      creds,
+      { text, quoteTweetId: context.targetTweetId, engagementMode: 'quote' },
+      isDryRun,
+    );
+    return retry.success ? retry : undefined;
+  };
+
   const recordTelemetry = (res: TweetResult, isDryRun: boolean) => {
     if (res.rateLimitHeaders) s.rateLimit.updateRateLimitTelemetry(res.rateLimitHeaders);
     if (!isDryRun && isCooldown(res)) {
@@ -106,6 +137,11 @@ export const createDropService = (deps: DropDeps) => {
 
   /** Execute a drop for a specific context or the active context. */
   const executeDrop = async (options: ExecuteDropOptions = {}) => {
+    const source = options.source || 'manual';
+    // Global pause stops every scheduled path; manual posting is still allowed.
+    if (source !== 'manual' && !options.forceDryRun && s.settings.isGlobalPaused()) {
+      throw new HttpError(409, 'Global pause is on: scheduled drops are stopped');
+    }
     const requested = options.contextId ? s.contexts.getContext(options.contextId) : undefined;
     if (options.contextId && !requested) {
       throw new HttpError(404, `Context ${options.contextId} not found`);
@@ -135,14 +171,17 @@ export const createDropService = (deps: DropDeps) => {
     const chainInfo = s.contexts.getEffectiveReplyTargetId(context);
     const replyToTweetId = engagementMode === 'reply' ? chainInfo.targetTweetId : undefined;
     const quoteTweetId = engagementMode === 'quote' ? context.targetTweetId : undefined;
-    const isDryRun = options.forceLive ? false : (context.dryRun ?? false);
+    const isDryRun =
+      s.settings.isGlobalDryRun() ||
+      !!options.forceDryRun ||
+      (options.forceLive ? false : (context.dryRun ?? false));
     const creds = s.credentials.getEffectiveCredentials();
 
     console.log(
       `[Drop] Executing drop for context "${context.name}" (${context.id}) ` +
         `-> Mode: ${engagementMode.toUpperCase()} ` +
         `${describeMode(context, engagementMode, replyToTweetId, chainInfo)}` +
-        `, source: ${options.source || 'manual'}, mode: ${isDryRun ? 'DRY-RUN' : 'LIVE X'}`,
+        `, source: ${source}, mode: ${isDryRun ? 'DRY-RUN' : 'LIVE X'}${s.settings.isGlobalDryRun() ? ' (global dry-run)' : ''}`,
     );
 
     let res = await deps.postColorTweet(
@@ -158,7 +197,16 @@ export const createDropService = (deps: DropDeps) => {
     ) {
       res = await recoverChain(context, res, text, replyToTweetId, creds, isDryRun);
     }
+    let fallbackTriggered = false;
+    if (!res.success && engagementMode === 'reply' && context.autoFallbackToQuote) {
+      const quoted = await quoteFallback(context, res, text, creds, isDryRun);
+      if (quoted) {
+        res = quoted;
+        fallbackTriggered = true;
+      }
+    }
     recordTelemetry(res, isDryRun);
+    const finalMode = fallbackTriggered ? 'quote' : engagementMode;
 
     const status = res.success ? (res.simulated ? 'simulated' : 'success') : 'error';
     const failure = res.success ? undefined : { errorClass: classify(res), message: res.error };
@@ -166,7 +214,7 @@ export const createDropService = (deps: DropDeps) => {
       context.id,
       status,
       res.tweetId,
-      res.engagementMode || engagementMode,
+      res.engagementMode || finalMode,
       failure,
     );
     const errorMessage =
@@ -178,9 +226,10 @@ export const createDropService = (deps: DropDeps) => {
       timestamp: new Date().toISOString(),
       slotType,
       targetTweetId: context.targetTweetId,
-      replyToTweetId: res.replyTo || replyToTweetId,
-      quoteTweetId: res.quoteTweetId || quoteTweetId,
-      engagementMode: res.engagementMode || engagementMode,
+      replyToTweetId: fallbackTriggered ? undefined : res.replyTo || replyToTweetId,
+      quoteTweetId: res.quoteTweetId || (fallbackTriggered ? context.targetTweetId : quoteTweetId),
+      engagementMode: res.engagementMode || finalMode,
+      ...(fallbackTriggered ? { fallbackTriggered: true } : {}),
       color,
       tweetText: text,
       tweetId: res.tweetId,

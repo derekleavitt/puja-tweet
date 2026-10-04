@@ -22,6 +22,8 @@ export function useBotStatus(onQueue: (queue: QueueSlot[]) => void) {
     timezone: 'America/Denver',
     schedulerEnabled: true,
     dryRun: false,
+    globalDryRun: true,
+    globalPaused: true,
     template: '{color_pick} {weather_desc} #eternal #colors',
     themePreference: 'dynamic',
     intervalMode: 'interval',

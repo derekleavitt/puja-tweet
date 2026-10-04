@@ -26,6 +26,8 @@ import { useCredentials } from './hooks/useCredentials.js';
 import { useSettings } from './hooks/useSettings.js';
 import { usePosting } from './hooks/usePosting.js';
 import { useContexts } from './hooks/useContexts.js';
+import { useConfirmedPost } from './hooks/useConfirmedPost.js';
+import { ConfirmDialog } from './components/ui/ConfirmDialog.js';
 import { PostLog } from './types.js';
 import { ToastViewport } from './components/ui/Toast.js';
 
@@ -45,7 +47,13 @@ function ChromaBotDashboard() {
   }, [fetchStatus, fetchQueue]);
   const addLog = (log: PostLog) => setLogs((prev) => [log, ...prev]);
 
-  const { color, isPosting, lastPostedResult, generateColor, handlePostNow } = usePosting({
+  const {
+    color,
+    isPosting,
+    lastPostedResult,
+    generateColor,
+    handlePostNow: postNowDirect,
+  } = usePosting({
     activeContextId,
     addLog,
     refresh,
@@ -68,10 +76,18 @@ function ChromaBotDashboard() {
     fetchHistory,
     generateColor,
   });
+  const confirmedPost = useConfirmedPost({
+    settings,
+    contexts,
+    activeContextId,
+    post: postNowDirect,
+    contextArgIndex: 2,
+  });
+  const handlePostNow = confirmedPost.request;
   const {
     handleSaveSettings,
     handleToggleDryRun,
-    handleToggleScheduler,
+    handleToggleGlobalPause,
     handleUpdateTargetTweetId,
   } = useSettings({ settings, setSettings, setQueue, refresh });
   const { handleSaveCredentials, handleClearCredentials, handleVerifyCredentials } = useCredentials(
@@ -125,8 +141,10 @@ function ChromaBotDashboard() {
         setActiveTab={setActiveTab}
         onQuickPost={() => handlePostNow(color || undefined, 'manual')}
         isPosting={isPosting}
-        dryRun={settings.dryRun}
+        dryRun={settings.globalDryRun !== false}
         onToggleDryRun={handleToggleDryRun}
+        paused={settings.globalPaused !== false}
+        onTogglePaused={handleToggleGlobalPause}
         targetTweetId={settings.targetTweetId}
         onUpdateTargetTweetId={handleUpdateTargetTweetId}
         contexts={contexts}
@@ -142,8 +160,8 @@ function ChromaBotDashboard() {
         nextPost={nextPost}
         credentialsStatus={credentialsStatus}
         targetTweetId={settings.targetTweetId}
-        schedulerEnabled={settings.schedulerEnabled}
-        onToggleScheduler={handleToggleScheduler}
+        globalPaused={settings.globalPaused !== false}
+        onToggleGlobalPause={handleToggleGlobalPause}
         settings={settings}
         activeContext={activeContext}
         onChangeFrequency={async (mode, minutes) => {
@@ -254,6 +272,16 @@ function ChromaBotDashboard() {
         activeName={activeContext?.name || 'Primary'}
         targetTweetId={settings.targetTweetId}
       />
+
+      {confirmedPost.pending && (
+        <ConfirmDialog
+          title="Post live to X?"
+          message={`Campaign "${confirmedPost.pending.campaign}" will post a real tweet targeting #${confirmedPost.pending.targetTweetId}.`}
+          confirmLabel="Post live"
+          onConfirm={confirmedPost.confirm}
+          onCancel={confirmedPost.cancel}
+        />
+      )}
 
       {/* Rate Limits & Anti-Spam Telemetry Modal */}
       <RateLimitModal
