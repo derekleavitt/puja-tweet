@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Save, Check, ExternalLink, RefreshCw, Clock, Repeat, Globe, Key, ShieldCheck, Sparkles, UserCheck, Target, Link2, RotateCcw } from 'lucide-react';
 import { BotSettings } from '../types.js';
 import { extractTweetId } from './TargetTweetEditor.js';
-import { previewTemplate } from '../api/endpoints.js';
+import { previewTemplate, getWebhookUrl, rotateWebhookSecret } from '../api/endpoints.js';
 
 interface SettingsPanelProps {
   settings: BotSettings;
@@ -44,7 +44,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
   const [intervalMinutes, setIntervalMinutes] = useState<number>(settings.intervalMinutes || 720);
   const [scheduleTimes, setScheduleTimes] = useState(settings.scheduleTimes.join(', '));
   const [timezone, setTimezone] = useState(settings.timezone);
-  const [webhookSecret, setWebhookSecret] = useState(settings.webhookSecret || 'chroma_auto_secret');
+  const [webhookUrl, setWebhookUrl] = useState('');
   const [schedulerEnabled, setSchedulerEnabled] = useState(settings.schedulerEnabled);
   const [dryRun, setDryRun] = useState(settings.dryRun);
   const [template, setTemplate] = useState(settings.template);
@@ -94,7 +94,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
         intervalMinutes: Number(intervalMinutes),
         scheduleTimes: times.length > 0 ? times : ['06:00', '18:00'],
         timezone,
-        webhookSecret: webhookSecret.trim(),
         schedulerEnabled,
         dryRun,
         template,
@@ -113,8 +112,21 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
     setTemplate((prev) => `${prev} ${token}`);
   };
 
-  const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
-  const webhookUrl = `${currentOrigin}/api/cron/trigger?secret=${encodeURIComponent(webhookSecret)}`;
+  useEffect(() => {
+    getWebhookUrl()
+      .then((r) => setWebhookUrl(r.url))
+      .catch(() => setWebhookUrl(''));
+  }, []);
+
+  const handleRotateSecret = async () => {
+    if (!window.confirm('Rotate the webhook secret? Existing cron jobs using the old URL will stop working.')) return;
+    try {
+      const r = await rotateWebhookSecret();
+      setWebhookUrl(r.url);
+    } catch (err) {
+      console.error('Error rotating webhook secret:', err);
+    }
+  };
 
   return (
     <div className="max-w-4xl space-y-6">
@@ -454,22 +466,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
             ) at your desired frequency. Each ping wakes the app and immediately publishes a live chromatic reply.
           </p>
 
-          <div className="space-y-2">
-            <label className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-400 flex items-center gap-1.5">
-              <Key className="w-3.5 h-3.5 text-neutral-400" /> Webhook Secret Token (Security)
-            </label>
-            <input
-              type="text"
-              value={webhookSecret}
-              onChange={(e) => setWebhookSecret(e.target.value)}
-              className="w-full px-3 py-1.5 text-xs font-mono border border-neutral-300 dark:border-neutral-700 rounded-lg bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100"
-              placeholder="chroma_auto_secret"
-            />
-          </div>
-
           <div className="space-y-1.5">
             <label className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-400">
-              One-Click Autonomous URL (GET or POST):
+              One-Click Autonomous URL (GET or POST; live posting requires POST):
             </label>
             <div className="flex items-center gap-2">
               <input
@@ -488,6 +487,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
                 className="px-3 py-2 text-xs font-semibold bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 rounded-lg transition-colors shrink-0 cursor-pointer"
               >
                 Copy URL
+              </button>
+              <button
+                type="button"
+                onClick={handleRotateSecret}
+                className="px-3 py-2 text-xs font-semibold bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 rounded-lg transition-colors shrink-0 cursor-pointer flex items-center gap-1.5"
+              >
+                <Key className="w-3.5 h-3.5" /> Rotate Secret
               </button>
             </div>
           </div>

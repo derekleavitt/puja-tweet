@@ -91,3 +91,12 @@ export const verifyCredentials = () =>
 // Export
 export const getExportScript = () =>
   apiFetch<{ githubActionsYaml: string; nodeScript: string }>('/api/export-script');
+
+// Webhook (admin: the secret is only ever returned by these routes)
+export const getWebhookUrl = () =>
+  apiFetch<{ success: boolean; url: string }>('/api/webhook/url');
+export const rotateWebhookSecret = () =>
+  apiFetch<{ success: boolean; url: string }>('/api/settings/webhook-secret/rotate', {
+    method: 'POST',
+    errorMessage: 'Failed to rotate webhook secret',
+  });

@@ -6,6 +6,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { ColorData, DEFAULT_TWEET_TEMPLATE, generateColor } from './colorEngine.js';
 import { TwitterCredentials } from './twitterClient.js';
 
@@ -144,7 +145,6 @@ const DEFAULT_SETTINGS: BotSettings = {
   themePreference: 'dynamic',
   intervalMode: 'interval',
   intervalMinutes: 15,
-  webhookSecret: 'chroma_auto_secret',
   humanizeJitterEnabled: true,
   jitterPercentage: 25,
   activeContextId: 'ctx_primary',
@@ -172,7 +172,27 @@ class StorageService {
     this.ensureDataDir();
     this.load();
     this.ensureDefaultContext();
+    this.ensureWebhookSecret();
     this.syncQueue();
+  }
+
+  // --- Webhook secret (never part of getSettings) ---
+  private ensureWebhookSecret() {
+    if (process.env.WEBHOOK_SECRET || this.settings.webhookSecret) return;
+    this.settings.webhookSecret = crypto.randomBytes(32).toString('hex');
+    this.save();
+    console.log('[Storage] Generated a new webhook secret (stored in the data file; fetch it via GET /api/webhook/url).');
+  }
+
+  public getWebhookSecret(): string {
+    return process.env.WEBHOOK_SECRET || this.settings.webhookSecret || '';
+  }
+
+  public rotateWebhookSecret(): string {
+    this.settings.webhookSecret = crypto.randomBytes(32).toString('hex');
+    this.save();
+    console.log('[Storage] Webhook secret rotated.');
+    return this.getWebhookSecret();
   }
 
   private ensureDataDir() {
@@ -832,7 +852,6 @@ class StorageService {
       themePreference: active.themePreference,
       intervalMode: active.schedule.mode,
       intervalMinutes: active.schedule.intervalMinutes,
-      webhookSecret: this.settings.webhookSecret || 'chroma_auto_secret',
       humanizeJitterEnabled: active.schedule.humanizeJitterEnabled,
       jitterPercentage: active.schedule.jitterPercentage,
       activeContextId: active.id,
@@ -863,11 +882,6 @@ class StorageService {
     if (Object.keys(scheduleUpdates).length > 0) contextUpdates.schedule = { ...active.schedule, ...scheduleUpdates };
 
     this.updateContext(active.id, contextUpdates);
-
-    if (newSettings.webhookSecret) {
-      this.settings.webhookSecret = newSettings.webhookSecret;
-      this.save();
-    }
 
     return this.getSettings();
   }
