@@ -46,7 +46,7 @@ export class LogService {
     const ctx = this.sm.getContext(contextId);
     if (ctx) {
       ctx.stats = { totalPosts: 0, successfulPosts: 0, simulatedPosts: 0, failedPosts: 0 };
-      ctx.lastPostedTimestamp = 0;
+      ctx.lastPostedTimestamp = Date.now(); // restart the interval, never fire at once
       ctx.lastPostedSlot = undefined;
       ctx.lastPostedTweetId = undefined; // Reset chain anchor to clean slate
       if (s.activeContextId === contextId) {

@@ -13,6 +13,7 @@ import {
   sanitizeContextChain,
   type EffectiveReplyTarget,
 } from './contextChain.js';
+import type { XErrorClass } from '../xErrors.js';
 import { buildPrimaryContext } from './primaryContext.js';
 import { parseContextUpdate } from './contextSchema.js';
 import type { QueueService } from './queueService.js';
@@ -23,6 +24,12 @@ const cleanTweetId = (input: string): string => extractTweetId(input) ?? input.t
 
 export type ContextPatch = Partial<Omit<TweetContext, 'schedule'>> & {
   schedule?: Partial<TweetContextSchedule>;
+};
+
+/** Consecutive errors before a campaign auto-pauses (env MAX_CONSECUTIVE_ERRORS, default 5). */
+const maxConsecutiveErrors = (): number => {
+  const n = Number(process.env.MAX_CONSECUTIVE_ERRORS);
+  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 5;
 };
 
 const notFound = (id: string) => new HttpError(404, `Context ${id} not found`);
@@ -102,7 +109,7 @@ export class ContextService {
       },
       template: data.template?.trim() || DEFAULT_TWEET_TEMPLATE,
       themePreference: data.themePreference || 'dynamic',
-      lastPostedTimestamp: data.lastPostedTimestamp || 0,
+      lastPostedTimestamp: data.lastPostedTimestamp || Date.now(), // never fire on create
       currentJitterMs: data.currentJitterMs || 0,
       createdAt: data.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -148,9 +155,15 @@ export class ContextService {
         updates.schedule.intervalMinutes !== current.schedule.intervalMinutes) ||
       (updates.schedule?.mode !== undefined && updates.schedule.mode !== current.schedule.mode);
 
+    const resumed = updates.enabled === true && !current.enabled;
+
     const updated: TweetContext = {
       ...current,
       ...updates,
+      // Re-enabling restarts the interval from now and clears any circuit-breaker state.
+      ...(resumed
+        ? { lastPostedTimestamp: Date.now(), consecutiveErrors: 0, autoPausedReason: undefined }
+        : {}),
       id: current.id, // Never allow id to be overwritten
       targetTweetId,
       replyTargetMode: updates.replyTargetMode ?? (current.replyTargetMode || 'original_post'),
@@ -175,6 +188,14 @@ export class ContextService {
     this.queue.clearAndRegenerateQueue(id);
     this.sm.persist();
     return updated;
+  }
+
+  /** Starts the interval clock from `at` (legacy contexts stored with 0); no queue regeneration. */
+  setContextLastPostedTimestamp(contextId: string, at: number) {
+    const ctx = this.sm.getContext(contextId);
+    if (!ctx) return;
+    ctx.lastPostedTimestamp = at;
+    this.sm.persist();
   }
 
   /** Persists only the last fired fixed-time slot key (no queue regeneration). */
@@ -268,9 +289,11 @@ export class ContextService {
     status: 'success' | 'simulated' | 'error',
     postedTweetId?: string,
     engagementMode: 'reply' | 'quote' | 'standalone' = 'reply',
-  ) {
+    failure?: { errorClass: XErrorClass; message?: string },
+  ): { autoPausedReason?: string } {
     const context = this.sm.getContext(contextId);
-    if (!context) return;
+    if (!context) return {};
+    let autoPausedReason: string | undefined;
 
     if (!context.stats) {
       context.stats = { totalPosts: 0, successfulPosts: 0, simulatedPosts: 0, failedPosts: 0 };
@@ -280,7 +303,15 @@ export class ContextService {
     if (status === 'simulated') context.stats.simulatedPosts += 1;
     if (status === 'error') {
       context.stats.failedPosts += 1;
-      context.consecutiveErrors = (context.consecutiveErrors || 0) + 1;
+      // Throttling (429 / reply cooldown) is handled by the global cooldown, not the breaker.
+      const throttled = failure?.errorClass === 'rate_limit' || failure?.errorClass === 'cooldown';
+      if (!throttled) context.consecutiveErrors = (context.consecutiveErrors || 0) + 1;
+      autoPausedReason = this.breakerReason(context, failure);
+      if (autoPausedReason) {
+        context.enabled = false;
+        context.autoPausedReason = autoPausedReason;
+        console.warn(`[Context] Auto-paused "${context.name}": ${autoPausedReason}`);
+      }
       // Safety anti-hammer backoff: after an error (such as an X reply cooldown), back off
       // by at least 15 minutes so the developer account has time to clear the cooldown
       const intervalMs = (context.schedule.intervalMinutes || 15) * 60 * 1000;
@@ -306,5 +337,26 @@ export class ContextService {
     }
     generateJitterForContext(context);
     this.sm.persist();
+    return { autoPausedReason };
+  }
+
+  /** Circuit breaker: immediate on X 401/402, otherwise after MAX_CONSECUTIVE_ERRORS in a row. */
+  private breakerReason(
+    context: TweetContext,
+    failure?: { errorClass: XErrorClass; message?: string },
+  ): string | undefined {
+    if (!context.enabled) return undefined;
+    if (failure?.errorClass === 'auth') {
+      return 'X rejected the credentials (HTTP 401). Fix them, then resume.';
+    }
+    if (failure?.errorClass === 'payment') {
+      return 'X reports no credits / payment required (HTTP 402). Add credits, then resume.';
+    }
+    const max = maxConsecutiveErrors();
+    if ((context.consecutiveErrors || 0) >= max) {
+      const last = failure?.message ? ` Last error: ${failure.message}` : '';
+      return `${max} consecutive errors.${last}`.slice(0, 300);
+    }
+    return undefined;
   }
 }

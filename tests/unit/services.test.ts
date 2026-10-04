@@ -65,7 +65,7 @@ describe('services over MemoryStore', () => {
       expect(updated.stats?.totalPosts).toBe(0);
       expect(updated.consecutiveErrors).toBeUndefined();
       expect(updated.createdAt).toBe(ctx.createdAt);
-      expect(updated.lastPostedTimestamp).toBe(0);
+      expect(updated.lastPostedTimestamp).toBe(ctx.lastPostedTimestamp);
     });
 
     it('updateContext rejects a bad targetTweetId with 400 and an unknown id with 404', () => {
