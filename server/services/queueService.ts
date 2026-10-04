@@ -44,9 +44,9 @@ export class QueueService {
     return this.getQueue();
   }
 
+  /** Read-only: never tops up or persists (see `ensureQueue`). */
   getQueue(contextId?: string): QueueSlot[] {
     const targetId = contextId || this.sm.state.activeContextId;
-    this.syncQueue(targetId);
     return this.sm.state.queue.filter((q) => q.contextId === targetId);
   }
 
@@ -75,19 +75,19 @@ export class QueueService {
   popNextQueueSlot(slotType: 'morning' | 'evening', contextId?: string): ColorData {
     const s = this.sm.state;
     const targetId = contextId || s.activeContextId;
-    this.syncQueue(targetId);
+    this.ensureQueue(targetId);
     const nextIdx = s.queue.findIndex((q) => q.contextId === targetId);
     if (nextIdx !== -1) {
       const item = s.queue.splice(nextIdx, 1)[0];
-      this.syncQueue(targetId);
+      this.ensureQueue(targetId);
       this.sm.persist();
       return item.color;
     }
     return generateColor(slotType);
   }
 
-  /** Tops every (or one) context's queue back up to the required length. */
-  syncQueue(contextId?: string) {
+  /** Tops every (or one) context's queue back up to the required length; persists only if it changed. */
+  ensureQueue(contextId?: string) {
     const s = this.sm.state;
     const nowMs = Date.now();
 
