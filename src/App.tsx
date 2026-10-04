@@ -19,6 +19,7 @@ import { CooldownBanner } from './components/CooldownBanner.js';
 import { AuthProvider } from './context/AuthContext.js';
 import { AuthGate } from './components/AuthGate.js';
 import { usePolling } from './hooks/usePolling.js';
+import { useHealth } from './hooks/useHealth.js';
 import { useBotStatus } from './hooks/useBotStatus.js';
 import { useQueue } from './hooks/useQueue.js';
 import { useHistory } from './hooks/useHistory.js';
@@ -36,6 +37,7 @@ function ChromaBotDashboard() {
   const [isRateLimitModalOpen, setIsRateLimitModalOpen] = useState<boolean>(false);
 
   const { queue, setQueue, fetchQueue, handleRerollSlot, handleRegenerateQueue } = useQueue();
+  const health = useHealth();
   const status = useBotStatus(setQueue);
   const { settings, setSettings, contexts, activeContextId, setActiveContextId, fetchStatus } =
     status;
@@ -271,6 +273,7 @@ function ChromaBotDashboard() {
       <Footer
         activeName={activeContext?.name || 'Primary'}
         targetTweetId={settings.targetTweetId}
+        health={health}
       />
 
       {confirmedPost.pending && (

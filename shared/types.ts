@@ -196,6 +196,15 @@ export interface AiStatus {
   geminiConfigured?: boolean;
 }
 
+/** `GET /api/health` payload (unauthenticated). */
+export interface HealthInfo {
+  ok: boolean;
+  version?: string;
+  /** Persistence backend the server runs on. */
+  store?: 'json' | 'memory' | 'firestore';
+  schedulerRunning?: boolean;
+}
+
 /** A fixed-time slot that was reached and is waiting (jitter / anti-burst) to fire. */
 export interface PendingFire {
   slotKey: string;
