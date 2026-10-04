@@ -288,7 +288,7 @@ export const TargetTweetEditor: React.FC<TargetTweetEditorProps> = ({
                     ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 shadow-xs font-semibold'
                     : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
                 }`}
-                title="Post as in-thread comment reply (auto-falls back to Quote if restricted)"
+                title="Post as in-thread comment reply"
               >
                 <MessageSquare className="w-3 h-3 text-blue-500" />
                 <span>Direct Reply</span>
@@ -328,7 +328,7 @@ export const TargetTweetEditor: React.FC<TargetTweetEditorProps> = ({
               ? '💡 Quote Tweet mode embeds the target post directly into your timeline drop. 100% permitted on all X developer tiers.'
               : engagementMode === 'standalone'
                 ? "💡 Standalone mode publishes chromatic drops directly to your account's feed."
-                : "💡 Direct Reply posts into the target post's comments. If X restricts in-thread replies (403), auto-fallback seamlessly posts as a Quote Tweet."}
+                : "💡 Direct Reply posts into the target post's comments. If X restricts replies, you can enable the Quote Tweet fallback in the campaign settings."}
           </p>
         </div>
       )}

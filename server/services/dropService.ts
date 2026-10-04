@@ -103,6 +103,28 @@ export const createDropService = (deps: DropDeps) => {
     return fallback.success ? fallback : first;
   };
 
+  /** One quote-tweet retry of a reply X refused (cooldown / reply restriction), opt-in per campaign. */
+  const quoteFallback = async (
+    context: TweetContext,
+    first: TweetResult,
+    text: string,
+    creds: Creds,
+    isDryRun: boolean,
+  ): Promise<TweetResult | undefined> => {
+    const errorClass = classify(first);
+    if (errorClass !== 'cooldown' && errorClass !== 'reply_restricted') return undefined;
+    if (!/^\d+$/.test(context.targetTweetId)) return undefined;
+    console.log(
+      `[Drop] Reply for context "${context.name}" refused (${errorClass}: ${first.error}). Retrying once as a quote of #${context.targetTweetId}.`,
+    );
+    const retry = await deps.postColorTweet(
+      creds,
+      { text, quoteTweetId: context.targetTweetId, engagementMode: 'quote' },
+      isDryRun,
+    );
+    return retry.success ? retry : undefined;
+  };
+
   const recordTelemetry = (res: TweetResult, isDryRun: boolean) => {
     if (res.rateLimitHeaders) s.rateLimit.updateRateLimitTelemetry(res.rateLimitHeaders);
     if (!isDryRun && isCooldown(res)) {
@@ -171,7 +193,16 @@ export const createDropService = (deps: DropDeps) => {
     ) {
       res = await recoverChain(context, res, text, replyToTweetId, creds, isDryRun);
     }
+    let fallbackTriggered = false;
+    if (!res.success && engagementMode === 'reply' && context.autoFallbackToQuote) {
+      const quoted = await quoteFallback(context, res, text, creds, isDryRun);
+      if (quoted) {
+        res = quoted;
+        fallbackTriggered = true;
+      }
+    }
     recordTelemetry(res, isDryRun);
+    const finalMode = fallbackTriggered ? 'quote' : engagementMode;
 
     const status = res.success ? (res.simulated ? 'simulated' : 'success') : 'error';
     const failure = res.success ? undefined : { errorClass: classify(res), message: res.error };
@@ -179,7 +210,7 @@ export const createDropService = (deps: DropDeps) => {
       context.id,
       status,
       res.tweetId,
-      res.engagementMode || engagementMode,
+      res.engagementMode || finalMode,
       failure,
     );
     const errorMessage =
@@ -191,9 +222,10 @@ export const createDropService = (deps: DropDeps) => {
       timestamp: new Date().toISOString(),
       slotType,
       targetTweetId: context.targetTweetId,
-      replyToTweetId: res.replyTo || replyToTweetId,
-      quoteTweetId: res.quoteTweetId || quoteTweetId,
-      engagementMode: res.engagementMode || engagementMode,
+      replyToTweetId: fallbackTriggered ? undefined : res.replyTo || replyToTweetId,
+      quoteTweetId: res.quoteTweetId || (fallbackTriggered ? context.targetTweetId : quoteTweetId),
+      engagementMode: res.engagementMode || finalMode,
+      ...(fallbackTriggered ? { fallbackTriggered: true } : {}),
       color,
       tweetText: text,
       tweetId: res.tweetId,

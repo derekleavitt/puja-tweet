@@ -95,7 +95,7 @@ export class ContextService {
       ),
       replyTargetMode: data.replyTargetMode || 'original_post',
       engagementMode: data.engagementMode || 'reply',
-      autoFallbackToQuote: false,
+      autoFallbackToQuote: data.autoFallbackToQuote ?? false,
       lastPostedTweetId: data.lastPostedTweetId,
       enabled: data.enabled ?? true,
       dryRun: data.dryRun ?? false,
@@ -168,7 +168,7 @@ export class ContextService {
       targetTweetId,
       replyTargetMode: updates.replyTargetMode ?? (current.replyTargetMode || 'original_post'),
       engagementMode: updates.engagementMode ?? (current.engagementMode || 'reply'),
-      autoFallbackToQuote: false,
+      autoFallbackToQuote: updates.autoFallbackToQuote ?? current.autoFallbackToQuote ?? false,
       lastPostedTweetId: targetChanged
         ? updates.lastPostedTweetId || undefined
         : 'lastPostedTweetId' in updates
@@ -236,7 +236,7 @@ export class ContextService {
       targetTweetId: source.targetTweetId,
       replyTargetMode: source.replyTargetMode || 'original_post',
       engagementMode: source.engagementMode || 'reply',
-      autoFallbackToQuote: false,
+      autoFallbackToQuote: source.autoFallbackToQuote ?? false,
       lastPostedTweetId: undefined, // Fresh copy starts clean
       enabled: false, // Start paused
       dryRun: source.dryRun,

@@ -9,7 +9,7 @@ export const syncActiveContextToSettings = (settings: BotSettings, ctx: TweetCon
   settings.targetTweetId = ctx.targetTweetId;
   settings.replyTargetMode = ctx.replyTargetMode || 'original_post';
   settings.engagementMode = ctx.engagementMode || 'reply';
-  settings.autoFallbackToQuote = ctx.autoFallbackToQuote ?? true;
+  settings.autoFallbackToQuote = ctx.autoFallbackToQuote ?? false;
   settings.lastPostedTweetId = ctx.lastPostedTweetId;
   settings.schedulerEnabled = ctx.enabled;
   settings.dryRun = ctx.dryRun ?? false;
@@ -29,7 +29,7 @@ export const buildSettingsView = (active: TweetContext, stored: BotSettings): Bo
   targetTweetId: active.targetTweetId,
   replyTargetMode: active.replyTargetMode || 'original_post',
   engagementMode: active.engagementMode || 'reply',
-  autoFallbackToQuote: active.autoFallbackToQuote ?? true,
+  autoFallbackToQuote: active.autoFallbackToQuote ?? false,
   lastPostedTweetId: active.lastPostedTweetId,
   scheduleTimes: active.schedule.scheduleTimes,
   timezone: active.schedule.timezone,
