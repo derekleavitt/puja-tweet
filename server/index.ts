@@ -36,9 +36,27 @@ async function startServer() {
     app.use(vite.middlewares);
   }
 
-  app.listen(config.port, '0.0.0.0', () => {
+  const server = app.listen(config.port, '0.0.0.0', () => {
     console.log(`[X-ChromaBot] Server running at http://0.0.0.0:${config.port}`);
   });
+
+  // Flush debounced state to disk before the process exits.
+  let shuttingDown = false;
+  const shutdown = (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`[X-ChromaBot] ${signal} received, flushing state`);
+    scheduler.stop?.();
+    try {
+      services.flushSync();
+    } catch (err) {
+      console.error('[X-ChromaBot] Shutdown flush failed:', err);
+    }
+    server.close();
+    process.exit(0);
+  };
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
 startServer().catch((err) => {

@@ -33,4 +33,6 @@ export interface Store {
   load(): Promise<BotState>;
   /** Persists the full state. Implementations must not retain references to the passed object. */
   save(state: BotState): Promise<void>;
+  /** Optional synchronous save used only for the shutdown flush (SIGTERM/SIGINT). */
+  saveSync?(state: BotState): void;
 }

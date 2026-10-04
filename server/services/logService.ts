@@ -4,7 +4,7 @@
 
 import type { PostLog, TweetContext } from '../../shared/types.js';
 import type { QueueService } from './queueService.js';
-import type { StateManager } from './stateManager.js';
+import { maxLogs, type StateManager } from './stateManager.js';
 
 export class LogService {
   constructor(
@@ -18,7 +18,10 @@ export class LogService {
   }
 
   addLog(log: PostLog) {
-    this.sm.state.logs.push(log);
+    const logs = this.sm.state.logs;
+    logs.push(log);
+    const cap = maxLogs();
+    if (logs.length > cap) logs.splice(0, logs.length - cap);
     this.sm.persist();
   }
 
