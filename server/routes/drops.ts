@@ -8,7 +8,7 @@ import { generateColor } from '../colorEngine.js';
 import { toHttpError } from '../middleware/error.js';
 import { resolveTemplateText } from '../templateAgent.js';
 
-export const createDropsRouter = ({ services, scheduler }: AppDeps) => {
+export const createDropsRouter = ({ services, drops }: AppDeps) => {
   const router = Router();
 
   const buildPreview = async (
@@ -90,7 +90,7 @@ export const createDropsRouter = ({ services, scheduler }: AppDeps) => {
 
   router.post('/post-now', async (req, res, next) => {
     try {
-      const result = await scheduler.executeDrop({
+      const result = await drops.executeDrop({
         contextId: req.body.contextId,
         slotType: req.body.slotType || 'manual',
         color: req.body.color,

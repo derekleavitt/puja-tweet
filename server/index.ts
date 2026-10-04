@@ -10,12 +10,13 @@ import { createApp } from './app.js';
 import { config } from './config.js';
 import { markSchedulerStarted } from './routes/health.js';
 import { scheduler } from './scheduler.js';
+import { dropService } from './services/dropService.js';
 import { services } from './services/index.js';
 
 const rootDir = config.rootDir;
 
 async function startServer() {
-  const app = createApp({ services, scheduler });
+  const app = createApp({ services, scheduler, drops: dropService });
 
   // Start background multi-context scheduler
   scheduler.start();
