@@ -5,7 +5,6 @@
 
 import { useState, useCallback } from 'react';
 import { generateColor as apiGenerateColor, postNow } from '../api/endpoints.js';
-import { recordFirestoreLog, saveFirestoreContext } from '../lib/firestoreSync.js';
 import { ColorData, PostLog } from '../types.js';
 
 interface UsePostingDeps {
@@ -54,11 +53,7 @@ export function usePosting({ activeContextId, addLog, refresh }: UsePostingDeps)
       setLastPostedResult(data);
 
       if (data.log) {
-        await recordFirestoreLog(data.log);
         addLog(data.log);
-      }
-      if (data.context) {
-        await saveFirestoreContext(data.context);
       }
 
       await refresh();

@@ -4,7 +4,7 @@
  * Secured behind Google Authentication & synced with Cloud Firestore.
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Header } from './components/Header.js';
 import { StatusBar } from './components/StatusBar.js';
 import { LiveStudio } from './features/studio/LiveStudio.js';
@@ -26,7 +26,6 @@ import { useCredentials } from './hooks/useCredentials.js';
 import { useSettings } from './hooks/useSettings.js';
 import { usePosting } from './hooks/usePosting.js';
 import { useContexts } from './hooks/useContexts.js';
-import { useCloudBootstrap } from './hooks/useCloudBootstrap.js';
 import { PostLog } from './types.js';
 
 function ChromaBotDashboard() {
@@ -81,12 +80,21 @@ function ChromaBotDashboard() {
     },
   );
 
-  // Initial load: check Firestore for saved cloud contexts & settings (runs once on mount)
-  const { isLoading } = useCloudBootstrap({
-    setSettings,
-    loadInitialData: () =>
-      Promise.all([fetchStatus(), fetchQueue(), fetchHistory(), generateColor('morning')]),
-  });
+  // Initial load (runs once on mount)
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const loadInitial = () =>
+    Promise.all([fetchStatus(), fetchQueue(), fetchHistory(), generateColor('morning')]);
+  const loadInitialRef = useRef(loadInitial);
+  loadInitialRef.current = loadInitial;
+  useEffect(() => {
+    let cancelled = false;
+    loadInitialRef.current().finally(() => {
+      if (!cancelled) setIsLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Heartbeat: one /api/status poll every 10 s (it already carries the queue); paused while the
   // browser tab is hidden. History is only polled while the History tab is open.
