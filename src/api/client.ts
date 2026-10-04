@@ -5,6 +5,7 @@
  */
 
 import { auth, logoutUser } from '../lib/firebase.js';
+import { toast } from '../components/ui/toastStore.js';
 
 export class ApiError extends Error {
   status: number;
@@ -41,11 +42,17 @@ async function buildHeaders(hasBody: boolean): Promise<Record<string, string>> {
 export async function apiFetch<T = any>(path: string, options: ApiRequestOptions = {}): Promise<T> {
   const { method = 'GET', body, errorMessage } = options;
   const hasBody = body !== undefined;
-  const res = await fetch(path, {
-    method,
-    headers: await buildHeaders(hasBody),
-    body: hasBody ? JSON.stringify(body) : undefined,
-  });
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      method,
+      headers: await buildHeaders(hasBody),
+      body: hasBody ? JSON.stringify(body) : undefined,
+    });
+  } catch (err) {
+    toast.error('Cannot reach the server. Check your connection and try again.');
+    throw err;
+  }
 
   let data: any;
   try {
@@ -60,11 +67,14 @@ export async function apiFetch<T = any>(path: string, options: ApiRequestOptions
   }
 
   if (!res.ok) {
-    throw new ApiError(
+    const apiError = new ApiError(
       data?.error || errorMessage || `Request failed (${res.status})`,
       res.status,
       data,
     );
+    // 401 already ends the session and returns to the login screen.
+    if (res.status !== 401) toast.error(apiError.message);
+    throw apiError;
   }
   return data as T;
 }
