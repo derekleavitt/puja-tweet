@@ -9,6 +9,7 @@ dotenv.config();
 interface CliOptions {
   slot: 'morning' | 'evening' | 'auto';
   dryRun?: boolean;
+  force?: boolean;
   targetTweetId?: string;
 }
 
@@ -28,6 +29,10 @@ function parseArgs(): CliOptions {
       i++;
     } else if (arg === '--dry-run') {
       options.dryRun = true;
+    } else if (arg === '--live') {
+      options.dryRun = false;
+    } else if (arg === '--force') {
+      options.force = true;
     } else if (arg === '--target' && args[i + 1]) {
       options.targetTweetId = args[i + 1];
       i++;
@@ -44,6 +49,31 @@ function determineSlot(): 'morning' | 'evening' {
   return mstHour < 12 ? 'morning' : 'evening';
 }
 
+/**
+ * Window check for `--slot auto` live runs. Actions has no persistent state, so we can only verify
+ * that "now" (America/Denver) is within WINDOW_MINUTES after a SCHEDULE_TIMES entry. Limitation: this
+ * does not detect a slot that was already posted inside the window; use --force to bypass.
+ */
+const WINDOW_MINUTES = 60;
+
+function isWithinScheduleWindow(): boolean {
+  const times = (process.env.SCHEDULE_TIMES || '06:00,18:00').split(',').map((s) => s.trim());
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'America/Denver',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date());
+  const nowMin =
+    Number(parts.find((p) => p.type === 'hour')?.value) * 60 + Number(parts.find((p) => p.type === 'minute')?.value);
+  return times.some((t) => {
+    const [h, m] = t.split(':').map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) return false;
+    const diff = (nowMin - (h * 60 + m) + 1440) % 1440;
+    return diff < WINDOW_MINUTES;
+  });
+}
+
 async function run() {
   const options = parseArgs();
   const slotType = options.slot === 'auto' ? determineSlot() : options.slot;
@@ -56,7 +86,8 @@ async function run() {
 
   const settings = storage.getSettings();
   const targetTweetId = options.targetTweetId || process.env.TARGET_TWEET_ID || settings.targetTweetId;
-  const isDryRun = options.dryRun ?? (process.env.DRY_RUN === 'true' ? true : settings.dryRun);
+  // Safety default: dry run unless live posting is explicitly requested (--live or DRY_RUN=false).
+  const isDryRun = options.dryRun ?? process.env.DRY_RUN !== 'false';
 
   // Retrieve Twitter credentials (process.env from GitHub Secrets or store)
   const creds = storage.getEffectiveCredentials();
@@ -83,6 +114,11 @@ async function run() {
     console.error('  3. TWITTER_ACCESS_TOKEN');
     console.error('  4. TWITTER_ACCESS_TOKEN_SECRET');
     console.error('');
+  }
+
+  if (!isDryRun && options.slot === 'auto' && !options.force && !isWithinScheduleWindow()) {
+    console.error(`[PostDrop] Refusing live post: current time is outside the SCHEDULE_TIMES window (${WINDOW_MINUTES} min). Use --force to override.`);
+    process.exit(1);
   }
 
   // Generate unique Sunrise / Sunset color and 3-5 word weather description
