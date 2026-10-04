@@ -7,6 +7,7 @@
  */
 
 import crypto from 'crypto';
+import { getXTimeoutMs, isTimeoutError } from './timeouts.js';
 
 export interface TwitterCredentials {
   // OAuth 1.0a (Permanent)
@@ -55,6 +56,7 @@ export interface TweetResponse {
   engagementMode?: 'reply' | 'quote' | 'standalone';
   fallbackTriggered?: boolean;
   isRateLimitOrCooldown?: boolean;
+  isTimeout?: boolean;
   rateLimitReset?: number;
   rateLimitHeaders?: RateLimitHeaders;
 }
@@ -151,6 +153,7 @@ export async function refreshOAuth2Token(
     });
 
     const res = await fetch('https://api.x.com/2/oauth2/token', {
+      signal: AbortSignal.timeout(getXTimeoutMs()),
       method: 'POST',
       headers: {
         Authorization: `Basic ${basic}`,
@@ -188,6 +191,7 @@ export async function verifyTwitterCredentials(
       });
 
       const res = await fetch(url, {
+        signal: AbortSignal.timeout(getXTimeoutMs()),
         method: 'GET',
         headers: {
           Authorization: authHeader,
@@ -222,6 +226,7 @@ export async function verifyTwitterCredentials(
   if (oauth2Token) {
     try {
       const res = await fetch('https://api.x.com/2/users/me', {
+        signal: AbortSignal.timeout(getXTimeoutMs()),
         headers: {
           Authorization: `Bearer ${oauth2Token}`,
           'User-Agent': 'X-ChromaBot/1.0',
@@ -336,6 +341,7 @@ export async function postColorTweet(
 
     try {
       let response = await fetch(endpoint, {
+        signal: AbortSignal.timeout(getXTimeoutMs()),
         method: 'POST',
         headers: {
           Authorization: authHeader,
@@ -353,6 +359,7 @@ export async function postColorTweet(
           if (refreshed.refreshToken) creds.oauth2RefreshToken = refreshed.refreshToken;
           authHeader = `Bearer ${creds.oauth2AccessToken}`;
           response = await fetch(endpoint, {
+            signal: AbortSignal.timeout(getXTimeoutMs()),
             method: 'POST',
             headers: {
               Authorization: authHeader,
@@ -405,6 +412,13 @@ export async function postColorTweet(
         rateLimitHeaders: parseRateLimitHeaders(response.headers),
       };
   } catch (err: any) {
+    if (isTimeoutError(err)) {
+      return {
+        success: false,
+        error: `X API timeout after ${getXTimeoutMs()} ms`,
+        isTimeout: true,
+      };
+    }
     return {
       success: false,
       error: err.message || 'Failed to communicate with X API endpoint',
