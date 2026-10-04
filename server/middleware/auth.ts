@@ -17,7 +17,7 @@ export interface VerifiedToken {
 export type TokenVerifier = (idToken: string) => Promise<VerifiedToken>;
 
 /** Paths (relative to /api) that stay public or keep their own secret auth. */
-const EXEMPT_PATHS = new Set(['/health', '/cron/trigger', '/webhook/trigger']);
+const EXEMPT_PATHS = new Set(['/health', '/cron/trigger', '/cron/tick', '/webhook/trigger']);
 
 /** Default verifier backed by firebase-admin (ADC, GOOGLE_APPLICATION_CREDENTIALS or service-account JSON). */
 export const createFirebaseVerifier = (): TokenVerifier => {

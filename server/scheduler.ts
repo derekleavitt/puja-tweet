@@ -25,7 +25,23 @@ const MIN_LIVE_SPACING_MS = 60 * 1000;
 /** A persisted pending fire older than this at boot/tick is dropped rather than fired late. */
 const STALE_PENDING_MS = 60 * 60 * 1000;
 
+export interface TickOptions {
+  /** Max drops this tick may start; the rest stay due and fire on the next tick. Default: no cap. */
+  maxDrops?: number;
+}
+
+export interface TickResult {
+  /** True when another tick was already in flight (nothing ran). */
+  busy: boolean;
+  fired: number;
+  /** Enabled contexts that did not start a drop this tick. */
+  skipped: number;
+}
+
 class SchedulerService {
+  private dropsLeft = Infinity;
+  private firedCount = 0;
+  private enabledCount = 0;
   private timer: NodeJS.Timeout | null = null;
   private isProcessing = false;
   private tickGeneration = 0;
@@ -35,7 +51,7 @@ class SchedulerService {
       clearInterval(this.timer);
     }
     // Check every 10 seconds for high precision across all context schedules
-    this.timer = setInterval(() => this.tick(), 10 * 1000);
+    this.timer = setInterval(() => void this.tick(), 10 * 1000);
     console.log('[Scheduler] Started multi-context chromatic post scheduler engine.');
   }
 
@@ -55,17 +71,28 @@ class SchedulerService {
 
   /** Anti-burst + cooldown gate, evaluated right before every live drop. */
   private canFireNow(): boolean {
+    if (this.dropsLeft <= 0) return false; // MAX_DROPS_PER_TICK: stays due for the next tick
     if (services.rateLimit.getCooldownState().isThrottled) return false;
     return services.rateLimit.getTimeSinceLastLivePostMs() >= MIN_LIVE_SPACING_MS;
+  }
+
+  /** Starts a drop, charging it to the per-tick budget (callers check `canFireNow` first). */
+  private async runDrop(args: Parameters<typeof dropService.executeDrop>[0]) {
+    this.dropsLeft--;
+    this.firedCount++;
+    await dropService.executeDrop(args);
   }
 
   /**
    * Main scheduler loop: runs every 10 seconds and checks each enabled context.
    * A watchdog deadline guarantees `isProcessing` is released even if a post hangs.
    */
-  public async tick() {
-    if (this.isProcessing) return;
+  public async tick(options: TickOptions = {}): Promise<TickResult> {
+    if (this.isProcessing) return { busy: true, fired: 0, skipped: 0 };
     this.isProcessing = true;
+    this.dropsLeft = options.maxDrops ?? Infinity;
+    this.firedCount = 0;
+    this.enabledCount = 0;
     const generation = ++this.tickGeneration;
     const timeoutMs = this.tickTimeoutMs();
     let timer: NodeJS.Timeout | undefined;
@@ -85,6 +112,11 @@ class SchedulerService {
       this.tickGeneration++;
       this.isProcessing = false;
     }
+    return {
+      busy: false,
+      fired: this.firedCount,
+      skipped: Math.max(0, this.enabledCount - this.firedCount),
+    };
   }
 
   private async runTick(generation: number): Promise<'done'> {
@@ -99,6 +131,7 @@ class SchedulerService {
     if (services.settings.isGlobalPaused()) return 'done';
 
     const contexts = services.contexts.getContexts().filter((c) => c.enabled);
+    this.enabledCount = contexts.length;
     if (contexts.length === 0) return 'done';
 
     // 1. Global Rate Limit / Cooldown: safe standby while it expires
@@ -144,10 +177,7 @@ class SchedulerService {
           `[Scheduler] Context "${context.name}" interval reached ` +
             `(${intervalMinutes}m base + ${Math.round(jitterMs / 1000)}s jitter). Firing drop...`,
         );
-        await dropService.executeDrop({
-          contextId: context.id,
-          source: 'scheduler',
-        });
+        await this.runDrop({ contextId: context.id, source: 'scheduler' });
       }
       return;
     }
@@ -206,7 +236,7 @@ class SchedulerService {
     console.log(
       `[Scheduler] Context "${context.name}" fixed time reached (${matchedTime}). Firing drop...`,
     );
-    await dropService.executeDrop({ contextId: context.id, slotType, source: 'scheduler' });
+    await this.runDrop({ contextId: context.id, slotType, source: 'scheduler' });
   }
 
   public getNextScheduledPost(contextId?: string) {
