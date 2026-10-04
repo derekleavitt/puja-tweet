@@ -131,7 +131,7 @@ export interface RateLimitTelemetry {
   activeCooldown?: CooldownState;
 }
 
-const DATA_DIR = path.resolve(process.cwd(), 'data');
+const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.resolve(process.cwd(), 'data');
 const STORE_FILE = path.join(DATA_DIR, 'bot-store.json');
 
 const DEFAULT_SETTINGS: BotSettings = {
