@@ -5,6 +5,7 @@
 
 import React from 'react';
 import { Check, Clock, Repeat } from 'lucide-react';
+import { timezoneOptions } from '../../../shared/time.js';
 import { JitterSettings } from './JitterSettings.js';
 
 export interface ScheduleValues {
@@ -20,22 +21,6 @@ interface ScheduleSettingsProps {
   value: ScheduleValues;
   onChange: (patch: Partial<ScheduleValues>) => void;
 }
-
-const COMMON_TIMEZONES = [
-  'MST',
-  'America/Denver',
-  'America/Los_Angeles',
-  'America/Chicago',
-  'America/New_York',
-  'America/Phoenix',
-  'Europe/London',
-  'Europe/Paris',
-  'Europe/Berlin',
-  'Asia/Tokyo',
-  'Asia/Singapore',
-  'Australia/Sydney',
-  'UTC',
-];
 
 const INTERVAL_PRESETS = [
   { label: 'Every 1 minute (Fast Test)', value: 1 },
@@ -160,7 +145,7 @@ export const ScheduleSettings: React.FC<ScheduleSettingsProps> = ({ value, onCha
               onChange={(e) => onChange({ timezone: e.target.value })}
               className="w-full px-3.5 py-2 text-sm font-mono border border-neutral-300 dark:border-neutral-700 rounded-lg bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-neutral-400 dark:focus:ring-neutral-600"
             >
-              {COMMON_TIMEZONES.map((tz) => (
+              {timezoneOptions(timezone).map((tz) => (
                 <option key={tz} value={tz}>
                   {tz}
                 </option>
