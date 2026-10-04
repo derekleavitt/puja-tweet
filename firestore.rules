@@ -6,6 +6,7 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Owner constant: keep in sync with shared/owner.ts (OWNER_EMAIL). Rules cannot read env vars.
     function isAuthorizedAdmin() {
       return isSignedIn() && request.auth.token.email == 'the.derek.leavitt@gmail.com';
     }
