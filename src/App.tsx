@@ -74,10 +74,12 @@ function ChromaBotDashboard() {
     handleToggleScheduler,
     handleUpdateTargetTweetId,
   } = useSettings({ settings, setSettings, setQueue, refresh });
-  const { handleSaveCredentials, handleVerifyCredentials } = useCredentials({
-    setCredentialsStatus: status.setCredentialsStatus,
-    fetchStatus,
-  });
+  const { handleSaveCredentials, handleClearCredentials, handleVerifyCredentials } = useCredentials(
+    {
+      setCredentialsStatus: status.setCredentialsStatus,
+      fetchStatus,
+    },
+  );
 
   // Initial load: check Firestore for saved cloud contexts & settings (runs once on mount)
   const { isLoading } = useCloudBootstrap({
@@ -228,6 +230,7 @@ function ChromaBotDashboard() {
               <TwitterSetup
                 credentialsStatus={credentialsStatus}
                 onSaveCredentials={handleSaveCredentials}
+                onClearCredentials={handleClearCredentials}
                 onVerifyCredentials={handleVerifyCredentials}
               />
             )}
