@@ -454,8 +454,8 @@ export const RateLimitModal: React.FC<RateLimitModalProps> = ({
                       <span>Maintain &ge; 15-Minute Frequency</span>
                     </div>
                     <p className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-snug">
-                      Keep automated live drops at 15m, 1h, or fixed 6am/6pm MST clock drops. Use 1m
-                      only with Dry-Run mode.
+                      Keep automated live drops at 15m, 1h, or fixed clock-time drops. Use 1m only
+                      with Dry-Run mode.
                     </p>
                   </div>
                 </div>

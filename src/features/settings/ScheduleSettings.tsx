@@ -139,7 +139,7 @@ export const ScheduleSettings: React.FC<ScheduleSettingsProps> = ({ value, onCha
               Daily Drop Times (24-hour format)
             </label>
             <p className="text-xs text-neutral-500">
-              Comma-separated list. Defaults to 6:00 AM (06:00) and 6:00 PM (18:00).
+              Comma-separated list. Defaults to 06:00 and 18:00.
             </p>
             <input
               type="text"
@@ -154,7 +154,7 @@ export const ScheduleSettings: React.FC<ScheduleSettingsProps> = ({ value, onCha
             <label className="text-xs font-bold uppercase tracking-wider text-neutral-700 dark:text-neutral-300">
               Timezone
             </label>
-            <p className="text-xs text-neutral-500">Determines when 6:00 AM and 6:00 PM occur.</p>
+            <p className="text-xs text-neutral-500">Determines when the scheduled times occur.</p>
             <select
               value={timezone}
               onChange={(e) => onChange({ timezone: e.target.value })}

@@ -4,6 +4,7 @@
 
 import { Router } from 'express';
 import type { AppDeps } from '../app.js';
+import { getDefaultTargetTweetId } from '../store/defaults.js';
 
 export const createStatusRouter = ({ services, scheduler }: AppDeps) => {
   const router = Router();
@@ -21,6 +22,7 @@ export const createStatusRouter = ({ services, scheduler }: AppDeps) => {
 
     res.json({
       settings: services.settings.getSettings(),
+      defaultTargetTweetId: getDefaultTargetTweetId(),
       activeContext: services.contexts.getActiveContext(),
       contexts: services.contexts.getContexts(),
       nextPost: scheduler.getNextScheduledPost(),

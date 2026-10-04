@@ -10,6 +10,7 @@
 import { GoogleGenAI } from '@google/genai';
 import type { ColorData, PostLog } from '../shared/types.js';
 import { services } from './services/index.js';
+import { formatTimeInZone } from '../shared/time.js';
 import { substituteTemplate } from '../shared/template/substitute.js';
 import {
   COMBINED_HISTORY_AGENT_REGEX,
@@ -126,7 +127,7 @@ export async function generatePoeticAgentText(
   history: PostLog[] | null,
   slotLabel?: string,
 ): Promise<string> {
-  const timeTag = slotLabel || (color.slotType === 'morning' ? '6:00 AM' : '6:00 PM');
+  const timeTag = slotLabel || formatTimeInZone(new Date());
   const resolvedPrompt = substituteVariables(userPrompt, color, timeTag);
 
   let contents = `CURRENT DROP COLOR & CONTEXT:

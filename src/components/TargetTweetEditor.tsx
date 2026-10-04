@@ -43,7 +43,6 @@ export const TargetTweetEditor: React.FC<TargetTweetEditorProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   const detectedId = extractTweetId(inputValue);
-  const defaultTargetId = '2103110008212992249';
 
   const handleSave = async () => {
     if (!detectedId) {
@@ -59,21 +58,6 @@ export const TargetTweetEditor: React.FC<TargetTweetEditorProps> = ({
       setTimeout(() => setSavedSuccess(false), 2500);
     } catch (err: any) {
       setError(err.message || 'Failed to save target tweet ID');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleResetDefault = async () => {
-    setInputValue(defaultTargetId);
-    setIsSaving(true);
-    try {
-      await onSave(defaultTargetId);
-      setSavedSuccess(true);
-      setIsEditing(false);
-      setTimeout(() => setSavedSuccess(false), 2500);
-    } catch (err: any) {
-      setError(err.message || 'Failed to reset target tweet ID');
     } finally {
       setIsSaving(false);
     }
@@ -208,7 +192,7 @@ export const TargetTweetEditor: React.FC<TargetTweetEditorProps> = ({
                   setInputValue(e.target.value);
                   setError(null);
                 }}
-                placeholder="e.g. 2103110008212992249 or https://x.com/username/status/..."
+                placeholder="Tweet ID or https://x.com/username/status/..."
                 className="flex-1 px-3 py-2 text-sm font-mono border border-neutral-300 dark:border-neutral-700 rounded-lg bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 autoFocus
               />
@@ -259,15 +243,6 @@ export const TargetTweetEditor: React.FC<TargetTweetEditorProps> = ({
             <span className="text-[11px] text-neutral-400">
               Tip: You can paste directly from your browser's address bar.
             </span>
-            {currentTargetId !== defaultTargetId && (
-              <button
-                onClick={handleResetDefault}
-                disabled={isSaving}
-                className="text-xs text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200 underline inline-flex items-center gap-1 cursor-pointer"
-              >
-                <RotateCcw className="w-3 h-3" /> Reset to original (#{defaultTargetId})
-              </button>
-            )}
           </div>
         </div>
       )}

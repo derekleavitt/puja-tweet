@@ -41,14 +41,14 @@ export const TargetSettings: React.FC<TargetSettingsProps> = ({
 
     <p className="text-xs text-neutral-500">
       Paste a numeric Tweet ID or a full post URL (e.g.{' '}
-      <span className="font-mono">https://x.com/username/status/2091597504928428416</span>).
+      <span className="font-mono">https://x.com/username/status/…</span>).
     </p>
 
     <input
       type="text"
       value={targetTweetId}
       onChange={(e) => onTargetChange(e.target.value)}
-      placeholder="2091597504928428416 or https://x.com/..."
+      placeholder="Tweet ID or https://x.com/..."
       className="w-full px-3.5 py-2 text-sm font-mono border border-neutral-300 dark:border-neutral-700 rounded-lg bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-neutral-400 dark:focus:ring-neutral-600"
       required
     />

@@ -8,6 +8,7 @@
  */
 
 import {
+  formatHHmm12h,
   matchFixedTime,
   normalizeHHmm,
   resolveTimezone,
@@ -265,7 +266,7 @@ class SchedulerService {
           timeStr,
           secondsOfDay: h * 3600 + m * 60,
           isMorning: h < 12,
-          label: h === 6 ? '6:00 AM Drop' : h === 18 ? '6:00 PM Drop' : `${timeStr} Drop`,
+          label: `${formatHHmm12h(timeStr)} Drop`,
         };
       })
       .sort((a, b) => a.secondsOfDay - b.secondsOfDay);

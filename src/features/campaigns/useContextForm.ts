@@ -38,7 +38,7 @@ export function useContextForm(opts: UseContextFormOptions) {
     setEditingContext({
       name: `Context #${contexts.length + 1}`,
       description: '',
-      targetTweetId: activeContext?.targetTweetId || '2091597504928428416',
+      targetTweetId: activeContext?.targetTweetId || '',
       enabled: true,
       dryRun: false,
       schedule: {

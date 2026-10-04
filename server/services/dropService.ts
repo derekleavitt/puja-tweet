@@ -6,7 +6,7 @@
  */
 
 import type { ColorData, TweetContext } from '../../shared/types.js';
-import { hourInZone, slotTypeForHour } from '../../shared/time.js';
+import { formatTimeInZone, hourInZone, slotTypeForHour } from '../../shared/time.js';
 import { checkTweetText } from '../../shared/tweetLength.js';
 import { HttpError } from '../middleware/error.js';
 import { resolveTemplateText } from '../templateAgent.js';
@@ -122,7 +122,7 @@ export const createDropService = (deps: DropDeps) => {
     const text =
       options.text ??
       (await deps.resolveTemplateText(context.template, color, {
-        slotLabel: isMorning ? '6:00 AM' : '6:00 PM',
+        slotLabel: formatTimeInZone(new Date(), context.schedule?.timezone),
         contextId: context.id,
         targetTweetId: context.targetTweetId,
       }));

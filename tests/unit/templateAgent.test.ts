@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { generateColor } from '../../server/colorEngine.js';
 import { substituteVariables } from '../../server/templateAgent.js';
 
@@ -41,7 +41,15 @@ describe('substituteVariables', () => {
     );
   });
 
-  it('defaults the time tag from the slot type', () => {
-    expect(substituteVariables('{time_tag}', generateColor('evening'))).toBe('6:00 PM');
+  it('defaults the time tag to the current local time (h:mm A)', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-15T22:05:00Z')); // 3:05 PM MST
+    try {
+      expect(substituteVariables('{time_tag}|{time_slot}', generateColor('morning'))).toBe(
+        '3:05 PM|3:05 PM',
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -11,6 +11,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { QueueSlot, ColorData, TweetContext } from '../types.js';
+import { formatHHmm12h, tzAbbreviation } from '../../shared/time.js';
 
 interface QueueViewerProps {
   queue: QueueSlot[];
@@ -41,6 +42,9 @@ export const QueueViewer: React.FC<QueueViewerProps> = ({
 
   const activeContext = contexts.find((c) => c.id === activeContextId) || contexts[0];
 
+  const queueTz = (slot: QueueSlot) =>
+    (contexts.find((c) => c.id === slot.contextId) || activeContext)?.schedule?.timezone;
+
   const handleRegenerate = async () => {
     if (!onRegenerateQueue) return;
     setIsRegenerating(true);
@@ -54,7 +58,7 @@ export const QueueViewer: React.FC<QueueViewerProps> = ({
   const cadenceLabel = activeContext
     ? activeContext.schedule?.mode === 'interval'
       ? `Every ${activeContext.schedule.intervalMinutes}m`
-      : `Daily at ${(activeContext.schedule?.scheduleTimes || ['06:00', '18:00']).join(', ')} (${activeContext.schedule?.timezone || 'America/Denver'})`
+      : `Daily at ${(activeContext.schedule?.scheduleTimes || ['06:00', '18:00']).map(formatHHmm12h).join(', ')} (${tzAbbreviation(new Date(), activeContext.schedule?.timezone)})`
     : 'Twice Daily Cadence';
 
   const modeLabel = activeContext
@@ -243,7 +247,7 @@ export const QueueViewer: React.FC<QueueViewerProps> = ({
                       {dayName}
                     </span>
                     <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300">
-                      {slot.timeSlot} MST
+                      {formatHHmm12h(slot.timeSlot)} {tzAbbreviation(new Date(), queueTz(slot))}
                     </span>
                   </div>
 

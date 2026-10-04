@@ -17,7 +17,7 @@ import {
 
 export function useBotStatus(onQueue: (queue: QueueSlot[]) => void) {
   const [settings, setSettings] = useState<BotSettings>({
-    targetTweetId: '2091597504928428416',
+    targetTweetId: '',
     scheduleTimes: ['06:00', '18:00'],
     timezone: 'America/Denver',
     schedulerEnabled: true,

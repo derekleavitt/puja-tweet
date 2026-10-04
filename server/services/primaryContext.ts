@@ -5,6 +5,7 @@
 import { DEFAULT_TWEET_TEMPLATE } from '../colorEngine.js';
 import type { TweetContext } from '../../shared/types.js';
 import type { BotState } from '../store/Store.js';
+import { getDefaultTargetTweetId } from '../store/defaults.js';
 
 export const buildPrimaryContext = (s: BotState): TweetContext => {
   const now = new Date().toISOString();
@@ -12,7 +13,7 @@ export const buildPrimaryContext = (s: BotState): TweetContext => {
     id: 'ctx_primary',
     name: 'Primary Eternal Colors',
     description: 'Main automated color palette reply thread on X',
-    targetTweetId: s.settings.targetTweetId || '2091597504928428416',
+    targetTweetId: s.settings.targetTweetId || getDefaultTargetTweetId(),
     replyTargetMode: 'original_post',
     lastPostedTweetId: undefined,
     enabled: s.settings.schedulerEnabled ?? true,
