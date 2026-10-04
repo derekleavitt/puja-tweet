@@ -2,6 +2,7 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, User } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
+import { OWNER_EMAIL } from '../../shared/owner.js';
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
@@ -14,7 +15,7 @@ googleProvider.setCustomParameters({
 // Explicitly use the provisioned firestore database ID
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId || '(default)');
 
-export const AUTHORIZED_EMAIL = 'the.derek.leavitt@gmail.com';
+export const AUTHORIZED_EMAIL = OWNER_EMAIL;
 
 export function isUserAuthorized(user: User | null): boolean {
   if (!user || !user.email) return false;

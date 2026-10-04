@@ -7,8 +7,19 @@ import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { OWNER_EMAIL } from '../shared/owner.js';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+const readFirebaseAppletConfig = (): { projectId?: string } => {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(rootDir, 'firebase-applet-config.json'), 'utf-8'));
+  } catch {
+    return {};
+  }
+};
+
+const firebaseAppletConfig = readFirebaseAppletConfig();
 
 const readVersion = (): string => {
   try {
@@ -29,9 +40,9 @@ export const config = {
 /** SEC-2: Firebase ID-token auth for /api/*. */
 export const authConfig = {
   disabled: process.env.AUTH_DISABLED === 'true',
-  projectId: process.env.FIREBASE_PROJECT_ID || undefined,
+  projectId: process.env.FIREBASE_PROJECT_ID || firebaseAppletConfig.projectId || undefined,
   serviceAccountJson: process.env.FIREBASE_SERVICE_ACCOUNT_JSON || undefined,
-  authorizedEmails: (process.env.AUTHORIZED_EMAILS || '')
+  authorizedEmails: (process.env.AUTHORIZED_EMAILS || OWNER_EMAIL)
     .split(',')
     .map((email) => email.trim().toLowerCase())
     .filter(Boolean),
