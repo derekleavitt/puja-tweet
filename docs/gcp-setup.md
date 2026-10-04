@@ -129,6 +129,12 @@ npx firebase-tools deploy --only firestore:rules   # uses firebase.json + .fireb
 `firebase.json` targets the named AI Studio database. The rules hard-code the owner email (rules cannot
 read env vars); keep it in sync with `shared/owner.ts`.
 
+Optional Gemini env vars: `GEMINI_MODEL` (primary model) and `GEMINI_FALLBACK_MODEL` (tried next; comma
+lists allowed). Blank uses the built-in defaults (`gemini-3.8-flash`, `gemini-3.1-flash-lite`,
+`gemini-flash-latest`). `GEMINI_MAX_CALLS_PER_DAY` caps Gemini calls per UTC day (blank = unlimited);
+`GEMINI_TIMEOUT_MS` sets the per-call timeout. Without `GEMINI_API_KEY`, `<agent>` tags resolve to the
+deterministic mood fallback.
+
 Optional env vars: `X_HANDLE` (server; names your X account in error messages, blank = "your account")
 and build-time `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`,
 `VITE_FIREBASE_APP_ID`, `VITE_FIREBASE_FIRESTORE_DATABASE_ID`, which override
