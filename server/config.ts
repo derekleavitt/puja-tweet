@@ -9,6 +9,36 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { OWNER_EMAIL } from '../shared/owner.js';
 
+/**
+ * Secrets pasted into Secret Manager or generated with `openssl rand -hex` often carry a
+ * trailing newline; a single invisible character makes shared-secret checks fail (401).
+ * Normalise them once at boot, before anything reads them.
+ */
+export const SECRET_ENV_NAMES = [
+  'CRON_SECRET',
+  'WEBHOOK_SECRET',
+  'CREDENTIALS_ENCRYPTION_KEY',
+  'GEMINI_API_KEY',
+  'TWITTER_API_KEY',
+  'TWITTER_API_SECRET',
+  'TWITTER_ACCESS_TOKEN',
+  'TWITTER_ACCESS_TOKEN_SECRET',
+  'TWITTER_BEARER_TOKEN',
+  'TWITTER_OAUTH2_CLIENT_ID',
+  'TWITTER_OAUTH2_CLIENT_SECRET',
+  'TWITTER_OAUTH2_ACCESS_TOKEN',
+  'TWITTER_OAUTH2_REFRESH_TOKEN',
+] as const;
+
+export const normaliseSecretEnv = (env: NodeJS.ProcessEnv = process.env) => {
+  for (const name of SECRET_ENV_NAMES) {
+    const value = env[name];
+    if (typeof value === 'string') env[name] = value.trim();
+  }
+};
+
+normaliseSecretEnv();
+
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const readFirebaseAppletConfig = (): { projectId?: string; firestoreDatabaseId?: string } => {
