@@ -3,7 +3,7 @@
  * Expands template syntax with:
  *   <agent>PROMPT</agent>
  *   <history><agent>PROMPT</agent></history>
- * Powered by Google Gemini (gemini-3.8-flash with gemini-3.1-flash-lite fallback)
+ * Powered by Google Gemini (models configurable via GEMINI_MODEL / GEMINI_FALLBACK_MODEL)
  * for poetic, evocative generation.
  */
 
@@ -17,15 +17,26 @@ import {
   stripHistoryTags,
 } from '../shared/template/agentTags.js';
 import { getGeminiTimeoutMs } from './timeouts.js';
+import {
+  getGeminiModels,
+  getGeminiUserAgent,
+  isGeminiConfigured,
+  tryConsumeGeminiCall,
+} from './geminiConfig.js';
+import {
+  AGENT_TARGET_LENGTH,
+  truncateAtWordBoundary,
+  weightedTweetLength,
+} from '../shared/tweetLength.js';
 
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    },
-  },
-});
+let aiClient: GoogleGenAI | null = null;
+function getClient(): GoogleGenAI {
+  aiClient ??= new GoogleGenAI({
+    apiKey: process.env.GEMINI_API_KEY,
+    httpOptions: { headers: { 'User-Agent': getGeminiUserAgent() } },
+  });
+  return aiClient;
+}
 
 export const POETRY_AGENT_SYSTEM_INSTRUCTION = `You are a world-class literary poet and creative writer specializing in atmospheric, earthy, and profound short-form poetry and expressions, channeling voices like Pablo Neruda, Mary Oliver, Octavio Paz, and Federico García Lorca.
 
@@ -61,18 +72,15 @@ export function getSeriesHistory(
   limitCount = 10,
 ): PostLog[] {
   const allLogs = services.logs.getLogs(); // returns newest first
-  // Filter for matching series
-  const filtered = allLogs.filter((log) => {
-    if (contextId && log.contextId === contextId) return true;
-    if (targetTweetId && log.targetTweetId === targetTweetId) return true;
-    return false;
-  });
-
-  // If no logs found specifically for contextId, fallback to general logs
-  const candidateLogs = filtered.length > 0 ? filtered : allLogs;
+  // Same context only (no cross-context fallback); successful posts only.
+  const matches = (log: PostLog) =>
+    contextId
+      ? log.contextId === contextId
+      : !!targetTweetId && log.targetTweetId === targetTweetId;
+  const filtered = allLogs.filter((log) => log.status === 'success' && matches(log));
 
   // Take most recent entries and reverse to chronological order (oldest to newest)
-  return candidateLogs.slice(0, limitCount).reverse();
+  return filtered.slice(0, limitCount).reverse();
 }
 
 /**
@@ -92,6 +100,21 @@ export function formatHistoryForPrompt(history: PostLog[]): string {
       return `[Entry ${idx + 1}] (${date} - ${slot} | ${hex} ${colName}):\n"${log.tweetText}"`;
     })
     .join('\n\n');
+}
+
+/** Strip accidental enclosing quotes and markdown fences from model output. */
+export function cleanAgentOutput(raw: string): string {
+  let text = raw.trim();
+  if (text.startsWith('"') && text.endsWith('"') && text.length > 2) {
+    text = text.substring(1, text.length - 1).trim();
+  }
+  if (text.startsWith('“') && text.endsWith('”') && text.length > 2) {
+    text = text.substring(1, text.length - 1).trim();
+  }
+  return text
+    .replace(/^```[a-z]*\n?/i, '')
+    .replace(/\n?```$/i, '')
+    .trim();
 }
 
 /**
@@ -124,36 +147,39 @@ ${resolvedPrompt}
 
 Remember: Output ONLY the exact tweet text (no quotes, no intro, under 240 chars).`;
 
-  // Supported Gemini 3 models per SDK guidelines:
-  const modelsToTry = ['gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
+  const fallback = `${color.colorPick} (${color.hex}) — ${color.mood}`;
+  if (!isGeminiConfigured()) return fallback;
 
-  for (const model of modelsToTry) {
+  const callModel = async (model: string, prompt: string): Promise<string> => {
+    if (!tryConsumeGeminiCall()) throw new Error('GEMINI_MAX_CALLS_PER_DAY reached');
+    const response = await getClient().models.generateContent({
+      model,
+      contents: prompt,
+      config: {
+        systemInstruction: POETRY_AGENT_SYSTEM_INSTRUCTION,
+        temperature: 0.9,
+        abortSignal: AbortSignal.timeout(getGeminiTimeoutMs()),
+      },
+    });
+    return cleanAgentOutput(response.text ?? '');
+  };
+
+  for (const model of getGeminiModels()) {
     try {
-      const response = await ai.models.generateContent({
-        model,
-        contents,
-        config: {
-          systemInstruction: POETRY_AGENT_SYSTEM_INSTRUCTION,
-          temperature: 0.9,
-          abortSignal: AbortSignal.timeout(getGeminiTimeoutMs()),
-        },
-      });
-
-      let text = response.text ? response.text.trim() : '';
-
-      // Clean any accidental enclosing quotes or headers
-      if (text.startsWith('"') && text.endsWith('"') && text.length > 2) {
-        text = text.substring(1, text.length - 1).trim();
+      let text = await callModel(model, contents);
+      if (text && weightedTweetLength(text) > AGENT_TARGET_LENGTH) {
+        // Regenerate once with a stricter reminder, then truncate at a word boundary.
+        try {
+          const retry = await callModel(
+            model,
+            `${contents}\n\nYour previous draft was too long (${weightedTweetLength(text)} chars). Write a shorter version, strictly under ${AGENT_TARGET_LENGTH} characters.`,
+          );
+          if (retry && weightedTweetLength(retry) < weightedTweetLength(text)) text = retry;
+        } catch {
+          // keep first draft; truncated below
+        }
+        text = truncateAtWordBoundary(text, AGENT_TARGET_LENGTH);
       }
-      if (text.startsWith('“') && text.endsWith('”') && text.length > 2) {
-        text = text.substring(1, text.length - 1).trim();
-      }
-      // Remove markdown code fences if present
-      text = text
-        .replace(/^```[a-z]*\n?/i, '')
-        .replace(/\n?```$/i, '')
-        .trim();
-
       if (text) return text;
     } catch (err: any) {
       console.warn(`[TemplateAgent] Model ${model} encountered an issue:`, err.message || err);
@@ -162,7 +188,7 @@ Remember: Output ONLY the exact tweet text (no quotes, no intro, under 240 chars
   }
 
   // Graceful fallback to rich poetic mood if all models fail
-  return `${color.colorPick} (${color.hex}) — ${color.mood}`;
+  return fallback;
 }
 
 /**
@@ -196,7 +222,7 @@ export async function resolveTemplateText(
 
     const generated = await generatePoeticAgentText(prompt, color, history, options.slotLabel);
 
-    processed = processed.replace(fullMatch, generated);
+    processed = processed.replace(fullMatch, () => generated);
   }
 
   // 2. Process standalone <agent>...</agent> tags
@@ -209,7 +235,7 @@ export async function resolveTemplateText(
 
     const generated = await generatePoeticAgentText(prompt, color, null, options.slotLabel);
 
-    processed = processed.replace(fullMatch, generated);
+    processed = processed.replace(fullMatch, () => generated);
   }
 
   // 3. Clean any rogue <history>...</history> tags if left
