@@ -8,128 +8,30 @@ import fs from 'fs';
 import path from 'path';
 import { ColorData, DEFAULT_TWEET_TEMPLATE, generateColor } from './colorEngine.js';
 import { TwitterCredentials } from './twitterClient.js';
+import type {
+  TweetContextSchedule,
+  TweetContext,
+  BotSettings,
+  PostLog,
+  QueueSlot,
+  CooldownState,
+  RateLimitHeaders,
+  RateLimitTelemetry,
+} from '../shared/types.js';
+import { extractTweetId } from '../shared/tweetId.js';
+import { substituteTemplate } from '../shared/template/substitute.js';
+import { stripAgentTags } from '../shared/template/agentTags.js';
 
-export interface TweetContextSchedule {
-  mode: 'interval' | 'fixed_times';
-  intervalMinutes: number; // e.g. 1, 15, 30, 60, 180, 360, 720
-  scheduleTimes: string[]; // e.g. ["06:00", "18:00"]
-  timezone: string; // e.g. "America/Denver" (MST)
-  humanizeJitterEnabled: boolean; // Random humanized delay
-  jitterPercentage: number; // Default 25 (0 to 25% of repeat window)
-}
-
-export interface TweetContext {
-  id: string;
-  name: string;
-  description?: string;
-  targetTweetId: string;
-  replyTargetMode?: 'original_post' | 'last_comment'; // 'original_post' = root post, 'last_comment' = cascading thread
-  engagementMode?: 'reply' | 'quote' | 'standalone'; // 'reply' = comments, 'quote' = Quote Tweet, 'standalone' = timeline drop
-  autoFallbackToQuote?: boolean; // Automatically fall back to Quote Tweet if X restricts comments (403)
-  lastPostedTweetId?: string; // Latest tweet ID posted in this campaign
-  enabled: boolean;
-  dryRun?: boolean;
-  schedule: TweetContextSchedule;
-  template: string;
-  themePreference: 'dynamic' | 'vibrant' | 'minimal' | 'poetic';
-  lastPostedTimestamp?: number;
-  currentJitterMs?: number;
-  lastPostedSlot?: string;
-  consecutiveErrors?: number;
-  stats?: {
-    totalPosts: number;
-    successfulPosts: number;
-    simulatedPosts: number;
-    failedPosts: number;
-  };
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export interface BotSettings {
-  targetTweetId: string;
-  replyTargetMode?: 'original_post' | 'last_comment';
-  engagementMode?: 'reply' | 'quote' | 'standalone';
-  autoFallbackToQuote?: boolean;
-  lastPostedTweetId?: string;
-  scheduleTimes: string[];
-  timezone: string;
-  schedulerEnabled: boolean;
-  dryRun: boolean;
-  template: string;
-  themePreference: 'dynamic' | 'vibrant' | 'minimal' | 'poetic';
-  intervalMode?: 'fixed_times' | 'interval';
-  intervalMinutes?: number;
-  webhookSecret?: string;
-  humanizeJitterEnabled?: boolean;
-  jitterPercentage?: number;
-  activeContextId?: string;
-}
-
-export interface PostLog {
-  id: string;
-  timestamp: string;
-  slotType: 'morning' | 'evening' | 'manual';
-  scheduledTime?: string;
-  targetTweetId: string;
-  replyToTweetId?: string; // Actual tweet ID replied to
-  quoteTweetId?: string; // Target post ID if quoted
-  engagementMode?: 'reply' | 'quote' | 'standalone';
-  color: ColorData;
-  tweetText: string;
-  tweetId?: string;
-  tweetUrl?: string;
-  status: 'success' | 'simulated' | 'error';
-  errorMessage?: string;
-  contextId?: string;
-  contextName?: string;
-}
-
-export interface QueueSlot {
-  slotId: string;
-  dateStr: string;
-  timeSlot: '06:00' | '18:00' | string;
-  slotType: 'morning' | 'evening';
-  color: ColorData;
-  contextId?: string;
-  contextName?: string;
-  previewText?: string;
-  targetTweetId?: string;
-  replyTargetMode?: 'original_post' | 'last_comment';
-}
-
-export interface CooldownState {
-  isThrottled: boolean;
-  throttledUntil: number; // epoch ms
-  secondsRemaining: number;
-  reason?: string;
-  source?: string;
-  lastThrottledAt?: string;
-}
-
-export interface RateLimitHeaders {
-  limit?: number;
-  remaining?: number;
-  reset?: number; // epoch timestamp in seconds
-  appDailyLimit?: number;
-  userDailyLimit?: number;
-  retryAfter?: number;
-}
-
-export interface RateLimitTelemetry {
-  limit: number;
-  remaining: number;
-  resetEpochSeconds: number;
-  resetDateIso: string;
-  secondsUntilReset: number;
-  status: 'optimal' | 'warning' | 'throttled';
-  postsLast24Hours: number;
-  estimatedDailyCap: number;
-  lastUpdatedIso: string;
-  tierDetected: 'Free (Legacy)' | 'Basic ($200/mo)' | 'Pay-Per-Use ($0.015/tweet)' | 'Pro ($5k/mo)' | 'Enterprise';
-  headersCaptured: boolean;
-  activeCooldown?: CooldownState;
-}
+export type {
+  TweetContextSchedule,
+  TweetContext,
+  BotSettings,
+  PostLog,
+  QueueSlot,
+  CooldownState,
+  RateLimitHeaders,
+  RateLimitTelemetry,
+} from '../shared/types.js';
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 const STORE_FILE = path.join(DATA_DIR, 'bot-store.json');
@@ -809,9 +711,7 @@ class StorageService {
   }
 
   private cleanTweetId(input: string): string {
-    const matched = input.match(/\b\d{10,25}\b/);
-    if (matched) return matched[0];
-    return input.trim();
+    return extractTweetId(input) ?? input.trim();
   }
 
   // --- Backwards Compatibility with global BotSettings ---
@@ -1020,23 +920,11 @@ class StorageService {
     const weatherDesc = color.weatherDesc || 'warming crisp morning air';
     const weatherTweet = `${colorPick} ${weatherDesc} #eternal #colors`;
 
-    let resolved = (template || DEFAULT_TWEET_TEMPLATE)
-      .replace(/{weather_tweet}/g, weatherTweet)
-      .replace(/{color_pick}/g, colorPick)
-      .replace(/{weather_desc}/g, weatherDesc)
-      .replace(/{weather_description}/g, weatherDesc)
-      .replace(/{time_tag}/g, slotLabel)
-      .replace(/{color_name}/g, color.name)
-      .replace(/{hex}/g, color.hex)
-      .replace(/{rgb}/g, `${color.rgb.r}, ${color.rgb.g}, ${color.rgb.b}`)
-      .replace(/{hsl}/g, `${color.hsl.h}°, ${color.hsl.s}%, ${color.hsl.l}%`)
-      .replace(/{cmyk}/g, `C:${color.cmyk.c}% M:${color.cmyk.m}% Y:${color.cmyk.y}% K:${color.cmyk.k}%`)
-      .replace(/{mood}/g, color.mood)
-      .replace(/{swatch_bar}/g, color.swatchBar)
-      .replace(/{companions}/g, color.companions.join(' '));
-
-    resolved = resolved.replace(/<\/?history>/gi, '');
-    resolved = resolved.replace(/<agent(?:\s+history=["']?true["']?)?>([\s\S]*?)<\/agent>/gi, (_, inner) => `[AI Poetry (${colorPick} ${color.hex}): ${inner.trim()}]`);
+    const substituted = substituteTemplate(template || DEFAULT_TWEET_TEMPLATE, color, {
+      slotLabel,
+      fallbackWeatherDesc: 'warming crisp morning air',
+    });
+    const resolved = stripAgentTags(substituted, `${colorPick} ${color.hex}`);
     const finalPreview = resolved.trim();
     return finalPreview || weatherTweet;
   }
