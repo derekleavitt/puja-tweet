@@ -17,6 +17,9 @@ import { RunToggles } from './RunToggles.js';
 interface SettingsPanelProps {
   settings: BotSettings;
   onSaveSettings: (newSettings: Partial<BotSettings>) => Promise<void>;
+  campaignName?: string;
+  onToggleGlobalDryRun: () => void;
+  onToggleGlobalPause: () => void;
 }
 
 const CARD =
@@ -31,7 +34,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => (
   <SettingsForm key={props.settings.activeContextId ?? 'default'} {...props} />
 );
 
-const SettingsForm: React.FC<SettingsPanelProps> = ({ settings, onSaveSettings }) => {
+const SettingsForm: React.FC<SettingsPanelProps> = ({
+  settings,
+  onSaveSettings,
+  campaignName,
+  onToggleGlobalDryRun,
+  onToggleGlobalPause,
+}) => {
   const { defaultTargetTweetId } = useServerInfo();
   // An unset target starts from the server default (never a client constant).
   const [targetTweetId, setTargetTweetId] = useState(
@@ -141,6 +150,11 @@ const SettingsForm: React.FC<SettingsPanelProps> = ({ settings, onSaveSettings }
         <WebhookSettings onCopied={() => flashSaved(2000)} />
         <RunToggles
           {...toggles}
+          campaignName={campaignName}
+          globalDryRun={settings.globalDryRun !== false}
+          globalPaused={settings.globalPaused !== false}
+          onToggleGlobalDryRun={onToggleGlobalDryRun}
+          onToggleGlobalPause={onToggleGlobalPause}
           onChange={(patch) => setToggles((prev) => ({ ...prev, ...patch }))}
         />
 

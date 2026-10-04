@@ -256,7 +256,13 @@ function ChromaBotDashboard() {
               )}
 
               {activeTab === 'settings' && (
-                <SettingsPanel settings={settings} onSaveSettings={handleSaveSettings} />
+                <SettingsPanel
+                  settings={settings}
+                  onSaveSettings={handleSaveSettings}
+                  campaignName={activeContext?.name}
+                  onToggleGlobalDryRun={handleToggleDryRun}
+                  onToggleGlobalPause={handleToggleGlobalPause}
+                />
               )}
 
               {activeTab === 'credentials' && (
