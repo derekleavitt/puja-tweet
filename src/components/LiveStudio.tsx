@@ -1,15 +1,35 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Sun, Moon, Shuffle, Send, ExternalLink, Check, Copy, AlertCircle, ArrowUpRight, Layers, Sparkles, RefreshCw } from 'lucide-react';
+import {
+  Sun,
+  Moon,
+  Shuffle,
+  Send,
+  ExternalLink,
+  Check,
+  Copy,
+  AlertCircle,
+  ArrowUpRight,
+  Layers,
+  Sparkles,
+  RefreshCw,
+} from 'lucide-react';
 import { ColorData, BotSettings, TweetContext } from '../types.js';
 import { TargetTweetEditor } from './TargetTweetEditor.js';
 import { previewTemplate } from '../api/endpoints.js';
 import { substituteTemplate } from '../../shared/template/substitute.js';
-import { hasAgentTag as templateHasAgentTag, hasHistoryTag as templateHasHistoryTag } from '../../shared/template/agentTags.js';
+import {
+  hasAgentTag as templateHasAgentTag,
+  hasHistoryTag as templateHasHistoryTag,
+} from '../../shared/template/agentTags.js';
 
 interface LiveStudioProps {
   color: ColorData | null;
   onGenerateColor: (slot: 'morning' | 'evening' | 'random') => void;
-  onPostNow: (customColor?: ColorData, slotType?: 'morning' | 'evening' | 'manual', contextId?: string) => Promise<any>;
+  onPostNow: (
+    customColor?: ColorData,
+    slotType?: 'morning' | 'evening' | 'manual',
+    contextId?: string,
+  ) => Promise<any>;
   settings: BotSettings;
   isPosting: boolean;
   lastPostedResult: any;
@@ -20,7 +40,25 @@ interface LiveStudioProps {
   onUpdateContext?: (id: string, updates: Partial<TweetContext>) => Promise<void>;
 }
 
-export const LiveStudio: React.FC<LiveStudioProps> = ({
+type LiveStudioReadyProps = Omit<LiveStudioProps, 'color'> & { color: ColorData };
+
+/**
+ * Loading gate: the studio body owns many hooks, so the "no color yet" state is rendered here
+ * (before the hooks run) rather than as an early return in the middle of the body.
+ */
+export const LiveStudio: React.FC<LiveStudioProps> = ({ color, ...props }) => {
+  if (!color) {
+    return (
+      <div className="p-12 text-center text-neutral-500">
+        <div className="w-8 h-8 mx-auto mb-3 rounded-full border-2 border-neutral-300 border-t-neutral-800 animate-spin" />
+        <p>Loading Chroma Engine...</p>
+      </div>
+    );
+  }
+  return <LiveStudioReady color={color} {...props} />;
+};
+
+const LiveStudioReady: React.FC<LiveStudioReadyProps> = ({
   color,
   onGenerateColor,
   onPostNow,
@@ -36,18 +74,10 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   const [selectedSlot, setSelectedSlot] = useState<'morning' | 'evening' | 'manual'>('morning');
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
-  const currentContext = contexts.find(c => c.id === activeContextId) || contexts[0];
-  const replyTargetMode = currentContext?.replyTargetMode || settings.replyTargetMode || 'original_post';
+  const currentContext = contexts.find((c) => c.id === activeContextId) || contexts[0];
+  const replyTargetMode =
+    currentContext?.replyTargetMode || settings.replyTargetMode || 'original_post';
   const lastPostedTweetId = currentContext?.lastPostedTweetId || settings.lastPostedTweetId;
-
-  if (!color) {
-    return (
-      <div className="p-12 text-center text-neutral-500">
-        <div className="w-8 h-8 mx-auto mb-3 rounded-full border-2 border-neutral-300 border-t-neutral-800 animate-spin" />
-        <p>Loading Chroma Engine...</p>
-      </div>
-    );
-  }
 
   const copyToClipboard = (text: string, fieldName: string) => {
     navigator.clipboard.writeText(text);
@@ -55,7 +85,8 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     setTimeout(() => setCopiedField(null), 1800);
   };
 
-  const slotLabel = selectedSlot === 'morning' ? '6:00 AM' : selectedSlot === 'evening' ? '6:00 PM' : 'Live Drop';
+  const slotLabel =
+    selectedSlot === 'morning' ? '6:00 AM' : selectedSlot === 'evening' ? '6:00 PM' : 'Live Drop';
 
   const hasAgentTag = templateHasAgentTag(settings.template);
   const hasHistoryTag = templateHasHistoryTag(settings.template);
@@ -95,7 +126,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     }
   }, [fetchAiPreview, hasAgentTag]);
 
-  const tweetText = hasAgentTag ? (aiPreviewText || staticTweetText) : staticTweetText;
+  const tweetText = hasAgentTag ? aiPreviewText || staticTweetText : staticTweetText;
   const charCount = tweetText.length;
   const isOverLimit = charCount > 280;
   const weatherWordsCount = (color.weatherDesc || '').split(/\s+/).filter(Boolean).length;
@@ -119,7 +150,11 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                   className="bg-transparent font-medium text-neutral-900 dark:text-neutral-100 focus:outline-none cursor-pointer pr-1 text-xs"
                 >
                   {contexts.map((c) => (
-                    <option key={c.id} value={c.id} className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100">
+                    <option
+                      key={c.id}
+                      value={c.id}
+                      className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100"
+                    >
                       {c.name}
                     </option>
                   ))}
@@ -228,22 +263,36 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                 <span
                   className="px-2.5 py-1 text-xs font-mono font-medium rounded-md shadow-xs backdrop-blur-md"
                   style={{
-                    backgroundColor: color.contrastText === '#000000' ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.5)',
+                    backgroundColor:
+                      color.contrastText === '#000000'
+                        ? 'rgba(255,255,255,0.85)'
+                        : 'rgba(0,0,0,0.5)',
                     color: color.contrastText === '#000000' ? '#111' : '#fff',
                   }}
                 >
-                  {selectedSlot === 'morning' ? '6:00 AM Slot' : selectedSlot === 'evening' ? '6:00 PM Slot' : 'Custom Slot'}
+                  {selectedSlot === 'morning'
+                    ? '6:00 AM Slot'
+                    : selectedSlot === 'evening'
+                      ? '6:00 PM Slot'
+                      : 'Custom Slot'}
                 </span>
 
                 <button
                   onClick={() => copyToClipboard(color.hex, 'hex-canvas')}
                   className="px-2.5 py-1 text-xs font-mono font-semibold rounded-md shadow-xs backdrop-blur-md flex items-center gap-1 cursor-pointer"
                   style={{
-                    backgroundColor: color.contrastText === '#000000' ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.5)',
+                    backgroundColor:
+                      color.contrastText === '#000000'
+                        ? 'rgba(255,255,255,0.85)'
+                        : 'rgba(0,0,0,0.5)',
                     color: color.contrastText === '#000000' ? '#111' : '#fff',
                   }}
                 >
-                  {copiedField === 'hex-canvas' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copiedField === 'hex-canvas' ? (
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                  ) : (
+                    <Copy className="w-3.5 h-3.5" />
+                  )}
                   {color.hex}
                 </button>
               </div>
@@ -262,29 +311,40 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
             {/* Color Metrics Grid */}
             <div className="p-6 grid grid-cols-2 sm:grid-cols-4 gap-4 border-b border-neutral-200 dark:border-neutral-800 text-xs">
               <div className="space-y-1">
-                <span className="text-neutral-500 uppercase font-semibold text-[10px] tracking-wider">HEX Code</span>
+                <span className="text-neutral-500 uppercase font-semibold text-[10px] tracking-wider">
+                  HEX Code
+                </span>
                 <div className="font-mono font-bold text-neutral-900 dark:text-neutral-100 flex items-center gap-1.5 tabular-nums">
-                  <span className="w-3 h-3 rounded-full inline-block border border-neutral-300 dark:border-neutral-700" style={{ backgroundColor: color.hex }} />
+                  <span
+                    className="w-3 h-3 rounded-full inline-block border border-neutral-300 dark:border-neutral-700"
+                    style={{ backgroundColor: color.hex }}
+                  />
                   {color.hex}
                 </div>
               </div>
 
               <div className="space-y-1">
-                <span className="text-neutral-500 uppercase font-semibold text-[10px] tracking-wider">RGB Values</span>
+                <span className="text-neutral-500 uppercase font-semibold text-[10px] tracking-wider">
+                  RGB Values
+                </span>
                 <div className="font-mono text-neutral-900 dark:text-neutral-100 tabular-nums">
                   {color.rgb.r}, {color.rgb.g}, {color.rgb.b}
                 </div>
               </div>
 
               <div className="space-y-1">
-                <span className="text-neutral-500 uppercase font-semibold text-[10px] tracking-wider">HSL Profile</span>
+                <span className="text-neutral-500 uppercase font-semibold text-[10px] tracking-wider">
+                  HSL Profile
+                </span>
                 <div className="font-mono text-neutral-900 dark:text-neutral-100 tabular-nums">
                   {color.hsl.h}°, {color.hsl.s}%, {color.hsl.l}%
                 </div>
               </div>
 
               <div className="space-y-1">
-                <span className="text-neutral-500 uppercase font-semibold text-[10px] tracking-wider">CMYK Print</span>
+                <span className="text-neutral-500 uppercase font-semibold text-[10px] tracking-wider">
+                  CMYK Print
+                </span>
                 <div className="font-mono text-neutral-900 dark:text-neutral-100 tabular-nums">
                   {color.cmyk.c}, {color.cmyk.m}, {color.cmyk.y}, {color.cmyk.k}
                 </div>
@@ -294,8 +354,12 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
             {/* Harmonious Companions Bar */}
             <div className="p-6">
               <div className="flex items-center justify-between mb-3 text-xs">
-                <span className="font-semibold text-neutral-700 dark:text-neutral-300">Harmonious Palette Bar</span>
-                <span className="text-neutral-400 font-mono text-[11px]">Analogous · Triad · Complementary</span>
+                <span className="font-semibold text-neutral-700 dark:text-neutral-300">
+                  Harmonious Palette Bar
+                </span>
+                <span className="text-neutral-400 font-mono text-[11px]">
+                  Analogous · Triad · Complementary
+                </span>
               </div>
 
               <div className="grid grid-cols-5 gap-2 h-12 rounded-lg overflow-hidden border border-neutral-200 dark:border-neutral-800">
@@ -367,10 +431,14 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
             <div className="bg-neutral-50 dark:bg-neutral-950/60 rounded-lg p-3 text-xs border border-neutral-200 dark:border-neutral-800 space-y-2">
               <div className="flex items-center justify-between text-neutral-500">
                 <span className="flex items-center gap-1.5">
-                  <span className={`w-2 h-2 rounded-full shrink-0 ${replyTargetMode === 'last_comment' ? 'bg-purple-500' : 'bg-blue-500'}`} />
+                  <span
+                    className={`w-2 h-2 rounded-full shrink-0 ${replyTargetMode === 'last_comment' ? 'bg-purple-500' : 'bg-blue-500'}`}
+                  />
                   <span>
                     {replyTargetMode === 'last_comment'
-                      ? (lastPostedTweetId ? 'Replying to last comment:' : 'Replying to root (starting chain):')
+                      ? lastPostedTweetId
+                        ? 'Replying to last comment:'
+                        : 'Replying to root (starting chain):'
                       : 'Replying to root post:'}
                   </span>
                 </span>
@@ -381,7 +449,10 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                     rel="noopener noreferrer"
                     className="hover:text-blue-600 font-medium inline-flex items-center gap-0.5"
                   >
-                    #{replyTargetMode === 'last_comment' && lastPostedTweetId ? lastPostedTweetId : settings.targetTweetId}
+                    #
+                    {replyTargetMode === 'last_comment' && lastPostedTweetId
+                      ? lastPostedTweetId
+                      : settings.targetTweetId}
                     <ArrowUpRight className="w-3 h-3 text-neutral-400" />
                   </a>
                   {replyTargetMode === 'last_comment' && (
@@ -426,8 +497,11 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                     <span className="text-xs text-neutral-400">· Now</span>
                   </div>
                   <div className="text-xs text-neutral-500 mt-1">
-                    Replying to {replyTargetMode === 'last_comment' && lastPostedTweetId ? (
-                      <span className="text-purple-600 dark:text-purple-400 font-medium">our last comment (#{lastPostedTweetId})</span>
+                    Replying to{' '}
+                    {replyTargetMode === 'last_comment' && lastPostedTweetId ? (
+                      <span className="text-purple-600 dark:text-purple-400 font-medium">
+                        our last comment (#{lastPostedTweetId})
+                      </span>
                     ) : (
                       <span className="text-blue-500">root post (#{settings.targetTweetId})</span>
                     )}
@@ -471,7 +545,10 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
 
               <div className="flex items-center justify-between text-[11px] text-neutral-500 px-1">
                 <span>
-                  Mode: <strong className="text-neutral-700 dark:text-neutral-300">{settings.dryRun ? 'Dry Run Simulation' : 'Live X API'}</strong>
+                  Mode:{' '}
+                  <strong className="text-neutral-700 dark:text-neutral-300">
+                    {settings.dryRun ? 'Dry Run Simulation' : 'Live X API'}
+                  </strong>
                 </span>
                 <a
                   href={`https://x.com/i/status/${settings.targetTweetId}`}
@@ -504,8 +581,8 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                   {lastPostedResult.result?.simulated
                     ? 'Reply Simulated Successfully'
                     : lastPostedResult.success
-                    ? 'Reply Successfully Posted to X!'
-                    : 'Failed to Post Reply'}
+                      ? 'Reply Successfully Posted to X!'
+                      : 'Failed to Post Reply'}
                 </span>
                 {lastPostedResult.result?.url && (
                   <a
@@ -522,27 +599,30 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                 {lastPostedResult.result?.simulated
                   ? 'Simulated payload validated. Simulated replies show exact text, character count, and time tags without spending X credits.'
                   : lastPostedResult.success
-                  ? `Tweet ID: ${lastPostedResult.result?.tweetId}`
-                  : `Error: ${lastPostedResult.error || lastPostedResult.result?.error}`}
+                    ? `Tweet ID: ${lastPostedResult.result?.tweetId}`
+                    : `Error: ${lastPostedResult.error || lastPostedResult.result?.error}`}
               </p>
 
-              {!lastPostedResult.success && (lastPostedResult.error || '').includes('Credits Depleted') && (
-                <div className="mt-2 pt-2 border-t border-red-200 dark:border-red-800/60 text-[11px] space-y-1">
-                  <p className="font-medium text-red-900 dark:text-red-200">
-                    💡 Why this happens: Your account is verified as <strong>@bhaijahndai</strong>, but X (Twitter) now requires prepaid developer credits to send live automated tweets.
-                  </p>
-                  <div className="flex items-center gap-3 pt-1">
-                    <a
-                      href="https://developer.x.com/en/portal/billing"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="underline font-semibold inline-flex items-center gap-1 text-red-800 dark:text-red-200 hover:text-blue-600"
-                    >
-                      Open X Billing / Credits Portal <ExternalLink className="w-3 h-3" />
-                    </a>
+              {!lastPostedResult.success &&
+                (lastPostedResult.error || '').includes('Credits Depleted') && (
+                  <div className="mt-2 pt-2 border-t border-red-200 dark:border-red-800/60 text-[11px] space-y-1">
+                    <p className="font-medium text-red-900 dark:text-red-200">
+                      💡 Why this happens: Your account is verified as <strong>@bhaijahndai</strong>
+                      , but X (Twitter) now requires prepaid developer credits to send live
+                      automated tweets.
+                    </p>
+                    <div className="flex items-center gap-3 pt-1">
+                      <a
+                        href="https://developer.x.com/en/portal/billing"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline font-semibold inline-flex items-center gap-1 text-red-800 dark:text-red-200 hover:text-blue-600"
+                      >
+                        Open X Billing / Credits Portal <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
             </div>
           )}
         </div>

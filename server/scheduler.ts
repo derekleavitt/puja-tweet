@@ -7,7 +7,7 @@
  *  - Dispatches targeted replies to each context's specific targetTweetId.
  */
 
-import { formatTweetText, generateColor, ColorData } from './colorEngine.js';
+import { ColorData } from './colorEngine.js';
 import { resolveTemplateText } from './templateAgent.js';
 import { HttpError } from './middleware/error.js';
 import { storage, TweetContext } from './storage.js';
@@ -57,7 +57,9 @@ class SchedulerService {
       : (new Date().getUTCHours() - 7 + 24) % 24 < 12;
 
     const slotType = options.slotType || (isMorning ? 'morning' : 'evening');
-    const color: ColorData = options.color || storage.popNextQueueSlot(slotType === 'morning' ? 'morning' : 'evening', context.id);
+    const color: ColorData =
+      options.color ||
+      storage.popNextQueueSlot(slotType === 'morning' ? 'morning' : 'evening', context.id);
     const timeTag = isMorning ? '6:00 AM' : '6:00 PM';
     const text = await resolveTemplateText(context.template, color, {
       slotLabel: timeTag,
@@ -81,11 +83,11 @@ class SchedulerService {
 
     console.log(
       `[Scheduler] Executing drop for context "${context.name}" (${context.id}) ` +
-      `-> Mode: ${engagementMode.toUpperCase()} ` +
-      `${engagementMode === 'reply' ? `(Target #${replyToTweetId}, ${context.replyTargetMode === 'last_comment' ? (replyTargetInfo.isFirstInChain ? 'Initiating cascade from root' : 'Cascading reply to last comment') : 'Direct reply to original root'})` : ''}` +
-      `${engagementMode === 'quote' ? `(Quoting Post #${quoteTweetId})` : ''}` +
-      `${engagementMode === 'standalone' ? '(Timeline post)' : ''}` +
-      `, source: ${options.source || 'manual'}, mode: ${isDryRun ? 'DRY-RUN' : 'LIVE X'}`
+        `-> Mode: ${engagementMode.toUpperCase()} ` +
+        `${engagementMode === 'reply' ? `(Target #${replyToTweetId}, ${context.replyTargetMode === 'last_comment' ? (replyTargetInfo.isFirstInChain ? 'Initiating cascade from root' : 'Cascading reply to last comment') : 'Direct reply to original root'})` : ''}` +
+        `${engagementMode === 'quote' ? `(Quoting Post #${quoteTweetId})` : ''}` +
+        `${engagementMode === 'standalone' ? '(Timeline post)' : ''}` +
+        `, source: ${options.source || 'manual'}, mode: ${isDryRun ? 'DRY-RUN' : 'LIVE X'}`,
     );
 
     let finalTweetRes = await postColorTweet(
@@ -96,13 +98,18 @@ class SchedulerService {
         quoteTweetId,
         engagementMode,
       },
-      isDryRun
+      isDryRun,
     );
 
     // AUTO-RECOVERY: If replyTargetMode was 'last_comment' and the reply to the previous comment failed
     // due to the previous comment being deleted/invalid (NOT a temporary rate limit or cooldown),
     // reset broken chain anchor back to root post and retry once on root.
-    if (!finalTweetRes.success && engagementMode === 'reply' && context.replyTargetMode === 'last_comment' && !replyTargetInfo.isFirstInChain) {
+    if (
+      !finalTweetRes.success &&
+      engagementMode === 'reply' &&
+      context.replyTargetMode === 'last_comment' &&
+      !replyTargetInfo.isFirstInChain
+    ) {
       const isThrottleOrCooldown =
         finalTweetRes.isRateLimitOrCooldown ||
         finalTweetRes.error?.includes('cooldown') ||
@@ -113,7 +120,7 @@ class SchedulerService {
 
       if (!isThrottleOrCooldown) {
         console.log(
-          `[Scheduler] Cascading anchor #${replyToTweetId} for context "${context.name}" appears deleted or invalid (${finalTweetRes.error}). Resetting anchor to primary root post #${context.targetTweetId}.`
+          `[Scheduler] Cascading anchor #${replyToTweetId} for context "${context.name}" appears deleted or invalid (${finalTweetRes.error}). Resetting anchor to primary root post #${context.targetTweetId}.`,
         );
         context.lastPostedTweetId = undefined;
         storage.resetContextChain(context.id);
@@ -126,7 +133,7 @@ class SchedulerService {
               replyToTweetId: context.targetTweetId,
               engagementMode: 'reply',
             },
-            isDryRun
+            isDryRun,
           );
           if (fallbackRes.success) {
             finalTweetRes = fallbackRes;
@@ -134,7 +141,7 @@ class SchedulerService {
         }
       } else {
         console.log(
-          `[Scheduler] Preserving chain anchor #${replyToTweetId} for context "${context.name}" during temporary X cooldown.`
+          `[Scheduler] Preserving chain anchor #${replyToTweetId} for context "${context.name}" during temporary X cooldown.`,
         );
       }
     }
@@ -145,8 +152,17 @@ class SchedulerService {
     }
 
     // Set global cooldown if X returned rate limit or cooldown
-    if (!isDryRun && (finalTweetRes.isRateLimitOrCooldown || finalTweetRes.rawResponse?.status === 429 || finalTweetRes.error?.includes('cooldown') || finalTweetRes.error?.includes('not permitted to access this feature'))) {
-      storage.setGlobalCooldown(15, finalTweetRes.error || 'X API Rate Limit / Reply Cooldown Active');
+    if (
+      !isDryRun &&
+      (finalTweetRes.isRateLimitOrCooldown ||
+        finalTweetRes.rawResponse?.status === 429 ||
+        finalTweetRes.error?.includes('cooldown') ||
+        finalTweetRes.error?.includes('not permitted to access this feature'))
+    ) {
+      storage.setGlobalCooldown(
+        15,
+        finalTweetRes.error || 'X API Rate Limit / Reply Cooldown Active',
+      );
     }
 
     // Record live post timestamp for anti-burst spacing
@@ -155,14 +171,18 @@ class SchedulerService {
     }
 
     const now = Date.now();
-    const status = finalTweetRes.success ? (finalTweetRes.simulated ? ('simulated' as const) : ('success' as const)) : ('error' as const);
+    const status = finalTweetRes.success
+      ? finalTweetRes.simulated
+        ? ('simulated' as const)
+        : ('success' as const)
+      : ('error' as const);
 
     // Record stats, roll jitter, and update lastPostedTweetId for chain continuity (only for actual replies)
     storage.recordContextPostResult(
       context.id,
       status,
       finalTweetRes.tweetId,
-      finalTweetRes.engagementMode || engagementMode
+      finalTweetRes.engagementMode || engagementMode,
     );
 
     const logEntry = {
@@ -201,7 +221,7 @@ class SchedulerService {
 
     try {
       this.isProcessing = true;
-      const contexts = storage.getContexts().filter(c => c.enabled);
+      const contexts = storage.getContexts().filter((c) => c.enabled);
       if (contexts.length === 0) return;
 
       // 1. Check Global Rate Limit / Cooldown
@@ -212,7 +232,11 @@ class SchedulerService {
 
       // 2. Pre-Emptive Rate Window Check: If remaining requests in window is 0, wait for reset
       const telemetry = storage.getRateLimitTelemetry();
-      if (telemetry.headersCaptured && telemetry.remaining <= 0 && telemetry.secondsUntilReset > 0) {
+      if (
+        telemetry.headersCaptured &&
+        telemetry.remaining <= 0 &&
+        telemetry.secondsUntilReset > 0
+      ) {
         return; // Standby until 15-minute window resets
       }
 
@@ -248,10 +272,10 @@ class SchedulerService {
       const jitterMs = context.currentJitterMs || 0;
       const effectiveRequiredMs = intervalMs + jitterMs;
 
-      if (!lastPosted || (now - lastPosted) >= effectiveRequiredMs) {
+      if (!lastPosted || now - lastPosted >= effectiveRequiredMs) {
         console.log(
           `[Scheduler] Context "${context.name}" interval reached ` +
-          `(${intervalMinutes}m base + ${Math.round(jitterMs / 1000)}s jitter). Firing drop...`
+            `(${intervalMinutes}m base + ${Math.round(jitterMs / 1000)}s jitter). Firing drop...`,
         );
         await this.executeDrop({
           contextId: context.id,
@@ -287,7 +311,9 @@ class SchedulerService {
       context.lastPostedSlot = currentSlotKey;
       storage.updateContext(context.id, { lastPostedSlot: currentSlotKey });
 
-      console.log(`[Scheduler] Context "${context.name}" fixed time reached (${matchedTime}). Firing drop...`);
+      console.log(
+        `[Scheduler] Context "${context.name}" fixed time reached (${matchedTime}). Firing drop...`,
+      );
       await this.executeDrop({
         contextId: context.id,
         slotType: isMorning ? 'morning' : 'evening',
@@ -297,12 +323,14 @@ class SchedulerService {
   }
 
   public getNextScheduledPost(contextId?: string) {
-    const context = contextId ? (storage.getContext(contextId) || storage.getActiveContext()) : storage.getActiveContext();
+    const context = contextId
+      ? storage.getContext(contextId) || storage.getActiveContext()
+      : storage.getActiveContext();
     return this.calculateNextPostForContext(context);
   }
 
   public getAllNextScheduledPosts() {
-    return storage.getContexts().map(c => ({
+    return storage.getContexts().map((c) => ({
       ...this.calculateNextPostForContext(c),
       enabled: c.enabled,
       targetTweetId: c.targetTweetId,
@@ -338,9 +366,10 @@ class SchedulerService {
         return `Every ${hrs}h`;
       };
 
-      const jitterFormatted = jitterSeconds > 0
-        ? `+${jitterSeconds >= 60 ? `${Math.floor(jitterSeconds / 60)}m ${jitterSeconds % 60}s` : `${jitterSeconds}s`} jitter`
-        : undefined;
+      const jitterFormatted =
+        jitterSeconds > 0
+          ? `+${jitterSeconds >= 60 ? `${Math.floor(jitterSeconds / 60)}m ${jitterSeconds % 60}s` : `${jitterSeconds}s`} jitter`
+          : undefined;
 
       return {
         contextId: context.id,
@@ -391,7 +420,7 @@ class SchedulerService {
       .sort((a, b) => a.secondsOfDay - b.secondsOfDay);
 
     let nextSlot = parsedSlots.find((s) => s.secondsOfDay > curSecondsOfDay);
-    let secondsUntil = 0;
+    let secondsUntil: number;
 
     if (nextSlot) {
       secondsUntil = nextSlot.secondsOfDay - curSecondsOfDay;

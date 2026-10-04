@@ -31,11 +31,15 @@ export async function loadFirestoreSettings(): Promise<BotSettings | null> {
 export async function saveFirestoreSettings(settings: BotSettings): Promise<void> {
   try {
     const docRef = doc(db, 'settings', SETTINGS_DOC_ID);
-    await setDoc(docRef, {
-      ...settings,
-      updatedAt: new Date().toISOString(),
-      updatedBy: AUTHORIZED_EMAIL,
-    }, { merge: true });
+    await setDoc(
+      docRef,
+      {
+        ...settings,
+        updatedAt: new Date().toISOString(),
+        updatedBy: AUTHORIZED_EMAIL,
+      },
+      { merge: true },
+    );
   } catch (err) {
     console.error('Failed to sync settings to Firestore:', err);
   }
@@ -61,11 +65,15 @@ export async function loadFirestoreContexts(): Promise<TweetContext[]> {
 export async function saveFirestoreContext(context: TweetContext): Promise<void> {
   try {
     const docRef = doc(db, 'contexts', context.id);
-    await setDoc(docRef, {
-      ...context,
-      updatedAt: new Date().toISOString(),
-      authorEmail: AUTHORIZED_EMAIL,
-    }, { merge: true });
+    await setDoc(
+      docRef,
+      {
+        ...context,
+        updatedAt: new Date().toISOString(),
+        authorEmail: AUTHORIZED_EMAIL,
+      },
+      { merge: true },
+    );
   } catch (err) {
     console.error('Failed to save context to Firestore:', err);
   }

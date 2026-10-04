@@ -2,9 +2,9 @@ name: CI Build & Validation
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
   pull_request:
-    branches: [ main, master ]
+    branches: [main, master]
   workflow_dispatch:
 
 jobs:
@@ -26,6 +26,12 @@ jobs:
 
       - name: TypeScript Check
         run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Format Check
+        run: npm run format:check
 
       - name: Unit and API Tests
         run: npm test

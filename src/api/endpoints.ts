@@ -4,13 +4,7 @@
  */
 
 import { apiFetch, ApiError } from './client.js';
-import {
-  ColorData,
-  BotSettings,
-  PostLog,
-  QueueSlot,
-  TweetContext,
-} from '../types.js';
+import { ColorData, BotSettings, PostLog, QueueSlot, TweetContext } from '../types.js';
 
 type Json = Record<string, any>;
 
@@ -37,7 +31,8 @@ async function orBody<T = Json>(request: Promise<T>): Promise<T> {
 // Status, telemetry
 export const getStatus = () => orNull(apiFetch<Json>('/api/status'));
 export const getRateLimits = () => orNull(apiFetch<Json>('/api/rate-limits'));
-export const clearCooldown = () => orNull(apiFetch<Json>('/api/cooldown/clear', { method: 'POST' }));
+export const clearCooldown = () =>
+  orNull(apiFetch<Json>('/api/cooldown/clear', { method: 'POST' }));
 
 // Queue
 export const getQueue = () => orNull(apiFetch<{ queue: QueueSlot[] }>('/api/queue'));
@@ -52,19 +47,39 @@ export const clearHistory = () => orNull(apiFetch<Json>('/api/history', { method
 
 // Colors, posting, templates
 export const generateColor = (slotType: string, contextId: string) =>
-  orNull(apiFetch<{ color: ColorData }>('/api/generate-color', { method: 'POST', body: { slotType, contextId } }));
+  orNull(
+    apiFetch<{ color: ColorData }>('/api/generate-color', {
+      method: 'POST',
+      body: { slotType, contextId },
+    }),
+  );
 export const postNow = (body: { slotType: string; color: ColorData | null; contextId: string }) =>
   orBody(apiFetch<Json>('/api/post-now', { method: 'POST', body }));
-export const previewTemplate = (body: { template: string; color?: ColorData | null; slotType?: string; contextId?: string }) =>
-  orBody(apiFetch<{ previewText?: string }>('/api/template/preview', { method: 'POST', body }));
+export const previewTemplate = (body: {
+  template: string;
+  color?: ColorData | null;
+  slotType?: string;
+  contextId?: string;
+}) => orBody(apiFetch<{ previewText?: string }>('/api/template/preview', { method: 'POST', body }));
 
 // Contexts (campaigns)
 export const createContext = (data: Partial<TweetContext>) =>
-  apiFetch<Json>('/api/contexts', { method: 'POST', body: data, errorMessage: 'Failed to create context' });
+  apiFetch<Json>('/api/contexts', {
+    method: 'POST',
+    body: data,
+    errorMessage: 'Failed to create context',
+  });
 export const updateContext = (id: string, updates: Partial<TweetContext>) =>
-  apiFetch<Json>(`/api/contexts/${id}`, { method: 'PUT', body: updates, errorMessage: 'Failed to update context' });
+  apiFetch<Json>(`/api/contexts/${id}`, {
+    method: 'PUT',
+    body: updates,
+    errorMessage: 'Failed to update context',
+  });
 export const deleteContext = (id: string) =>
-  apiFetch<Json>(`/api/contexts/${id}`, { method: 'DELETE', errorMessage: 'Failed to delete context' });
+  apiFetch<Json>(`/api/contexts/${id}`, {
+    method: 'DELETE',
+    errorMessage: 'Failed to delete context',
+  });
 export const syncContext = (context: TweetContext) =>
   orNull(apiFetch<Json>(`/api/contexts/${context.id}`, { method: 'PUT', body: context }));
 export const activateContext = (id: string) =>
@@ -74,9 +89,14 @@ export const duplicateContext = (id: string) =>
 export const toggleContext = (id: string) =>
   orNull(apiFetch<Json>(`/api/contexts/${id}/toggle`, { method: 'POST' }));
 export const triggerContext = (id: string) =>
-  orBody(apiFetch<Json>(`/api/contexts/${id}/trigger`, { method: 'POST', body: { slotType: 'manual' } }));
+  orBody(
+    apiFetch<Json>(`/api/contexts/${id}/trigger`, { method: 'POST', body: { slotType: 'manual' } }),
+  );
 export const clearContextHistory = (id: string) =>
-  apiFetch<Json>(`/api/contexts/${id}/clear-history`, { method: 'POST', errorMessage: 'Failed to clear campaign history' });
+  apiFetch<Json>(`/api/contexts/${id}/clear-history`, {
+    method: 'POST',
+    errorMessage: 'Failed to clear campaign history',
+  });
 
 // Settings
 export const saveSettings = (settings: Partial<BotSettings>) =>
@@ -93,8 +113,7 @@ export const getExportScript = () =>
   apiFetch<{ githubActionsYaml: string; nodeScript: string }>('/api/export-script');
 
 // Webhook (admin: the secret is only ever returned by these routes)
-export const getWebhookUrl = () =>
-  apiFetch<{ success: boolean; url: string }>('/api/webhook/url');
+export const getWebhookUrl = () => apiFetch<{ success: boolean; url: string }>('/api/webhook/url');
 export const rotateWebhookSecret = () =>
   apiFetch<{ success: boolean; url: string }>('/api/settings/webhook-secret/rotate', {
     method: 'POST',

@@ -9,14 +9,14 @@ export const createStatusRouter = ({ storage, scheduler }: AppDeps) => {
   const router = Router();
 
   // System Status & Current State
-  router.get('/status', (req, res) => {
+  router.get('/status', (_req, res) => {
     const logs = storage.getLogs();
 
     const stats = {
       totalPosts: logs.length,
-      successfulPosts: logs.filter(l => l.status === 'success').length,
-      simulatedPosts: logs.filter(l => l.status === 'simulated').length,
-      failedPosts: logs.filter(l => l.status === 'error').length,
+      successfulPosts: logs.filter((l) => l.status === 'success').length,
+      simulatedPosts: logs.filter((l) => l.status === 'simulated').length,
+      failedPosts: logs.filter((l) => l.status === 'error').length,
     };
 
     res.json({
@@ -34,7 +34,7 @@ export const createStatusRouter = ({ storage, scheduler }: AppDeps) => {
     });
   });
 
-  router.get('/rate-limits', (req, res) => {
+  router.get('/rate-limits', (_req, res) => {
     res.json({
       success: true,
       telemetry: storage.getRateLimitTelemetry(),
@@ -42,7 +42,7 @@ export const createStatusRouter = ({ storage, scheduler }: AppDeps) => {
     });
   });
 
-  router.post('/cooldown/clear', (req, res) => {
+  router.post('/cooldown/clear', (_req, res) => {
     storage.clearGlobalCooldown();
     res.json({ success: true, cooldownState: storage.getCooldownState() });
   });

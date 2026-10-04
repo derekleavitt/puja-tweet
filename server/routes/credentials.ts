@@ -40,7 +40,7 @@ export const createCredentialsRouter = ({ storage }: AppDeps) => {
     }
   });
 
-  router.post('/twitter/verify', async (req, res) => {
+  router.post('/twitter/verify', async (_req, res) => {
     try {
       const result = await verifyTwitterCredentials(storage.getEffectiveCredentials());
       res.json(result);

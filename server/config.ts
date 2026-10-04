@@ -33,6 +33,6 @@ export const authConfig = {
   serviceAccountJson: process.env.FIREBASE_SERVICE_ACCOUNT_JSON || undefined,
   authorizedEmails: (process.env.AUTHORIZED_EMAILS || '')
     .split(',')
-    .map(email => email.trim().toLowerCase())
+    .map((email) => email.trim().toLowerCase())
     .filter(Boolean),
 };

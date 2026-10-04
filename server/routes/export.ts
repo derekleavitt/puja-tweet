@@ -121,7 +121,7 @@ main().catch(console.error);
 export const createExportRouter = ({ storage }: AppDeps) => {
   const router = Router();
 
-  router.get('/export-script', (req, res) => {
+  router.get('/export-script', (_req, res) => {
     const activeContext = storage.getActiveContext();
     const { githubActionsYaml, nodeScript } = buildExportScripts(activeContext);
 

@@ -22,7 +22,7 @@ export const toHttpError = (err: unknown, fallbackStatus: number): HttpError => 
   return new HttpError(fallbackStatus, message);
 };
 
-export const errorHandler: ErrorRequestHandler = (err, req, res, next) => {
+export const errorHandler: ErrorRequestHandler = (err, _req, res, next) => {
   if (res.headersSent) {
     return next(err);
   }

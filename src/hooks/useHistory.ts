@@ -15,18 +15,20 @@ export function useHistory() {
     try {
       // 1. Fetch server logs
       const data = await getHistory();
-      let combinedLogs: PostLog[] = data?.logs || [];
+      const combinedLogs: PostLog[] = data?.logs || [];
 
       // 2. Fetch firestore logs if present
       const cloudLogs = await loadFirestoreLogs();
       if (cloudLogs && cloudLogs.length > 0) {
-        const idSet = new Set(combinedLogs.map(l => l.id));
-        cloudLogs.forEach(cl => {
+        const idSet = new Set(combinedLogs.map((l) => l.id));
+        cloudLogs.forEach((cl) => {
           if (!idSet.has(cl.id)) {
             combinedLogs.push(cl);
           }
         });
-        combinedLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        combinedLogs.sort(
+          (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+        );
       }
 
       setLogs(combinedLogs);

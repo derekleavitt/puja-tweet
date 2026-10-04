@@ -24,7 +24,11 @@ export interface SubstituteOptions {
   fallbackWeatherDesc?: string | (() => string);
 }
 
-export function substituteTemplate(template: string, color: ColorData, options: SubstituteOptions = {}): string {
+export function substituteTemplate(
+  template: string,
+  color: ColorData,
+  options: SubstituteOptions = {},
+): string {
   const timeTag = options.slotLabel || (color.slotType === 'morning' ? '6:00 AM' : '6:00 PM');
   const colorPick = color.colorPick || color.name;
   const fallback = options.fallbackWeatherDesc ?? 'atmospheric stillness';
@@ -42,7 +46,10 @@ export function substituteTemplate(template: string, color: ColorData, options: 
     .replace(/{hex}/g, color.hex)
     .replace(/{rgb}/g, `${color.rgb.r}, ${color.rgb.g}, ${color.rgb.b}`)
     .replace(/{hsl}/g, `${color.hsl.h}°, ${color.hsl.s}%, ${color.hsl.l}%`)
-    .replace(/{cmyk}/g, `C:${color.cmyk.c}% M:${color.cmyk.m}% Y:${color.cmyk.y}% K:${color.cmyk.k}%`)
+    .replace(
+      /{cmyk}/g,
+      `C:${color.cmyk.c}% M:${color.cmyk.m}% Y:${color.cmyk.y}% K:${color.cmyk.k}%`,
+    )
     .replace(/{mood}/g, color.mood)
     .replace(/{swatch_bar}/g, color.swatchBar || '')
     .replace(/{companions}/g, (color.companions || []).join(' '));

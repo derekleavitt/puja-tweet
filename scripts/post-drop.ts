@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
 import fs from 'fs';
 import { generateColor, formatTweetText } from '../server/colorEngine.js';
-import { postColorTweet, TwitterCredentials } from '../server/twitterClient.js';
+import { postColorTweet } from '../server/twitterClient.js';
 import { storage } from '../server/storage.js';
 
 dotenv.config();
@@ -65,7 +65,8 @@ function isWithinScheduleWindow(): boolean {
     hourCycle: 'h23',
   }).formatToParts(new Date());
   const nowMin =
-    Number(parts.find((p) => p.type === 'hour')?.value) * 60 + Number(parts.find((p) => p.type === 'minute')?.value);
+    Number(parts.find((p) => p.type === 'hour')?.value) * 60 +
+    Number(parts.find((p) => p.type === 'minute')?.value);
   return times.some((t) => {
     const [h, m] = t.split(':').map(Number);
     if (Number.isNaN(h) || Number.isNaN(m)) return false;
@@ -81,18 +82,26 @@ async function run() {
 
   console.log('====================================================');
   console.log(`🎨 ChromaBot Scheduled Workflow Triggered`);
-  console.log(`⏰ Slot: ${slotType.toUpperCase()} (${isMorning ? '6:00 AM Sunrise' : '6:00 PM Sunset'})`);
+  console.log(
+    `⏰ Slot: ${slotType.toUpperCase()} (${isMorning ? '6:00 AM Sunrise' : '6:00 PM Sunset'})`,
+  );
   console.log(`🕒 Execution Time (UTC): ${new Date().toISOString()}`);
 
   const settings = storage.getSettings();
-  const targetTweetId = options.targetTweetId || process.env.TARGET_TWEET_ID || settings.targetTweetId;
+  const targetTweetId =
+    options.targetTweetId || process.env.TARGET_TWEET_ID || settings.targetTweetId;
   // Safety default: dry run unless live posting is explicitly requested (--live or DRY_RUN=false).
   const isDryRun = options.dryRun ?? process.env.DRY_RUN !== 'false';
 
   // Retrieve Twitter credentials (process.env from GitHub Secrets or store)
   const creds = storage.getEffectiveCredentials();
 
-  const hasOAuth1 = !!(creds.apiKey && creds.apiSecret && creds.accessToken && creds.accessTokenSecret);
+  const hasOAuth1 = !!(
+    creds.apiKey &&
+    creds.apiSecret &&
+    creds.accessToken &&
+    creds.accessTokenSecret
+  );
   const hasOAuth2User = !!creds.oauth2AccessToken;
 
   console.log(`🎯 Target Tweet ID: ${targetTweetId}`);
@@ -101,9 +110,15 @@ async function run() {
   console.log(`   - TWITTER_API_KEY: ${creds.apiKey ? '✓ Set' : '✗ Missing'}`);
   console.log(`   - TWITTER_API_SECRET: ${creds.apiSecret ? '✓ Set' : '✗ Missing'}`);
   console.log(`   - TWITTER_ACCESS_TOKEN: ${creds.accessToken ? '✓ Set' : '✗ Missing'}`);
-  console.log(`   - TWITTER_ACCESS_TOKEN_SECRET: ${creds.accessTokenSecret ? '✓ Set' : '✗ Missing'}`);
-  console.log(`   - TWITTER_OAUTH2_ACCESS_TOKEN: ${creds.oauth2AccessToken ? '✓ Set' : '✗ Missing'}`);
-  console.log(`   - Authentication Ready: ${hasOAuth1 || hasOAuth2User ? '✓ YES' : '✗ NO (Missing user credentials in GitHub Secrets)'}`);
+  console.log(
+    `   - TWITTER_ACCESS_TOKEN_SECRET: ${creds.accessTokenSecret ? '✓ Set' : '✗ Missing'}`,
+  );
+  console.log(
+    `   - TWITTER_OAUTH2_ACCESS_TOKEN: ${creds.oauth2AccessToken ? '✓ Set' : '✗ Missing'}`,
+  );
+  console.log(
+    `   - Authentication Ready: ${hasOAuth1 || hasOAuth2User ? '✓ YES' : '✗ NO (Missing user credentials in GitHub Secrets)'}`,
+  );
 
   if (!isDryRun && !hasOAuth1 && !hasOAuth2User) {
     console.error('');
@@ -117,7 +132,9 @@ async function run() {
   }
 
   if (!isDryRun && options.slot === 'auto' && !options.force && !isWithinScheduleWindow()) {
-    console.error(`[PostDrop] Refusing live post: current time is outside the SCHEDULE_TIMES window (${WINDOW_MINUTES} min). Use --force to override.`);
+    console.error(
+      `[PostDrop] Refusing live post: current time is outside the SCHEDULE_TIMES window (${WINDOW_MINUTES} min). Use --force to override.`,
+    );
     process.exit(1);
   }
 
@@ -138,7 +155,7 @@ async function run() {
       text: tweetText,
       replyToTweetId: targetTweetId,
     },
-    isDryRun
+    isDryRun,
   );
 
   const status = result.success ? (result.simulated ? 'simulated' : 'success') : 'error';
