@@ -196,6 +196,24 @@ export interface AiStatus {
   geminiConfigured?: boolean;
 }
 
+/** Per-campaign entry of `allNextPosts` on `GET /api/status`. */
+export type ContextNextPost = NextPostInfo & { enabled: boolean; targetTweetId: string };
+
+/** `GET /api/status` payload as consumed by the UI. */
+export interface StatusResponse extends AiStatus {
+  /** Server default target tweet (env TARGET_TWEET_ID); empty when unset. */
+  defaultTargetTweetId?: string;
+  settings: BotSettings;
+  activeContext?: TweetContext | null;
+  contexts?: TweetContext[];
+  nextPost: NextPostInfo | null;
+  allNextPosts?: ContextNextPost[];
+  credentialsStatus: CredentialsStatus;
+  cooldownState?: CooldownState;
+  rateLimitTelemetry?: RateLimitTelemetry;
+  queue?: QueueSlot[];
+}
+
 /** `GET /api/health` payload (unauthenticated). */
 export interface HealthInfo {
   ok: boolean;
