@@ -4,8 +4,24 @@
  */
 
 import 'dotenv/config';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+const readVersion = (): string => {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf-8'));
+    return String(pkg.version || '0.0.0');
+  } catch {
+    return '0.0.0';
+  }
+};
 
 export const config = {
   port: Number(process.env.PORT) || 3000,
   isProduction: process.env.NODE_ENV === 'production',
+  rootDir,
+  version: process.env.APP_VERSION || readVersion(),
 };
