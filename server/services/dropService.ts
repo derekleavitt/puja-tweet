@@ -157,12 +157,18 @@ export const createDropService = (deps: DropDeps) => {
     recordTelemetry(res, isDryRun);
 
     const status = res.success ? (res.simulated ? 'simulated' : 'success') : 'error';
-    s.contexts.recordContextPostResult(
+    const failure = res.success ? undefined : { errorClass: classify(res), message: res.error };
+    const { autoPausedReason } = s.contexts.recordContextPostResult(
       context.id,
       status,
       res.tweetId,
       res.engagementMode || engagementMode,
+      failure,
     );
+    const errorMessage =
+      autoPausedReason && res.error
+        ? `${res.error} [Campaign auto-paused: ${autoPausedReason}]`
+        : res.error;
     const logEntry = {
       id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       timestamp: new Date().toISOString(),
@@ -176,7 +182,7 @@ export const createDropService = (deps: DropDeps) => {
       tweetId: res.tweetId,
       tweetUrl: res.url,
       status,
-      errorMessage: res.error,
+      errorMessage,
       contextId: context.id,
       contextName: context.name,
     } as const;

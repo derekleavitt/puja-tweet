@@ -48,6 +48,8 @@ export interface TweetContext {
   currentJitterMs?: number;
   lastPostedSlot?: string;
   consecutiveErrors?: number;
+  /** Set when the circuit breaker disabled this campaign (cleared on resume). */
+  autoPausedReason?: string;
   stats?: {
     totalPosts: number;
     successfulPosts: number;

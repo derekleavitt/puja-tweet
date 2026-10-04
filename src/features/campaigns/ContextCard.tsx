@@ -9,6 +9,7 @@ import { TweetContext } from '../../types.js';
 import { CardFrequency } from './CardFrequency.js';
 import { CardModeControls } from './CardModeControls.js';
 import { CardActions } from './CardActions.js';
+import { AutoPausedBadge } from './AutoPausedBadge.js';
 
 export interface TriggerNotice {
   success: boolean;
@@ -83,6 +84,7 @@ export const ContextCard: React.FC<ContextCardProps> = (props) => {
                 </span>
               )}
               <span className={`${BADGE} ${badge.className}`}>{badge.label}</span>
+              <AutoPausedBadge context={ctx} />
             </div>
             {ctx.description && (
               <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5 line-clamp-1">
@@ -106,7 +108,7 @@ export const ContextCard: React.FC<ContextCardProps> = (props) => {
             ) : (
               <Play className="w-3.5 h-3.5 fill-current" />
             )}
-            <span>{ctx.enabled ? 'Active' : 'Paused'}</span>
+            <span>{ctx.enabled ? 'Active' : ctx.autoPausedReason ? 'Resume' : 'Paused'}</span>
           </button>
         </div>
 

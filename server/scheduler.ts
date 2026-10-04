@@ -18,9 +18,13 @@ import { dropService } from './services/dropService.js';
 import { services } from './services/index.js';
 import type { TweetContext } from '../shared/types.js';
 
+/** Minimum spacing between any two live drops across all campaigns. */
+const MIN_LIVE_SPACING_MS = 60 * 1000;
+
 class SchedulerService {
   private timer: NodeJS.Timeout | null = null;
   private isProcessing = false;
+  private tickGeneration = 0;
   private pendingFires = new Map<
     string,
     { slotKey: string; slotType: 'morning' | 'evening'; matchedTime: string; fireAt: number }
@@ -43,52 +47,69 @@ class SchedulerService {
     console.log('[Scheduler] Stopped.');
   }
 
+  /** Per-tick deadline (env SCHEDULER_TICK_TIMEOUT_MS, default 120 000). */
+  private tickTimeoutMs() {
+    const n = Number(process.env.SCHEDULER_TICK_TIMEOUT_MS);
+    return Number.isFinite(n) && n > 0 ? n : 120_000;
+  }
+
+  /** Anti-burst + cooldown gate, evaluated right before every live drop. */
+  private canFireNow(): boolean {
+    if (services.rateLimit.getCooldownState().isThrottled) return false;
+    return services.rateLimit.getTimeSinceLastLivePostMs() >= MIN_LIVE_SPACING_MS;
+  }
+
   /**
    * Main scheduler loop: runs every 10 seconds and checks each enabled context.
+   * A watchdog deadline guarantees `isProcessing` is released even if a post hangs.
    */
   public async tick() {
     if (this.isProcessing) return;
-
+    this.isProcessing = true;
+    const generation = ++this.tickGeneration;
+    const timeoutMs = this.tickTimeoutMs();
+    let timer: NodeJS.Timeout | undefined;
+    const deadline = new Promise<'timeout'>((resolve) => {
+      timer = setTimeout(() => resolve('timeout'), timeoutMs);
+    });
     try {
-      this.isProcessing = true;
-      const contexts = services.contexts.getContexts().filter((c) => c.enabled);
-      if (contexts.length === 0) return;
-
-      // 1. Check Global Rate Limit / Cooldown
-      const cooldown = services.rateLimit.getCooldownState();
-      if (cooldown.isThrottled) {
-        return; // Safe standby while cooldown expires
-      }
-
-      // 2. Pre-Emptive Rate Window Check: If remaining requests in window is 0, wait for reset
-      const telemetry = services.rateLimit.getRateLimitTelemetry();
-      if (
-        telemetry.headersCaptured &&
-        telemetry.remaining <= 0 &&
-        telemetry.secondsUntilReset > 0
-      ) {
-        return; // Standby until 15-minute window resets
-      }
-
-      // 3. Anti-Burst Protection: Ensure minimum 60s spacing between any live drops across all campaigns
-      if (services.rateLimit.getTimeSinceLastLivePostMs() < 60 * 1000) {
-        return; // Stagger to next tick
-      }
-
-      const now = Date.now();
-
-      for (const context of contexts) {
-        try {
-          await this.evaluateContextSchedule(context, now);
-        } catch (ctxErr) {
-          console.error(`[Scheduler] Error evaluating context "${context.name}":`, ctxErr);
-        }
+      const outcome = await Promise.race([this.runTick(generation), deadline]);
+      if (outcome === 'timeout') {
+        console.error(`[Scheduler] Tick exceeded ${timeoutMs} ms; releasing the scheduler lock.`);
       }
     } catch (err) {
       console.error('[Scheduler] Error during schedule tick loop:', err);
     } finally {
+      clearTimeout(timer);
+      // Invalidate a timed-out body so it stops firing further contexts.
+      this.tickGeneration++;
       this.isProcessing = false;
     }
+  }
+
+  private async runTick(generation: number): Promise<'done'> {
+    const contexts = services.contexts.getContexts().filter((c) => c.enabled);
+    if (contexts.length === 0) return 'done';
+
+    // 1. Global Rate Limit / Cooldown: safe standby while it expires
+    if (services.rateLimit.getCooldownState().isThrottled) return 'done';
+
+    // 2. Pre-Emptive Rate Window Check: if no requests remain in the window, wait for reset
+    const telemetry = services.rateLimit.getRateLimitTelemetry();
+    if (telemetry.headersCaptured && telemetry.remaining <= 0 && telemetry.secondsUntilReset > 0) {
+      return 'done';
+    }
+
+    const now = Date.now();
+    for (const context of contexts) {
+      if (generation !== this.tickGeneration) break; // superseded by the watchdog
+      try {
+        await this.evaluateContextSchedule(context, now);
+      } catch (ctxErr) {
+        console.error(`[Scheduler] Error evaluating context "${context.name}":`, ctxErr);
+      }
+    }
+    return 'done';
   }
 
   private async evaluateContextSchedule(context: TweetContext, now: number) {
@@ -102,7 +123,13 @@ class SchedulerService {
       const jitterMs = context.currentJitterMs || 0;
       const effectiveRequiredMs = intervalMs + jitterMs;
 
-      if (!lastPosted || now - lastPosted >= effectiveRequiredMs) {
+      if (!lastPosted) {
+        // Legacy/unset clock: start the interval now instead of firing immediately.
+        services.contexts.setContextLastPostedTimestamp(context.id, now);
+        return;
+      }
+      if (now - lastPosted >= effectiveRequiredMs) {
+        if (!this.canFireNow()) return; // anti-burst: wait for the next tick
         console.log(
           `[Scheduler] Context "${context.name}" interval reached ` +
             `(${intervalMinutes}m base + ${Math.round(jitterMs / 1000)}s jitter). Firing drop...`,
@@ -120,7 +147,7 @@ class SchedulerService {
     // after the context's jitter delay. Pending fires are in-memory; only lastPostedSlot persists.
     const pending = this.pendingFires.get(context.id);
     if (pending) {
-      if (now < pending.fireAt) return;
+      if (now < pending.fireAt || !this.canFireNow()) return;
       this.pendingFires.delete(context.id);
       await this.fireFixedSlot(context, pending.slotKey, pending.slotType, pending.matchedTime);
       return;
@@ -131,7 +158,7 @@ class SchedulerService {
 
     const slotType = slotTypeForHour(match.parts.hour);
     const jitterMs = schedule.humanizeJitterEnabled ? context.currentJitterMs || 0 : 0;
-    if (jitterMs > 0) {
+    if (jitterMs > 0 || !this.canFireNow()) {
       this.pendingFires.set(context.id, {
         slotKey: match.slotKey,
         slotType,
@@ -140,7 +167,7 @@ class SchedulerService {
       });
       console.log(
         `[Scheduler] Context "${context.name}" fixed time ${match.matchedTime} (${resolveTimezone(schedule.timezone)}) reached; ` +
-          `delaying ${Math.round(jitterMs / 1000)}s for jitter.`,
+          `delaying (${Math.round(jitterMs / 1000)}s jitter, anti-burst gate).`,
       );
       return;
     }
