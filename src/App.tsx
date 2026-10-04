@@ -4,7 +4,7 @@
  * Secured behind Google Authentication & synced with Cloud Firestore.
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Header } from './components/Header.js';
 import { StatusBar } from './components/StatusBar.js';
 import { LiveStudio } from './components/LiveStudio.js';
@@ -87,16 +87,13 @@ function ChromaBotDashboard() {
       Promise.all([fetchStatus(), fetchQueue(), fetchHistory(), generateColor('morning')]),
   });
 
-  // Heartbeat poll every 8 seconds
-  usePolling(
-    () => {
-      fetchStatus();
-      fetchHistory();
-      fetchQueue();
-    },
-    8000,
-    true,
-  );
+  // Heartbeat: one /api/status poll every 10 s (it already carries the queue); paused while the
+  // browser tab is hidden. History is only polled while the History tab is open.
+  usePolling(fetchStatus, 10000, true);
+  usePolling(fetchHistory, 10000, activeTab === 'history');
+  useEffect(() => {
+    if (activeTab === 'history') fetchHistory();
+  }, [activeTab, fetchHistory]);
 
   const {
     allNextPosts,
