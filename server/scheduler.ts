@@ -9,6 +9,7 @@
 
 import { formatTweetText, generateColor, ColorData } from './colorEngine.js';
 import { resolveTemplateText } from './templateAgent.js';
+import { HttpError } from './middleware/error.js';
 import { storage, TweetContext } from './storage.js';
 import { postColorTweet } from './twitterClient.js';
 
@@ -45,9 +46,11 @@ class SchedulerService {
    * Execute drop for a specific context or the active context.
    */
   public async executeDrop(options: ExecuteDropOptions = {}) {
-    const context: TweetContext = options.contextId
-      ? (storage.getContext(options.contextId) || storage.getActiveContext())
-      : storage.getActiveContext();
+    const requested = options.contextId ? storage.getContext(options.contextId) : undefined;
+    if (options.contextId && !requested) {
+      throw new HttpError(404, `Context ${options.contextId} not found`);
+    }
+    const context: TweetContext = requested || storage.getActiveContext();
 
     const isMorning = options.slotType
       ? options.slotType === 'morning'
