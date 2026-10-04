@@ -1,5 +1,17 @@
 import React, { useState } from 'react';
-import { ExternalLink, Check, Edit2, RotateCcw, AlertCircle, MessageSquare, Link2, Target, Quote, Globe } from 'lucide-react';
+import {
+  ExternalLink,
+  Check,
+  Edit2,
+  RotateCcw,
+  AlertCircle,
+  MessageSquare,
+  Link2,
+  Target,
+  Quote,
+  Globe,
+} from 'lucide-react';
+import { extractTweetId } from '../../shared/tweetId.js';
 
 interface TargetTweetEditorProps {
   currentTargetId: string;
@@ -11,21 +23,6 @@ interface TargetTweetEditorProps {
   onToggleReplyTargetMode?: (newMode: 'original_post' | 'last_comment') => Promise<void>;
   onToggleEngagementMode?: (newMode: 'reply' | 'quote' | 'standalone') => Promise<void>;
   onResetChain?: () => Promise<void>;
-}
-
-export function extractTweetId(input: string): string | null {
-  const trimmed = input.trim();
-  // Check if it's a URL
-  const urlMatch = trimmed.match(/(?:twitter\.com|x\.com)\/[^/]+\/status\/(\d+)/i);
-  if (urlMatch && urlMatch[1]) {
-    return urlMatch[1];
-  }
-  // Check if it's pure digits
-  const digitMatch = trimmed.match(/\b\d{8,25}\b/);
-  if (digitMatch) {
-    return digitMatch[0];
-  }
-  return null;
 }
 
 export const TargetTweetEditor: React.FC<TargetTweetEditorProps> = ({
@@ -46,7 +43,6 @@ export const TargetTweetEditor: React.FC<TargetTweetEditorProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   const detectedId = extractTweetId(inputValue);
-  const defaultTargetId = '2103110008212992249';
 
   const handleSave = async () => {
     if (!detectedId) {
@@ -67,21 +63,6 @@ export const TargetTweetEditor: React.FC<TargetTweetEditorProps> = ({
     }
   };
 
-  const handleResetDefault = async () => {
-    setInputValue(defaultTargetId);
-    setIsSaving(true);
-    try {
-      await onSave(defaultTargetId);
-      setSavedSuccess(true);
-      setIsEditing(false);
-      setTimeout(() => setSavedSuccess(false), 2500);
-    } catch (err: any) {
-      setError(err.message || 'Failed to reset target tweet ID');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   if (compact) {
     return (
       <div className="relative inline-flex items-center">
@@ -95,7 +76,10 @@ export const TargetTweetEditor: React.FC<TargetTweetEditorProps> = ({
               rel="noopener noreferrer"
               className="font-mono font-semibold text-neutral-900 dark:text-neutral-100 hover:text-blue-600 underline inline-flex items-center gap-0.5"
             >
-              #{currentTargetId.length > 12 ? `${currentTargetId.slice(0, 6)}...${currentTargetId.slice(-4)}` : currentTargetId}
+              #
+              {currentTargetId.length > 12
+                ? `${currentTargetId.slice(0, 6)}...${currentTargetId.slice(-4)}`
+                : currentTargetId}
               <ExternalLink className="w-2.5 h-2.5" />
             </a>
             <button
@@ -208,7 +192,7 @@ export const TargetTweetEditor: React.FC<TargetTweetEditorProps> = ({
                   setInputValue(e.target.value);
                   setError(null);
                 }}
-                placeholder="e.g. 2103110008212992249 or https://x.com/username/status/..."
+                placeholder="Tweet ID or https://x.com/username/status/..."
                 className="flex-1 px-3 py-2 text-sm font-mono border border-neutral-300 dark:border-neutral-700 rounded-lg bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 autoFocus
               />
@@ -232,7 +216,10 @@ export const TargetTweetEditor: React.FC<TargetTweetEditorProps> = ({
             <div className="flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-400 bg-white dark:bg-neutral-900 p-2.5 rounded border border-neutral-200 dark:border-neutral-800">
               <span className="flex items-center gap-1.5">
                 <Check className="w-3.5 h-3.5 text-emerald-600" />
-                Detected Post ID: <strong className="font-mono text-neutral-900 dark:text-neutral-100">{detectedId}</strong>
+                Detected Post ID:{' '}
+                <strong className="font-mono text-neutral-900 dark:text-neutral-100">
+                  {detectedId}
+                </strong>
               </span>
               <a
                 href={`https://x.com/i/status/${detectedId}`}
@@ -256,15 +243,6 @@ export const TargetTweetEditor: React.FC<TargetTweetEditorProps> = ({
             <span className="text-[11px] text-neutral-400">
               Tip: You can paste directly from your browser's address bar.
             </span>
-            {currentTargetId !== defaultTargetId && (
-              <button
-                onClick={handleResetDefault}
-                disabled={isSaving}
-                className="text-xs text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200 underline inline-flex items-center gap-1 cursor-pointer"
-              >
-                <RotateCcw className="w-3 h-3" /> Reset to original (#{defaultTargetId})
-              </button>
-            )}
           </div>
         </div>
       )}
@@ -285,7 +263,7 @@ export const TargetTweetEditor: React.FC<TargetTweetEditorProps> = ({
                     ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 shadow-xs font-semibold'
                     : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
                 }`}
-                title="Post as in-thread comment reply (auto-falls back to Quote if restricted)"
+                title="Post as in-thread comment reply"
               >
                 <MessageSquare className="w-3 h-3 text-blue-500" />
                 <span>Direct Reply</span>
@@ -324,8 +302,8 @@ export const TargetTweetEditor: React.FC<TargetTweetEditorProps> = ({
             {engagementMode === 'quote'
               ? '💡 Quote Tweet mode embeds the target post directly into your timeline drop. 100% permitted on all X developer tiers.'
               : engagementMode === 'standalone'
-              ? '💡 Standalone mode publishes chromatic drops directly to @bhaijahndai\'s feed.'
-              : '💡 Direct Reply posts into the target post\'s comments. If X restricts in-thread replies (403), auto-fallback seamlessly posts as a Quote Tweet.'}
+                ? "💡 Standalone mode publishes chromatic drops directly to your account's feed."
+                : "💡 Direct Reply posts into the target post's comments. If X restricts replies, you can enable the Quote Tweet fallback in the campaign settings."}
           </p>
         </div>
       )}
@@ -371,14 +349,25 @@ export const TargetTweetEditor: React.FC<TargetTweetEditorProps> = ({
           <div className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-normal flex items-center justify-between gap-2">
             <div>
               {replyTargetMode === 'original_post' ? (
-                <span>Every post branches directly under root post <strong className="font-mono">#{currentTargetId}</strong>.</span>
+                <span>
+                  Every post branches directly under root post{' '}
+                  <strong className="font-mono">#{currentTargetId}</strong>.
+                </span>
               ) : (
                 <span>
                   Each next drop replies to the previous comment made by us.
                   {lastPostedTweetId ? (
-                    <span> Next drop attaches to <strong className="font-mono">#{lastPostedTweetId}</strong>.</span>
+                    <span>
+                      {' '}
+                      Next drop attaches to{' '}
+                      <strong className="font-mono">#{lastPostedTweetId}</strong>.
+                    </span>
                   ) : (
-                    <span> Debut drop initiates chain at <strong className="font-mono">#{currentTargetId}</strong>.</span>
+                    <span>
+                      {' '}
+                      Debut drop initiates chain at{' '}
+                      <strong className="font-mono">#{currentTargetId}</strong>.
+                    </span>
                   )}
                 </span>
               )}

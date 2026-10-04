@@ -10,7 +10,6 @@ import {
   FileText,
   Clock,
   Key,
-  Radio,
   Activity,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.js';
@@ -23,6 +22,8 @@ interface HeaderProps {
   isPosting: boolean;
   dryRun: boolean;
   onToggleDryRun: () => void;
+  paused: boolean;
+  onTogglePaused: () => void;
   targetTweetId: string;
   onUpdateTargetTweetId: (newId: string) => Promise<void>;
   contexts?: TweetContext[];
@@ -40,6 +41,8 @@ export const Header: React.FC<HeaderProps> = ({
   isPosting,
   dryRun,
   onToggleDryRun,
+  paused,
+  onTogglePaused,
   contexts = [],
   activeContextId = '',
   onSelectContext,
@@ -59,7 +62,6 @@ export const Header: React.FC<HeaderProps> = ({
     { id: 'history', label: 'Logs', icon: FileText },
     { id: 'settings', label: 'Timing', icon: Clock },
     { id: 'credentials', label: 'API Keys', icon: Key },
-    { id: 'export', label: 'Ping', icon: Radio },
   ];
 
   // Close mobile drawer on escape or outside click
@@ -119,7 +121,11 @@ export const Header: React.FC<HeaderProps> = ({
                   title="Switch active tweet context"
                 >
                   {contexts.map((c) => (
-                    <option key={c.id} value={c.id} className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100">
+                    <option
+                      key={c.id}
+                      value={c.id}
+                      className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100"
+                    >
                       {c.name}
                     </option>
                   ))}
@@ -128,8 +134,8 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </div>
 
-          {/* Center: Desktop Navigation Tabs (Visible on 2xl / xl) */}
-          <nav className="hidden 2xl:flex items-center gap-1 text-sm font-medium text-neutral-600 dark:text-neutral-400 shrink-0">
+          {/* Center: Desktop Navigation Tabs (Visible on lg) */}
+          <nav className="hidden lg:flex items-center gap-1 text-sm font-medium text-neutral-600 dark:text-neutral-400 shrink-0">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
@@ -143,7 +149,9 @@ export const Header: React.FC<HeaderProps> = ({
                       : 'hover:bg-neutral-100 dark:hover:bg-neutral-900 hover:text-neutral-900 dark:hover:text-neutral-100'
                   }`}
                 >
-                  <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-amber-400 dark:text-neutral-900' : 'text-neutral-400'}`} />
+                  <Icon
+                    className={`w-3.5 h-3.5 ${isActive ? 'text-amber-400 dark:text-neutral-900' : 'text-neutral-400'}`}
+                  />
                   {item.label}
                 </button>
               );
@@ -161,8 +169,8 @@ export const Header: React.FC<HeaderProps> = ({
                 cooldownState?.isThrottled
                   ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-800 animate-pulse'
                   : (rateLimitTelemetry?.remaining ?? 50) < 5
-                  ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-800'
-                  : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+                    ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-800'
+                    : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700 hover:bg-neutral-200 dark:hover:bg-neutral-700'
               }`}
             >
               <Activity className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
@@ -179,16 +187,42 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Dry Run / Live Switch Indicator */}
             <button
               onClick={onToggleDryRun}
-              title={dryRun ? 'Dry run mode: replies simulated' : 'Live mode: replies sent to X API'}
+              title={
+                dryRun
+                  ? 'Global dry run is ON: every post is simulated, whatever the campaigns say. Click to allow live posting.'
+                  : 'Global dry run is OFF: campaigns set to Live post to X. Click to simulate everything.'
+              }
               className={`px-2 py-1 text-xs font-mono rounded-md border transition-colors flex items-center gap-1.5 cursor-pointer shrink-0 ${
                 dryRun
                   ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-950/60'
                   : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-950/60'
               }`}
             >
-              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dryRun ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+              <span
+                className={`w-1.5 h-1.5 rounded-full shrink-0 ${dryRun ? 'bg-amber-500' : 'bg-emerald-500'}`}
+              />
               <span className="hidden sm:inline">{dryRun ? 'Dry Run' : 'Live X API'}</span>
               <span className="sm:hidden">{dryRun ? 'Sim' : 'Live'}</span>
+            </button>
+
+            {/* Global Pause Indicator: stops all scheduled drops */}
+            <button
+              onClick={onTogglePaused}
+              title={
+                paused
+                  ? 'Global pause is ON: no scheduled drops run. Click to resume.'
+                  : 'Scheduler running for enabled campaigns. Click to pause everything.'
+              }
+              className={`px-2 py-1 text-xs font-mono rounded-md border transition-colors flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                paused
+                  ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-800 hover:bg-rose-100 dark:hover:bg-rose-950/60'
+                  : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-950/60'
+              }`}
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full shrink-0 ${paused ? 'bg-rose-500' : 'bg-emerald-500'}`}
+              />
+              <span>{paused ? 'Paused' : 'Running'}</span>
             </button>
 
             {/* Quick Trigger CTA */}
@@ -211,7 +245,7 @@ export const Header: React.FC<HeaderProps> = ({
               <div className="flex items-center gap-1.5 pl-1.5 sm:pl-2 border-l border-neutral-200 dark:border-neutral-800 shrink-0">
                 <div
                   title={`Signed in as ${user.email}`}
-                  className="hidden 2xl:flex items-center gap-1 text-[11px] font-mono text-neutral-600 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-900 px-2 py-1 rounded-md max-w-[120px] truncate"
+                  className="hidden lg:flex items-center gap-1 text-[11px] font-mono text-neutral-600 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-900 px-2 py-1 rounded-md max-w-[120px] truncate"
                 >
                   <UserCheck className="w-3 h-3 text-emerald-500 shrink-0" />
                   <span className="truncate">{user.email?.split('@')[0]}</span>
@@ -232,7 +266,7 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Mobile & Tablet Hamburger Toggle */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="2xl:hidden p-1.5 text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-900 rounded-md transition-colors cursor-pointer shrink-0"
+              className="lg:hidden p-1.5 text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-900 rounded-md transition-colors cursor-pointer shrink-0"
               aria-label="Toggle navigation menu"
             >
               {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -245,7 +279,7 @@ export const Header: React.FC<HeaderProps> = ({
       {mobileMenuOpen && (
         <div
           ref={menuRef}
-          className="2xl:hidden border-t border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-4 pt-3 pb-4 space-y-3 shadow-xl animate-in slide-in-from-top-2 duration-150 max-h-[85vh] overflow-y-auto"
+          className="lg:hidden border-t border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-4 pt-3 pb-4 space-y-3 shadow-xl animate-in slide-in-from-top-2 duration-150 max-h-[85vh] overflow-y-auto"
         >
           {/* Navigation Links Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
