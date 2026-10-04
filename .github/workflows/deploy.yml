@@ -1,0 +1,120 @@
+name: Deploy to Cloud Run
+
+# Keyless (Workload Identity Federation). Does nothing until the owner has run
+# scripts/setup-gcp-deploy.sh and set the GCP_* repository variables (docs/gcp-setup.md).
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+env:
+  SERVICE: chromabot
+  AR_REPO: chromabot
+
+jobs:
+  deploy:
+    name: Verify, build and deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Not configured yet
+        if: vars.GCP_WIF_PROVIDER == ''
+        run: |
+          echo "### Deploy skipped" >> "$GITHUB_STEP_SUMMARY"
+          echo "GCP_WIF_PROVIDER is not set. Run scripts/setup-gcp-deploy.sh and set the repository variables (docs/gcp-setup.md)." >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/checkout@v4
+        if: vars.GCP_WIF_PROVIDER != ''
+
+      # Gate: replicate the fast CI checks here. Simpler and more robust than workflow_run,
+      # which loses the commit context and can race a parallel CI run.
+      - uses: actions/setup-node@v4
+        if: vars.GCP_WIF_PROVIDER != ''
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install, typecheck, lint, test
+        if: vars.GCP_WIF_PROVIDER != ''
+        run: |
+          npm ci
+          npm run typecheck
+          npm run lint
+          npm test
+
+      - id: auth
+        if: vars.GCP_WIF_PROVIDER != ''
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+        if: vars.GCP_WIF_PROVIDER != ''
+
+      - name: Build and push image
+        if: vars.GCP_WIF_PROVIDER != ''
+        run: |
+          gcloud auth configure-docker "${{ vars.GCP_REGION }}-docker.pkg.dev" --quiet
+          IMAGE="${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${AR_REPO}/${SERVICE}:${GITHUB_SHA}"
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+
+      - id: deploy
+        if: vars.GCP_WIF_PROVIDER != ''
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.SERVICE }}
+          region: ${{ vars.GCP_REGION }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          image: ${{ env.IMAGE }}
+          env_vars: |
+            STORE=firestore
+            SCHEDULER_MODE=external
+            FIREBASE_PROJECT_ID=${{ vars.GCP_PROJECT_ID }}
+            AUTHORIZED_EMAILS=the.derek.leavitt@gmail.com
+            SCHEDULE_TIMEZONE=America/Denver
+            TARGET_TWEET_ID=2103110008212992249
+            NODE_ENV=production
+          secrets: |
+            TWITTER_API_KEY=TWITTER_API_KEY:latest
+            TWITTER_API_SECRET=TWITTER_API_SECRET:latest
+            TWITTER_ACCESS_TOKEN=TWITTER_ACCESS_TOKEN:latest
+            TWITTER_ACCESS_TOKEN_SECRET=TWITTER_ACCESS_TOKEN_SECRET:latest
+            TWITTER_BEARER_TOKEN=TWITTER_BEARER_TOKEN:latest
+            GEMINI_API_KEY=GEMINI_API_KEY:latest
+            WEBHOOK_SECRET=WEBHOOK_SECRET:latest
+            CREDENTIALS_ENCRYPTION_KEY=CREDENTIALS_ENCRYPTION_KEY:latest
+            CRON_SECRET=CRON_SECRET:latest
+          flags: >-
+            --service-account=${{ vars.GCP_RUNTIME_SA }}
+            --min-instances=0 --max-instances=1 --concurrency=20
+            --cpu-throttling --allow-unauthenticated --port=3000
+
+      - name: Smoke test
+        if: vars.GCP_WIF_PROVIDER != ''
+        env:
+          URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          curl -fsS --retry 5 --retry-delay 5 --retry-all-errors "$URL/api/health"
+          echo
+          code=$(curl -s -o /dev/null -w '%{http_code}' "$URL/api/status")
+          [ "$code" = "401" ] || { echo "Expected 401 from /api/status, got $code"; exit 1; }
+          {
+            echo "### Deployed"
+            echo "URL: $URL"
+            echo "Image: \`$IMAGE\`"
+            echo "First deploy only: add the host to Firebase Authorized domains, then run \`bash scripts/setup-gcp-deploy.sh --scheduler $URL\`."
+          } >> "$GITHUB_STEP_SUMMARY"
