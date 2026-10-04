@@ -12,6 +12,8 @@ export const getGeminiTimeoutMs = (): number => {
   return n > 0 ? n : 12000;
 };
 
-export function isTimeoutError(err: any): boolean {
-  return err?.name === 'TimeoutError' || err?.name === 'AbortError';
+export function isTimeoutError(err: unknown): boolean {
+  const name =
+    typeof err === 'object' && err !== null ? (err as { name?: unknown }).name : undefined;
+  return name === 'TimeoutError' || name === 'AbortError';
 }
