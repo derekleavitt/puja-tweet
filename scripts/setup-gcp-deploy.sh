@@ -2,6 +2,8 @@
 # One-time, idempotent bootstrap for keyless GitHub Actions -> Cloud Run deploys.
 # Run on your own machine, signed in with `gcloud auth login`:
 #   bash scripts/setup-gcp-deploy.sh                 # bootstrap
+#   Re-running prompts for every X/Gemini secret again: a value you enter overwrites the saved one,
+#   blank keeps it. Generated secrets (WEBHOOK_SECRET, CREDENTIALS_ENCRYPTION_KEY, CRON_SECRET) are kept.
 #   bash scripts/setup-gcp-deploy.sh --rotate NAME   # add a new version of one secret
 #   bash scripts/setup-gcp-deploy.sh --scheduler URL # create/update the Cloud Scheduler job
 # Creates NO service-account keys.
@@ -143,19 +145,30 @@ G iam service-accounts add-iam-policy-binding "$DEPLOY_SA" --role=roles/iam.work
   --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL}/attribute.repository/${GH_REPO}" >/dev/null
 
 # ---- 5. Secrets -----------------------------------------------------------
-say "Secrets (existing ones are skipped; use --rotate NAME to change)"
+say "Secrets (X/Gemini values: enter to overwrite, blank keeps the saved value; generated ones are kept, use --rotate NAME)"
+CHANGED=0
 for s in "${USER_SECRETS[@]}" "${GEN_SECRETS[@]}"; do
-  if G secrets describe "$s" >/dev/null 2>&1; then
-    echo "  $s: exists, skipped"
-  elif is_generated "$s"; then
-    openssl rand -hex 32 | put_secret "$s"
-    echo "  $s: generated"
+  if is_generated "$s"; then
+    if G secrets describe "$s" >/dev/null 2>&1; then
+      echo "  $s: exists, kept"
+    else
+      openssl rand -hex 32 | put_secret "$s"
+      echo "  $s: generated"
+    fi
   else
-    read -rsp "  Value for $s (hidden; blank to skip): " v
+    if G secrets describe "$s" >/dev/null 2>&1; then
+      prompt="  New value for $s (hidden; blank keeps the saved value): "
+    else
+      prompt="  Value for $s (hidden; blank to skip): "
+    fi
+    read -rsp "$prompt" v
     echo
     if [ -n "$v" ]; then
       printf '%s' "$v" | put_secret "$s"
-      echo "  $s: stored"
+      echo "  $s: saved (overwrote any previous value)"
+      CHANGED=1
+    elif G secrets describe "$s" >/dev/null 2>&1; then
+      echo "  $s: kept"
     else
       echo "  $s: skipped (re-run later)"
     fi
@@ -166,6 +179,13 @@ for s in "${USER_SECRETS[@]}" "${GEN_SECRETS[@]}"; do
       --role=roles/secretmanager.secretAccessor >/dev/null
   fi
 done
+
+if [ "$CHANGED" = 1 ] && G run services describe "$SERVICE" --region "$REGION" >/dev/null 2>&1; then
+  say "Secrets changed: rolling a new revision so the app picks them up"
+  G run services update "$SERVICE" --region "$REGION" --update-env-vars="SECRETS_UPDATED_AT=$(date +%s)" >/dev/null \
+    && echo "  $SERVICE restarted with the new values." \
+    || echo "  Could not restart $SERVICE; re-run the Deploy workflow instead."
+fi
 
 # ---- 6. Summary -----------------------------------------------------------
 cat <<OUT
