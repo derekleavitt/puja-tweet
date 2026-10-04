@@ -8,6 +8,7 @@
     "build": "vite build",
     "start": "NODE_ENV=production tsx server.ts",
     "post-drop": "tsx scripts/post-drop.ts",
+    "import:legacy": "tsx scripts/import-legacy-firestore.ts",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "eslint .",

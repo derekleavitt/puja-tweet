@@ -168,6 +168,36 @@ npx firebase-tools deploy --only firestore:rules --project $PROJECT_ID
   to roll a new revision.
 - Logs: `gcloud run services logs read chromabot --limit=100`.
 
+## Import your existing campaigns (one time)
+
+The AI Studio version kept your campaigns, post history and settings in the Firestore collections
+`contexts`, `postLogs` and `settings/global_settings` of the same named database. This copies them into
+the new state (`chromabot/state`). Run it from your Mac with Application Default Credentials:
+
+```bash
+gcloud auth application-default login      # once
+npm ci
+npm run import:legacy                      # preview only: prints found / new / skipped and warnings
+npm run import:legacy -- --apply           # write
+```
+
+- Safe to run twice: an id that already exists is skipped, never overwritten.
+- Every imported campaign arrives **paused and in dry-run**, whatever its old state; turn each one on
+  yourself once a dry-run drop looks right. Credentials and webhook secrets are never imported (they
+  come from Secret Manager, step 3). Master switches in settings are left untouched.
+- `--from-json export.json` reads a manual export (`{ "contexts": [...], "postLogs": [...],
+  "settings": {...} }`) instead of Firestore.
+
+The server loads state once at startup and keeps it in memory, so a running server will not see the
+import (and its next save would overwrite it). Best: run the import **before the first deploy**. If the
+service is already running, restart it right after `--apply`:
+
+```bash
+gcloud run services update chromabot --region $REGION --update-env-vars=IMPORT_STAMP=$(date +%s)
+```
+
+Then check the dashboard; if something is missing, re-run the import.
+
 ## Turning off the AI Studio deployment
 
 Once the Cloud Run URL works, stop or unpublish the AI Studio app so the two deployments don't both
