@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Globe, Key } from 'lucide-react';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog.js';
 import { getWebhookUrl, rotateWebhookSecret } from '../../api/endpoints.js';
 
 interface WebhookSettingsProps {
@@ -13,6 +14,7 @@ interface WebhookSettingsProps {
 
 export const WebhookSettings: React.FC<WebhookSettingsProps> = ({ onCopied }) => {
   const [webhookUrl, setWebhookUrl] = useState('');
+  const [confirmRotate, setConfirmRotate] = useState(false);
 
   useEffect(() => {
     getWebhookUrl()
@@ -21,12 +23,7 @@ export const WebhookSettings: React.FC<WebhookSettingsProps> = ({ onCopied }) =>
   }, []);
 
   const handleRotateSecret = async () => {
-    if (
-      !window.confirm(
-        'Rotate the webhook secret? Existing cron jobs using the old URL will stop working.',
-      )
-    )
-      return;
+    setConfirmRotate(false);
     try {
       const r = await rotateWebhookSecret();
       setWebhookUrl(r.url);
@@ -94,13 +91,24 @@ export const WebhookSettings: React.FC<WebhookSettingsProps> = ({ onCopied }) =>
           </button>
           <button
             type="button"
-            onClick={handleRotateSecret}
+            onClick={() => setConfirmRotate(true)}
             className="px-3 py-2 text-xs font-semibold bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 rounded-lg transition-colors shrink-0 cursor-pointer flex items-center gap-1.5"
           >
             <Key className="w-3.5 h-3.5" /> Rotate Secret
           </button>
         </div>
       </div>
+
+      {confirmRotate && (
+        <ConfirmDialog
+          title="Rotate webhook secret?"
+          message="Existing cron jobs using the old URL will stop working."
+          confirmLabel="Rotate"
+          destructive
+          onConfirm={handleRotateSecret}
+          onCancel={() => setConfirmRotate(false)}
+        />
+      )}
     </div>
   );
 };
