@@ -162,3 +162,31 @@ describe('unknown contextId on preview routes', () => {
     await request(app).post('/api/generate-color').send({}).expect(200);
   });
 });
+
+describe('POST /api/contexts whitelisting', () => {
+  it('drops unknown and server-owned fields', async () => {
+    const res = await request(app)
+      .post('/api/contexts')
+      .send({
+        name: 'Whitelisted',
+        id: 'ctx_evil',
+        stats: { totalPosts: 99, successfulPosts: 99, simulatedPosts: 0, failedPosts: 0 },
+        currentJitterMs: 123456,
+        bogus: true,
+      })
+      .expect(200);
+    const ctx = res.body.context;
+    expect(ctx.name).toBe('Whitelisted');
+    expect(ctx.id).not.toBe('ctx_evil');
+    expect(ctx.stats.totalPosts).toBe(0);
+    expect(ctx).not.toHaveProperty('bogus');
+  });
+
+  it('rejects a bad targetTweetId with 400', async () => {
+    const res = await request(app)
+      .post('/api/contexts')
+      .send({ name: 'Bad', targetTweetId: 'not-a-tweet' })
+      .expect(400);
+    expect(res.body).toEqual({ success: false, error: expect.stringContaining('targetTweetId') });
+  });
+});

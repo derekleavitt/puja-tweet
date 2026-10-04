@@ -84,7 +84,11 @@ export class ContextService {
     return found;
   }
 
-  createContext(data: Partial<TweetContext>): TweetContext {
+  createContext(
+    data: Partial<Omit<TweetContext, 'schedule'>> & {
+      schedule?: Partial<TweetContext['schedule']>;
+    },
+  ): TweetContext {
     const s = this.sm.state;
     const id = data.id || `ctx_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const newContext: TweetContext = {
