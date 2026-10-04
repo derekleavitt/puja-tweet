@@ -5,7 +5,6 @@
 
 import React, { useState } from 'react';
 import { TweetContext } from '../../types.js';
-import { previewTemplate } from '../../api/endpoints.js';
 import { extractTweetId } from '../../../shared/tweetId.js';
 import { invalidTimes } from './schedule.js';
 
@@ -21,8 +20,6 @@ export function useContextForm(opts: UseContextFormOptions) {
   const [editingContext, setEditingContext] = useState<Partial<TweetContext> | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [testingAi, setTestingAi] = useState(false);
-  const [aiPreviewResult, setAiPreviewResult] = useState<string | null>(null);
 
   /** Shallow-merges fields into the draft. */
   const patch = (fields: Partial<TweetContext>) =>
@@ -99,36 +96,16 @@ export function useContextForm(opts: UseContextFormOptions) {
     }
   };
 
-  const testAiGeneration = async () => {
-    if (!editingContext?.template) return;
-    setTestingAi(true);
-    setAiPreviewResult(null);
-    try {
-      const data = await previewTemplate({
-        template: editingContext.template,
-        contextId: editingContext.id,
-      });
-      setAiPreviewResult(data.previewText || 'Could not generate preview.');
-    } catch (err: any) {
-      setAiPreviewResult(`Error: ${err.message}`);
-    } finally {
-      setTestingAi(false);
-    }
-  };
-
   return {
     editingContext,
     isCreating,
     formError,
-    testingAi,
-    aiPreviewResult,
     patch,
     patchSchedule,
     openCreate,
     openEdit,
     close,
     save,
-    testAiGeneration,
   };
 }
 
