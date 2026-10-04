@@ -24,6 +24,8 @@ export interface Services {
   rateLimit: RateLimitService;
   /** Resolves once every pending write has reached the store. */
   flush(): Promise<void>;
+  /** Synchronously writes any unsaved state (shutdown hook only). */
+  flushSync(): void;
 }
 
 export const createServices = async (store: Store): Promise<Services> => {
@@ -34,7 +36,7 @@ export const createServices = async (store: Store): Promise<Services> => {
 
   contexts.ensureDefaultContext();
   credentials.ensureWebhookSecret();
-  queue.syncQueue();
+  queue.ensureQueue();
 
   return {
     contexts,
@@ -44,6 +46,7 @@ export const createServices = async (store: Store): Promise<Services> => {
     credentials,
     rateLimit: new RateLimitService(sm),
     flush: () => sm.flush(),
+    flushSync: () => sm.flushSync(),
   };
 };
 

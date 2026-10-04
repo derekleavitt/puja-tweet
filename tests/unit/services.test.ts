@@ -366,12 +366,12 @@ describe('services over MemoryStore', () => {
       expect(store.snapshot()?.logs.map((l) => l.id)).toEqual(['one', 'two', 'three']);
     });
 
-    it('persists only the newest 150 logs while keeping all in memory', async () => {
-      for (let i = 0; i < 160; i++) svc.logs.addLog(makeLog({ id: `l${i}` }));
+    it('keeps and persists at most MAX_LOGS (default 500) logs', async () => {
+      for (let i = 0; i < 510; i++) svc.logs.addLog(makeLog({ id: `l${i}` }));
       await svc.flush();
-      expect(store.snapshot()?.logs).toHaveLength(150);
+      expect(store.snapshot()?.logs).toHaveLength(500);
       expect(store.snapshot()?.logs[0].id).toBe('l10');
-      expect(svc.logs.getLogs()).toHaveLength(160);
+      expect(svc.logs.getLogs()).toHaveLength(500);
     });
 
     it('restores state from the store on boot', async () => {
@@ -413,7 +413,7 @@ describe('services over MemoryStore', () => {
 });
 
 describe('JsonFileStore', () => {
-  it('round-trips state through bot-store.json and falls back to defaults', async () => {
+  it('round-trips state through bot-store.json and refuses a corrupt file', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'chromabot-json-'));
     try {
       const nested = path.join(dir, 'nested');
@@ -430,7 +430,10 @@ describe('JsonFileStore', () => {
       expect(reloaded.credentials.getWebhookSecret()).toBe(svc.credentials.getWebhookSecret());
 
       fs.writeFileSync(path.join(nested, 'bot-store.json'), '{not json');
-      expect((await new JsonFileStore(nested).load()).contexts).toEqual([]);
+      await expect(new JsonFileStore(nested).load()).rejects.toThrow(/ALLOW_FRESH_STORE/);
+      expect((await new JsonFileStore(nested, { allowFreshStore: true }).load()).contexts).toEqual(
+        [],
+      );
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
