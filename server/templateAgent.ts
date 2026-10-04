@@ -8,8 +8,10 @@
  */
 
 import { GoogleGenAI } from '@google/genai';
-import { ColorData } from './colorEngine.js';
-import { storage, PostLog } from './storage.js';
+import type { ColorData, PostLog } from '../shared/types.js';
+import { storage } from './storage.js';
+import { substituteTemplate } from '../shared/template/substitute.js';
+import { COMBINED_HISTORY_AGENT_REGEX, STANDALONE_AGENT_REGEX, stripHistoryTags } from '../shared/template/agentTags.js';
 import { getGeminiTimeoutMs } from './timeouts.js';
 
 const ai = new GoogleGenAI({
@@ -43,26 +45,7 @@ export interface ResolveTemplateOptions {
  * Replace basic variables in a string
  */
 export function substituteVariables(text: string, color: ColorData, slotLabel?: string): string {
-  const timeTag = slotLabel || (color.slotType === 'morning' ? '6:00 AM' : '6:00 PM');
-  const colorPick = color.colorPick || color.name;
-  const weatherDesc = color.weatherDesc || 'atmospheric stillness';
-  const weatherTweet = `${colorPick} ${weatherDesc} #eternal #colors`;
-
-  return text
-    .replace(/{weather_tweet}/g, weatherTweet)
-    .replace(/{color_pick}/g, colorPick)
-    .replace(/{color_name}/g, color.name)
-    .replace(/{weather_desc}/g, weatherDesc)
-    .replace(/{weather_description}/g, weatherDesc)
-    .replace(/{time_tag}/g, timeTag)
-    .replace(/{time_slot}/g, timeTag)
-    .replace(/{hex}/g, color.hex)
-    .replace(/{rgb}/g, `${color.rgb.r}, ${color.rgb.g}, ${color.rgb.b}`)
-    .replace(/{hsl}/g, `${color.hsl.h}°, ${color.hsl.s}%, ${color.hsl.l}%`)
-    .replace(/{cmyk}/g, `C:${color.cmyk.c}% M:${color.cmyk.m}% Y:${color.cmyk.y}% K:${color.cmyk.k}%`)
-    .replace(/{mood}/g, color.mood)
-    .replace(/{swatch_bar}/g, color.swatchBar || '')
-    .replace(/{companions}/g, (color.companions || []).join(' '));
+  return substituteTemplate(text, color, { slotLabel });
 }
 
 /**
@@ -192,7 +175,7 @@ export async function resolveTemplateText(
   let processed = template;
 
   // 1. Process combined history + agent tags
-  const combinedHistoryAgentRegex = /<history>\s*<agent>([\s\S]*?)<\/agent>\s*<\/history>|<agent>\s*<history>([\s\S]*?)<\/history>\s*<\/agent>|<agent\s+history=["']?true["']?>([\s\S]*?)<\/agent>/gi;
+  const combinedHistoryAgentRegex = new RegExp(COMBINED_HISTORY_AGENT_REGEX);
   const historyMatches = Array.from(processed.matchAll(combinedHistoryAgentRegex));
 
   for (const match of historyMatches) {
@@ -211,7 +194,7 @@ export async function resolveTemplateText(
   }
 
   // 2. Process standalone <agent>...</agent> tags
-  const standaloneAgentRegex = /<agent>([\s\S]*?)<\/agent>/gi;
+  const standaloneAgentRegex = new RegExp(STANDALONE_AGENT_REGEX);
   const agentMatches = Array.from(processed.matchAll(standaloneAgentRegex));
 
   for (const match of agentMatches) {
@@ -229,7 +212,7 @@ export async function resolveTemplateText(
   }
 
   // 3. Clean any rogue <history>...</history> tags if left
-  processed = processed.replace(/<\/?history>/gi, '');
+  processed = stripHistoryTags(processed);
 
   // 4. Substitute all remaining variables
   return substituteVariables(processed, color, options.slotLabel);

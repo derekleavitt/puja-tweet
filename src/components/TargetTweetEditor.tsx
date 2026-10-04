@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ExternalLink, Check, Edit2, RotateCcw, AlertCircle, MessageSquare, Link2, Target, Quote, Globe } from 'lucide-react';
+import { extractTweetId } from '../../shared/tweetId.js';
 
 interface TargetTweetEditorProps {
   currentTargetId: string;
@@ -11,21 +12,6 @@ interface TargetTweetEditorProps {
   onToggleReplyTargetMode?: (newMode: 'original_post' | 'last_comment') => Promise<void>;
   onToggleEngagementMode?: (newMode: 'reply' | 'quote' | 'standalone') => Promise<void>;
   onResetChain?: () => Promise<void>;
-}
-
-export function extractTweetId(input: string): string | null {
-  const trimmed = input.trim();
-  // Check if it's a URL
-  const urlMatch = trimmed.match(/(?:twitter\.com|x\.com)\/[^/]+\/status\/(\d+)/i);
-  if (urlMatch && urlMatch[1]) {
-    return urlMatch[1];
-  }
-  // Check if it's pure digits
-  const digitMatch = trimmed.match(/\b\d{8,25}\b/);
-  if (digitMatch) {
-    return digitMatch[0];
-  }
-  return null;
 }
 
 export const TargetTweetEditor: React.FC<TargetTweetEditorProps> = ({

@@ -3,22 +3,10 @@
  * Generates rich, evocative colors tailored for Morning (6:00 AM) and Evening (6:00 PM) drops.
  */
 
-export interface ColorData {
-  id: string;
-  name: string;
-  colorPick: string; // e.g. "Sunrise Amber" or "Sunset Violet"
-  hex: string;
-  rgb: { r: number; g: number; b: number };
-  hsl: { h: number; s: number; l: number };
-  cmyk: { c: number; m: number; y: number; k: number };
-  mood: string;
-  weatherDesc: string; // e.g. "warming crisp morning air" (3-5 words)
-  weatherTweet: string; // e.g. "Sunrise Amber warming crisp morning air #eternal #colors"
-  slotType: 'morning' | 'evening' | 'custom';
-  companions: string[];
-  swatchBar: string;
-  contrastText: '#000000' | '#FFFFFF';
-}
+import type { ColorData } from '../shared/types.js';
+import { substituteTemplate } from '../shared/template/substitute.js';
+
+export type { ColorData };
 
 // Curated evocative colors for Sunrise (Morning 6:00 AM)
 export const SUNRISE_PALETTES = [
@@ -305,23 +293,8 @@ export function generateColor(slotType: 'morning' | 'evening' | 'random' = 'rand
 export const DEFAULT_TWEET_TEMPLATE = '{color_pick} {weather_desc} #eternal #colors';
 
 export function formatTweetText(template: string, color: ColorData, slotLabel?: string): string {
-  const timeTag = slotLabel || (color.slotType === 'morning' ? '6:00 AM' : '6:00 PM');
-  const colorPick = color.colorPick || color.name;
-  const weatherDesc = color.weatherDesc || generateWeatherDescription(color.slotType === 'morning');
-  const weatherTweet = `${colorPick} ${weatherDesc} #eternal #colors`;
-
-  return template
-    .replace(/{weather_tweet}/g, weatherTweet)
-    .replace(/{color_pick}/g, colorPick)
-    .replace(/{weather_desc}/g, weatherDesc)
-    .replace(/{weather_description}/g, weatherDesc)
-    .replace(/{time_tag}/g, timeTag)
-    .replace(/{color_name}/g, color.name)
-    .replace(/{hex}/g, color.hex)
-    .replace(/{rgb}/g, `${color.rgb.r}, ${color.rgb.g}, ${color.rgb.b}`)
-    .replace(/{hsl}/g, `${color.hsl.h}°, ${color.hsl.s}%, ${color.hsl.l}%`)
-    .replace(/{cmyk}/g, `C:${color.cmyk.c}% M:${color.cmyk.m}% Y:${color.cmyk.y}% K:${color.cmyk.k}%`)
-    .replace(/{mood}/g, color.mood)
-    .replace(/{swatch_bar}/g, color.swatchBar)
-    .replace(/{companions}/g, color.companions.join(' '));
+  return substituteTemplate(template, color, {
+    slotLabel,
+    fallbackWeatherDesc: () => generateWeatherDescription(color.slotType === 'morning'),
+  });
 }
