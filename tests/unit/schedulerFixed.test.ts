@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { scheduler } from '../../server/scheduler.js';
+import { dropService } from '../../server/services/dropService.js';
 import { services } from '../../server/services/index.js';
 
 afterEach(() => {
@@ -27,7 +28,7 @@ function setup(times: string[], jitterMs: number) {
 describe('fixed-time evaluation', () => {
   it('fires "6:00" at 06:00 local exactly once per day, tagged morning', async () => {
     const ctx = setup(['6:00'], 0);
-    const exec = vi.spyOn(scheduler, 'executeDrop').mockResolvedValue({} as never);
+    const exec = vi.spyOn(dropService, 'executeDrop').mockResolvedValue({} as never);
     const evaluate = (t: string) =>
       (
         scheduler as unknown as {
@@ -46,7 +47,7 @@ describe('fixed-time evaluation', () => {
 
   it('delays the fire by currentJitterMs', async () => {
     const ctx = setup(['18:00'], 90_000);
-    const exec = vi.spyOn(scheduler, 'executeDrop').mockResolvedValue({} as never);
+    const exec = vi.spyOn(dropService, 'executeDrop').mockResolvedValue({} as never);
     const evaluate = (t: number) =>
       (
         scheduler as unknown as {

@@ -4,31 +4,19 @@
  *  - Checks every enabled Tweet Context on each tick.
  *  - Evaluates individual schedules (Interval or Fixed Clock Times).
  *  - Applies humanized anti-bot jitter per context.
- *  - Dispatches targeted replies to each context's specific targetTweetId.
+ *  - Hands each due drop to dropService.executeDrop (no posting logic lives here).
  */
 
 import {
-  hourInZone,
   matchFixedTime,
   normalizeHHmm,
   resolveTimezone,
   slotTypeForHour,
   zonedParts,
 } from '../shared/time.js';
-import { ColorData } from './colorEngine.js';
-import { resolveTemplateText } from './templateAgent.js';
-import { HttpError } from './middleware/error.js';
+import { dropService } from './services/dropService.js';
 import { services } from './services/index.js';
 import type { TweetContext } from '../shared/types.js';
-import { postColorTweet } from './twitterClient.js';
-
-export interface ExecuteDropOptions {
-  contextId?: string;
-  slotType?: 'morning' | 'evening' | 'manual';
-  color?: ColorData;
-  forceLive?: boolean;
-  source?: 'scheduler' | 'webhook' | 'manual';
-}
 
 class SchedulerService {
   private timer: NodeJS.Timeout | null = null;
@@ -53,179 +41,6 @@ class SchedulerService {
       this.timer = null;
     }
     console.log('[Scheduler] Stopped.');
-  }
-
-  /**
-   * Execute drop for a specific context or the active context.
-   */
-  public async executeDrop(options: ExecuteDropOptions = {}) {
-    const requested = options.contextId
-      ? services.contexts.getContext(options.contextId)
-      : undefined;
-    if (options.contextId && !requested) {
-      throw new HttpError(404, `Context ${options.contextId} not found`);
-    }
-    const context: TweetContext = requested || services.contexts.getActiveContext();
-
-    const isMorning = options.slotType
-      ? options.slotType === 'morning'
-      : slotTypeForHour(hourInZone(new Date(), context.schedule?.timezone)) === 'morning';
-
-    const slotType = options.slotType || (isMorning ? 'morning' : 'evening');
-    const color: ColorData =
-      options.color ||
-      services.queue.popNextQueueSlot(slotType === 'morning' ? 'morning' : 'evening', context.id);
-    const timeTag = isMorning ? '6:00 AM' : '6:00 PM';
-    const text = await resolveTemplateText(context.template, color, {
-      slotLabel: timeTag,
-      contextId: context.id,
-      targetTweetId: context.targetTweetId,
-    });
-
-    const engagementMode = context.engagementMode || 'reply';
-    let replyToTweetId: string | undefined = undefined;
-    let quoteTweetId: string | undefined = undefined;
-    const replyTargetInfo = services.contexts.getEffectiveReplyTargetId(context);
-
-    if (engagementMode === 'reply') {
-      replyToTweetId = replyTargetInfo.targetTweetId;
-    } else if (engagementMode === 'quote') {
-      quoteTweetId = context.targetTweetId;
-    }
-
-    const isDryRun = options.forceLive ? false : (context.dryRun ?? false);
-    const creds = services.credentials.getEffectiveCredentials();
-
-    console.log(
-      `[Scheduler] Executing drop for context "${context.name}" (${context.id}) ` +
-        `-> Mode: ${engagementMode.toUpperCase()} ` +
-        `${engagementMode === 'reply' ? `(Target #${replyToTweetId}, ${context.replyTargetMode === 'last_comment' ? (replyTargetInfo.isFirstInChain ? 'Initiating cascade from root' : 'Cascading reply to last comment') : 'Direct reply to original root'})` : ''}` +
-        `${engagementMode === 'quote' ? `(Quoting Post #${quoteTweetId})` : ''}` +
-        `${engagementMode === 'standalone' ? '(Timeline post)' : ''}` +
-        `, source: ${options.source || 'manual'}, mode: ${isDryRun ? 'DRY-RUN' : 'LIVE X'}`,
-    );
-
-    let finalTweetRes = await postColorTweet(
-      creds,
-      {
-        text,
-        replyToTweetId,
-        quoteTweetId,
-        engagementMode,
-      },
-      isDryRun,
-    );
-
-    // AUTO-RECOVERY: If replyTargetMode was 'last_comment' and the reply to the previous comment failed
-    // due to the previous comment being deleted/invalid (NOT a temporary rate limit or cooldown),
-    // reset broken chain anchor back to root post and retry once on root.
-    if (
-      !finalTweetRes.success &&
-      engagementMode === 'reply' &&
-      context.replyTargetMode === 'last_comment' &&
-      !replyTargetInfo.isFirstInChain
-    ) {
-      const isThrottleOrCooldown =
-        finalTweetRes.isRateLimitOrCooldown ||
-        finalTweetRes.error?.includes('cooldown') ||
-        finalTweetRes.error?.includes('not permitted to access this feature') ||
-        finalTweetRes.error?.includes('Credits Depleted') ||
-        finalTweetRes.error?.includes('Payment Required') ||
-        finalTweetRes.rawResponse?.status === 429;
-
-      if (!isThrottleOrCooldown) {
-        console.log(
-          `[Scheduler] Cascading anchor #${replyToTweetId} for context "${context.name}" appears deleted or invalid (${finalTweetRes.error}). Resetting anchor to primary root post #${context.targetTweetId}.`,
-        );
-        context.lastPostedTweetId = undefined;
-        services.contexts.resetContextChain(context.id);
-
-        if (!isDryRun) {
-          const fallbackRes = await postColorTweet(
-            creds,
-            {
-              text,
-              replyToTweetId: context.targetTweetId,
-              engagementMode: 'reply',
-            },
-            isDryRun,
-          );
-          if (fallbackRes.success) {
-            finalTweetRes = fallbackRes;
-          }
-        }
-      } else {
-        console.log(
-          `[Scheduler] Preserving chain anchor #${replyToTweetId} for context "${context.name}" during temporary X cooldown.`,
-        );
-      }
-    }
-
-    // Update rate limit telemetry from headers
-    if (finalTweetRes.rateLimitHeaders) {
-      services.rateLimit.updateRateLimitTelemetry(finalTweetRes.rateLimitHeaders);
-    }
-
-    // Set global cooldown if X returned rate limit or cooldown
-    if (
-      !isDryRun &&
-      (finalTweetRes.isRateLimitOrCooldown ||
-        finalTweetRes.rawResponse?.status === 429 ||
-        finalTweetRes.error?.includes('cooldown') ||
-        finalTweetRes.error?.includes('not permitted to access this feature'))
-    ) {
-      services.rateLimit.setGlobalCooldown(
-        15,
-        finalTweetRes.error || 'X API Rate Limit / Reply Cooldown Active',
-      );
-    }
-
-    // Record live post timestamp for anti-burst spacing
-    if (!isDryRun && finalTweetRes.success) {
-      services.rateLimit.recordLivePostTimestamp();
-    }
-
-    const now = Date.now();
-    const status = finalTweetRes.success
-      ? finalTweetRes.simulated
-        ? ('simulated' as const)
-        : ('success' as const)
-      : ('error' as const);
-
-    // Record stats, roll jitter, and update lastPostedTweetId for chain continuity (only for actual replies)
-    services.contexts.recordContextPostResult(
-      context.id,
-      status,
-      finalTweetRes.tweetId,
-      finalTweetRes.engagementMode || engagementMode,
-    );
-
-    const logEntry = {
-      id: `log_${now}_${Math.random().toString(36).substring(2, 6)}`,
-      timestamp: new Date().toISOString(),
-      slotType,
-      targetTweetId: context.targetTweetId,
-      replyToTweetId: finalTweetRes.replyTo || replyToTweetId,
-      quoteTweetId: finalTweetRes.quoteTweetId || quoteTweetId,
-      engagementMode: finalTweetRes.engagementMode || engagementMode,
-      color,
-      tweetText: text,
-      tweetId: finalTweetRes.tweetId,
-      tweetUrl: finalTweetRes.url,
-      status,
-      errorMessage: finalTweetRes.error,
-      contextId: context.id,
-      contextName: context.name,
-    };
-
-    services.logs.addLog(logEntry);
-
-    return {
-      success: finalTweetRes.success,
-      result: finalTweetRes,
-      log: logEntry,
-      context,
-    };
   }
 
   /**
@@ -292,7 +107,7 @@ class SchedulerService {
           `[Scheduler] Context "${context.name}" interval reached ` +
             `(${intervalMinutes}m base + ${Math.round(jitterMs / 1000)}s jitter). Firing drop...`,
         );
-        await this.executeDrop({
+        await dropService.executeDrop({
           contextId: context.id,
           source: 'scheduler',
         });
@@ -343,7 +158,7 @@ class SchedulerService {
     console.log(
       `[Scheduler] Context "${context.name}" fixed time reached (${matchedTime}). Firing drop...`,
     );
-    await this.executeDrop({ contextId: context.id, slotType, source: 'scheduler' });
+    await dropService.executeDrop({ contextId: context.id, slotType, source: 'scheduler' });
   }
 
   public getNextScheduledPost(contextId?: string) {

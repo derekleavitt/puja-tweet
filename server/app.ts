@@ -5,6 +5,7 @@
 
 import express from 'express';
 import type { scheduler as schedulerInstance } from './scheduler.js';
+import type { DropService } from './services/dropService.js';
 import type { Services } from './services/index.js';
 import { requireAdmin, type TokenVerifier } from './middleware/auth.js';
 import { errorHandler } from './middleware/error.js';
@@ -22,6 +23,7 @@ import { createWebhookRouter } from './routes/webhook.js';
 export interface AppDeps {
   services: Services;
   scheduler: typeof schedulerInstance;
+  drops: DropService;
   /** Injectable Firebase ID-token verifier (tests stub it); defaults to firebase-admin. */
   verifyToken?: TokenVerifier;
   authorizedEmails?: string[];

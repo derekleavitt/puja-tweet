@@ -7,6 +7,7 @@
 import { createApp } from '../../server/app.js';
 import type { TokenVerifier } from '../../server/middleware/auth.js';
 import { scheduler } from '../../server/scheduler.js';
+import { dropService } from '../../server/services/dropService.js';
 import { services } from '../../server/services/index.js';
 
 export interface MakeAppOptions {
@@ -18,10 +19,11 @@ export const makeApp = (options?: MakeAppOptions) =>
   options
     ? createApp({
         services,
+        drops: dropService,
         scheduler,
         verifyToken: options.verifyToken,
         authorizedEmails: options.authorizedEmails,
       })
-    : createApp({ services, scheduler, authDisabled: true });
+    : createApp({ services, scheduler, drops: dropService, authDisabled: true });
 
 export { services };

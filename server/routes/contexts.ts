@@ -7,7 +7,7 @@ import { Router } from 'express';
 import type { AppDeps } from '../app.js';
 import { HttpError, toHttpError } from '../middleware/error.js';
 
-export const createContextsRouter = ({ services, scheduler }: AppDeps) => {
+export const createContextsRouter = ({ services, scheduler, drops }: AppDeps) => {
   const router = Router();
 
   router.param('id', (_req, _res, next, id) => {
@@ -141,7 +141,7 @@ export const createContextsRouter = ({ services, scheduler }: AppDeps) => {
 
   router.post('/contexts/:id/trigger', async (req, res, next) => {
     try {
-      const result = await scheduler.executeDrop({
+      const result = await drops.executeDrop({
         contextId: req.params.id,
         slotType: req.body.slotType || 'manual',
         forceLive: req.body.forceLive === true,

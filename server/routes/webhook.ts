@@ -14,7 +14,7 @@ const secretsMatch = (provided: unknown, expected: string): boolean => {
   return crypto.timingSafeEqual(a, b);
 };
 
-export const createWebhookRouter = ({ services, scheduler }: AppDeps) => {
+export const createWebhookRouter = ({ services, drops }: AppDeps) => {
   const router = Router();
 
   router.all(['/cron/trigger', '/webhook/trigger'], async (req, res, next) => {
@@ -37,7 +37,7 @@ export const createWebhookRouter = ({ services, scheduler }: AppDeps) => {
       console.log(
         `[Webhook Trigger] Received autonomous ping! Executing drop... (context: ${contextId || 'active'})`,
       );
-      const result = await scheduler.executeDrop({
+      const result = await drops.executeDrop({
         contextId,
         slotType,
         forceLive,
