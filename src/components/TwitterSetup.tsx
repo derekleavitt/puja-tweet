@@ -11,16 +11,19 @@ import {
   Shield,
 } from 'lucide-react';
 import { CredentialsStatus } from '../types.js';
+import type { CredentialsResult } from '../hooks/useCredentials.js';
 
 interface TwitterSetupProps {
   credentialsStatus: CredentialsStatus | null;
-  onSaveCredentials: (creds: any) => Promise<void>;
+  onSaveCredentials: (creds: any) => Promise<CredentialsResult>;
+  onClearCredentials: (method: 'oauth1' | 'oauth2' | 'bearer') => Promise<CredentialsResult>;
   onVerifyCredentials: () => Promise<any>;
 }
 
 export const TwitterSetup: React.FC<TwitterSetupProps> = ({
   credentialsStatus,
   onSaveCredentials,
+  onClearCredentials,
   onVerifyCredentials,
 }) => {
   const [authTab, setAuthTab] = useState<'oauth1' | 'oauth2'>('oauth1');
@@ -41,25 +44,32 @@ export const TwitterSetup: React.FC<TwitterSetupProps> = ({
   const [isVerifying, setIsVerifying] = useState(false);
   const [verifyResult, setVerifyResult] = useState<any>(null);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const canPersist = credentialsStatus?.canPersistCredentials ?? true;
 
-  React.useEffect(() => {
-    onVerifyCredentials()
-      .then((res) => {
-        if (res) setVerifyResult(res);
-      })
-      .catch(() => {});
-  }, []);
+  // Blank fields mean "keep the stored value", so only filled-in fields are sent.
+  const nonBlank = (fields: Record<string, string>) =>
+    Object.fromEntries(
+      Object.entries(fields)
+        .map(([k, v]) => [k, v.trim()])
+        .filter(([, v]) => v),
+    );
 
-  const handleSaveOAuth2 = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submit = async (fields: Record<string, string>, clear: () => void) => {
+    setSaveError(null);
+    const payload = nonBlank(fields);
+    if (Object.keys(payload).length === 0) {
+      setSaveError('Enter at least one value to save (blank fields keep the stored value).');
+      return;
+    }
     setIsSaving(true);
     try {
-      await onSaveCredentials({
-        oauth2ClientId: oauth2ClientId.trim(),
-        oauth2ClientSecret: oauth2ClientSecret.trim(),
-        oauth2AccessToken: oauth2AccessToken.trim(),
-        oauth2RefreshToken: oauth2RefreshToken.trim(),
-      });
+      const result = await onSaveCredentials(payload);
+      if (!result.success) {
+        setSaveError(result.error || 'Failed to save credentials.');
+        return;
+      }
+      clear();
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 2500);
       const res = await onVerifyCredentials();
@@ -69,23 +79,42 @@ export const TwitterSetup: React.FC<TwitterSetupProps> = ({
     }
   };
 
-  const handleSaveOAuth1 = async (e: React.FormEvent) => {
+  const handleRemove = async (method: 'oauth1' | 'oauth2') => {
+    setSaveError(null);
+    const result = await onClearCredentials(method);
+    if (!result.success) setSaveError(result.error || 'Failed to remove credentials.');
+    else setVerifyResult(await onVerifyCredentials());
+  };
+
+  React.useEffect(() => {
+    onVerifyCredentials()
+      .then((res) => {
+        if (res) setVerifyResult(res);
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleSaveOAuth2 = (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSaving(true);
-    try {
-      await onSaveCredentials({
-        apiKey: apiKey.trim(),
-        apiSecret: apiSecret.trim(),
-        accessToken: accessToken.trim(),
-        accessTokenSecret: accessTokenSecret.trim(),
-      });
-      setSavedSuccess(true);
-      setTimeout(() => setSavedSuccess(false), 2500);
-      const res = await onVerifyCredentials();
-      setVerifyResult(res);
-    } finally {
-      setIsSaving(false);
-    }
+    return submit(
+      { oauth2ClientId, oauth2ClientSecret, oauth2AccessToken, oauth2RefreshToken },
+      () => {
+        setOauth2ClientId('');
+        setOauth2ClientSecret('');
+        setOauth2AccessToken('');
+        setOauth2RefreshToken('');
+      },
+    );
+  };
+
+  const handleSaveOAuth1 = (e: React.FormEvent) => {
+    e.preventDefault();
+    return submit({ apiKey, apiSecret, accessToken, accessTokenSecret }, () => {
+      setApiKey('');
+      setApiSecret('');
+      setAccessToken('');
+      setAccessTokenSecret('');
+    });
   };
 
   const handleVerify = async () => {
@@ -129,12 +158,30 @@ export const TwitterSetup: React.FC<TwitterSetupProps> = ({
             Open Source &amp; Public Repo Safe
           </p>
           <p className="text-neutral-400">
-            Your real API tokens are stored in server-side environment variables (`.env`) and GitHub
-            Encrypted Secrets, which are ignored by Git. They are masked across the client and never
-            rendered in public HTML.
+            Your real API tokens live in server-side environment variables or secrets, which are
+            ignored by Git. Keys entered here are encrypted at rest on the server. Existing values
+            are masked; leave a field blank to keep it unchanged.
           </p>
         </div>
       </div>
+
+      {!canPersist && (
+        <div className="p-3.5 rounded-lg border text-xs flex items-start gap-2.5 bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200">
+          <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+          <div>
+            Saving keys from this form is disabled because{' '}
+            <code className="font-mono">CREDENTIALS_ENCRYPTION_KEY</code> is not set on the server.
+            Provide your X keys as environment variables (for example from Secret Manager) instead.
+          </div>
+        </div>
+      )}
+
+      {saveError && (
+        <div className="p-3.5 rounded-lg border text-xs flex items-start gap-2.5 bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800 text-red-900 dark:text-red-200">
+          <AlertCircle className="w-4 h-4 text-red-600 mt-0.5 shrink-0" />
+          <div>{saveError}</div>
+        </div>
+      )}
 
       {/* Status Overview Card */}
       <div className="border border-neutral-200 dark:border-neutral-800 rounded-xl p-6 bg-white dark:bg-neutral-900 space-y-4 shadow-xs">
@@ -316,10 +363,17 @@ export const TwitterSetup: React.FC<TwitterSetupProps> = ({
               </div>
             </div>
 
-            <div className="pt-2 flex justify-end">
+            <div className="pt-2 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => handleRemove('oauth1')}
+                className="px-3.5 py-2 text-xs font-semibold rounded-lg border border-neutral-300 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 cursor-pointer"
+              >
+                Remove stored keys
+              </button>
               <button
                 type="submit"
-                disabled={isSaving}
+                disabled={isSaving || !canPersist}
                 className="px-5 py-2 text-xs font-semibold text-white bg-neutral-900 hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
                 {isSaving ? (
@@ -365,6 +419,7 @@ export const TwitterSetup: React.FC<TwitterSetupProps> = ({
                   type="text"
                   value={oauth2ClientId}
                   onChange={(e) => setOauth2ClientId(e.target.value)}
+                  placeholder={credentialsStatus?.oauth2ClientIdMasked || 'Enter Client ID...'}
                   className="w-full px-3 py-2 font-mono border border-neutral-300 dark:border-neutral-700 rounded-lg bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-neutral-400"
                 />
               </div>
@@ -377,6 +432,11 @@ export const TwitterSetup: React.FC<TwitterSetupProps> = ({
                   type="password"
                   value={oauth2ClientSecret}
                   onChange={(e) => setOauth2ClientSecret(e.target.value)}
+                  placeholder={
+                    credentialsStatus?.hasOAuth2ClientSecret
+                      ? '••••••••••••••••'
+                      : 'Enter Client Secret...'
+                  }
                   className="w-full px-3 py-2 font-mono border border-neutral-300 dark:border-neutral-700 rounded-lg bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-neutral-400"
                 />
               </div>
@@ -389,7 +449,11 @@ export const TwitterSetup: React.FC<TwitterSetupProps> = ({
                   type="password"
                   value={oauth2AccessToken}
                   onChange={(e) => setOauth2AccessToken(e.target.value)}
-                  placeholder="Paste OAuth 2.0 Access Token..."
+                  placeholder={
+                    credentialsStatus?.hasOAuth2AccessToken
+                      ? '••••••••••••••••'
+                      : 'Paste OAuth 2.0 Access Token...'
+                  }
                   className="w-full px-3 py-2 font-mono border border-neutral-300 dark:border-neutral-700 rounded-lg bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -402,16 +466,27 @@ export const TwitterSetup: React.FC<TwitterSetupProps> = ({
                   type="password"
                   value={oauth2RefreshToken}
                   onChange={(e) => setOauth2RefreshToken(e.target.value)}
-                  placeholder="Paste OAuth 2.0 Refresh Token..."
+                  placeholder={
+                    credentialsStatus?.hasOAuth2RefreshToken
+                      ? '••••••••••••••••'
+                      : 'Paste OAuth 2.0 Refresh Token...'
+                  }
                   className="w-full px-3 py-2 font-mono border border-neutral-300 dark:border-neutral-700 rounded-lg bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
             </div>
 
-            <div className="pt-2 flex justify-end">
+            <div className="pt-2 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => handleRemove('oauth2')}
+                className="px-3.5 py-2 text-xs font-semibold rounded-lg border border-neutral-300 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 cursor-pointer"
+              >
+                Remove stored tokens
+              </button>
               <button
                 type="submit"
-                disabled={isSaving}
+                disabled={isSaving || !canPersist}
                 className="px-5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-xs"
               >
                 {isSaving ? (

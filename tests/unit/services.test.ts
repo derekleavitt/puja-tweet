@@ -284,18 +284,19 @@ describe('services over MemoryStore', () => {
   });
 
   describe('credentialService', () => {
+    beforeEach(() => vi.stubEnv('CREDENTIALS_ENCRYPTION_KEY', 'a'.repeat(64)));
     afterEach(() => vi.unstubAllEnvs());
 
     it('masks stored credentials and reports the source', () => {
       vi.stubEnv('TWITTER_API_KEY', '');
       svc.credentials.updateCredentials({
-        apiKey: 'abcdefghij',
+        apiKey: 'abcdefghijklmnop',
         apiSecret: 's',
         accessToken: 'tokentoken',
         accessTokenSecret: 'x',
       });
       const status = svc.credentials.getMaskedCredentialsStatus();
-      expect(status.apiKeyMasked).toBe('abc••••hij');
+      expect(status.apiKeyMasked).toBe('••••op');
       expect(status.authMethod).toBe('OAuth 1.0a (Permanent)');
       expect(status.source).toBe('server_config');
     });

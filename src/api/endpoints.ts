@@ -104,7 +104,9 @@ export const saveSettings = (settings: Partial<BotSettings>) =>
 
 // Credentials
 export const saveCredentials = (creds: unknown) =>
-  orNull(apiFetch<Json>('/api/credentials', { method: 'POST', body: creds }));
+  orBody(apiFetch<Json>('/api/credentials', { method: 'POST', body: creds }));
+export const clearCredentials = (method: 'oauth1' | 'oauth2' | 'bearer') =>
+  orBody(apiFetch<Json>(`/api/credentials/${method}`, { method: 'DELETE' }));
 export const verifyCredentials = () =>
   orBody(apiFetch<Json>('/api/twitter/verify', { method: 'POST' }));
 

@@ -132,6 +132,8 @@ export interface CredentialsStatus {
   authMethod: string;
   isFullyConfigured: boolean;
   source: 'environment_variables' | 'server_config' | 'none';
+  /** False when CREDENTIALS_ENCRYPTION_KEY is unset: UI-entered credentials cannot be saved. */
+  canPersistCredentials: boolean;
 }
 
 export interface NextPostInfo {
