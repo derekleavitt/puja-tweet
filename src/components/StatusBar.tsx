@@ -6,8 +6,8 @@ interface StatusBarProps {
   nextPost: NextPostInfo | null;
   credentialsStatus: CredentialsStatus | null;
   targetTweetId: string;
-  schedulerEnabled: boolean;
-  onToggleScheduler: () => void;
+  globalPaused: boolean;
+  onToggleGlobalPause: () => void;
   settings?: BotSettings;
   activeContext?: TweetContext;
   onChangeFrequency?: (mode: 'interval' | 'fixed_times', minutes?: number) => void;
@@ -29,8 +29,8 @@ export const StatusBar: React.FC<StatusBarProps> = ({
   nextPost,
   credentialsStatus,
   targetTweetId,
-  schedulerEnabled,
-  onToggleScheduler,
+  globalPaused,
+  onToggleGlobalPause,
   settings,
   activeContext,
   onChangeFrequency,
@@ -62,7 +62,6 @@ export const StatusBar: React.FC<StatusBarProps> = ({
   const targetUrl = `https://x.com/i/status/${effectiveTargetId}`;
   const isInterval = (activeContext?.schedule?.mode || settings?.intervalMode) === 'interval';
   const intervalMins = activeContext?.schedule?.intervalMinutes || settings?.intervalMinutes || 720;
-  const isCampaignEnabled = activeContext ? activeContext.enabled : schedulerEnabled;
 
   // Selected value for select dropdown
   const currentValue = isInterval ? `interval_${intervalMins}` : 'fixed_720';
@@ -189,10 +188,11 @@ export const StatusBar: React.FC<StatusBarProps> = ({
           </span>
 
           <button
-            onClick={onToggleScheduler}
+            onClick={onToggleGlobalPause}
+            title="Global pause: stops or resumes scheduled drops for ALL campaigns"
             className="hover:text-neutral-900 dark:hover:text-neutral-100 underline underline-offset-2 transition-colors cursor-pointer shrink-0"
           >
-            {isCampaignEnabled ? 'Pause' : 'Resume'}
+            {globalPaused ? 'Resume all' : 'Pause all'}
           </button>
         </div>
       </div>

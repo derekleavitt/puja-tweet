@@ -156,7 +156,7 @@ const LiveStudioReady: React.FC<LiveStudioReadyProps> = ({
             color={color}
             tweetText={tweetText}
             targetTweetId={settings.targetTweetId}
-            dryRun={settings.dryRun}
+            dryRun={settings.globalDryRun !== false || settings.dryRun}
             replyTargetMode={replyTargetMode}
             lastPostedTweetId={lastPostedTweetId}
             hasAgentTag={hasAgentTag}

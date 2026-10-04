@@ -18,7 +18,7 @@ Errors: `{ "success": false, "error": "<message>" }` with a real HTTP status (40
 | POST | `/api/contexts/:id/reset-chain` | 404 unknown id |
 | POST | `/api/contexts/:id/clear-history` | 404 unknown id |
 | POST | `/api/contexts/:id/trigger` | Body `{ slotType?, forceLive? }`; 404 unknown id |
-| POST | `/api/settings` | Update global settings |
+| POST | `/api/settings` | Update global settings, including `globalDryRun` and `globalPaused` (both default `true`, also for stores missing them). Global dry-run forces simulation on every path (`forceLive` cannot override it); global pause makes scheduled sources (scheduler, webhook/cron, CLI) stop, webhook returns 409, manual posting still works |
 | POST | `/api/credentials` | Save X credentials (blank/missing fields keep stored values; 400 without `CREDENTIALS_ENCRYPTION_KEY`) |
 | DELETE | `/api/credentials/:method` | Remove stored credentials for `oauth1`, `oauth2` or `bearer` |
 | POST | `/api/twitter/verify` | Verify credentials; failure is `{ valid:false, message }` |

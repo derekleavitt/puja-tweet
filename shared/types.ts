@@ -70,6 +70,10 @@ export interface BotSettings {
   timezone: string;
   schedulerEnabled: boolean;
   dryRun: boolean;
+  /** Master switch: when true (the default) no path posts live to X, whatever the campaign says. */
+  globalDryRun?: boolean;
+  /** Master switch: when true (the default) scheduled drops (scheduler, webhook, CLI) do not run. */
+  globalPaused?: boolean;
   template: string;
   themePreference: 'dynamic' | 'vibrant' | 'minimal' | 'poetic';
   intervalMode?: 'fixed_times' | 'interval';

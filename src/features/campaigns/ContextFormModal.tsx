@@ -109,6 +109,7 @@ export const ContextFormModal: React.FC<ContextFormModalProps> = ({ form }) => {
             <div className="space-y-1.5">
               <label className={LABEL_CLASS}>Posting Mode</label>
               <select
+                title="Per-campaign mode. The global Dry Run switch in the header overrides Live."
                 value={ctx.dryRun ? 'simulated' : 'live'}
                 onChange={(e) => patch({ dryRun: e.target.value === 'simulated' })}
                 className={FIELD_CLASS}
