@@ -243,6 +243,18 @@ export class ContextService {
     return current;
   }
 
+  /** Drops the chain anchor only (no queue regeneration); the next reply targets the root post. */
+  clearContextAnchor(id: string): TweetContext {
+    const current = this.sm.getContext(id);
+    if (!current) throw notFound(id);
+    current.lastPostedTweetId = undefined;
+    if (this.sm.state.activeContextId === id) {
+      this.sm.state.settings.lastPostedTweetId = undefined;
+    }
+    this.sm.persist();
+    return current;
+  }
+
   getContextLastPostedTweetId(contextId: string): string | undefined {
     return resolveLastPostedTweetId(this.sm.getContext(contextId), this.sm.state.logs);
   }
