@@ -26,6 +26,8 @@ export interface BotState {
   lastGlobalLivePostTimestamp: number;
   lastCapturedRateLimitHeaders?: RateLimitHeaders;
   lastRateLimitCaptureTimestamp?: number;
+  /** Gemini calls made on `day` (UTC), so GEMINI_MAX_CALLS_PER_DAY survives restarts. */
+  geminiUsage?: { day: string; calls: number };
 }
 
 export interface Store {
