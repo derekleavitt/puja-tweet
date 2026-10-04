@@ -10,14 +10,14 @@ import {
   Sparkles,
   Shield,
 } from 'lucide-react';
-import { CredentialsStatus } from '../types.js';
+import { CredentialsStatus, VerifyResult } from '../types.js';
 import type { CredentialsResult } from '../hooks/useCredentials.js';
 
 interface TwitterSetupProps {
   credentialsStatus: CredentialsStatus | null;
-  onSaveCredentials: (creds: any) => Promise<CredentialsResult>;
+  onSaveCredentials: (creds: Record<string, string>) => Promise<CredentialsResult>;
   onClearCredentials: (method: 'oauth1' | 'oauth2' | 'bearer') => Promise<CredentialsResult>;
-  onVerifyCredentials: () => Promise<any>;
+  onVerifyCredentials: () => Promise<VerifyResult>;
 }
 
 export const TwitterSetup: React.FC<TwitterSetupProps> = ({
@@ -42,7 +42,7 @@ export const TwitterSetup: React.FC<TwitterSetupProps> = ({
 
   const [isSaving, setIsSaving] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
-  const [verifyResult, setVerifyResult] = useState<any>(null);
+  const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const canPersist = credentialsStatus?.canPersistCredentials ?? true;
@@ -86,8 +86,11 @@ export const TwitterSetup: React.FC<TwitterSetupProps> = ({
     else setVerifyResult(await onVerifyCredentials());
   };
 
+  const verifyRef = React.useRef(onVerifyCredentials);
+  verifyRef.current = onVerifyCredentials;
   React.useEffect(() => {
-    onVerifyCredentials()
+    verifyRef
+      .current()
       .then((res) => {
         if (res) setVerifyResult(res);
       })

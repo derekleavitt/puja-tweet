@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 import { TweetContext } from '../../types.js';
 import { extractTweetId } from '../../../shared/tweetId.js';
 import { useServerInfo } from '../../context/serverInfo.js';
+import { errorMessage } from '../../lib/errors.js';
 import { invalidTimes } from './schedule.js';
 
 interface UseContextFormOptions {
@@ -94,8 +95,8 @@ export function useContextForm(opts: UseContextFormOptions) {
       }
       setEditingContext(null);
       setIsCreating(false);
-    } catch (err: any) {
-      setFormError(err.message || 'Failed to save context.');
+    } catch (err) {
+      setFormError(errorMessage(err, 'Failed to save context.'));
     }
   };
 

@@ -13,7 +13,7 @@ import {
   triggerContext,
   clearContextHistory,
 } from '../api/endpoints.js';
-import { PostLog, QueueSlot, TweetContext } from '../types.js';
+import { ApiResult, PostLog, QueueSlot, TweetContext } from '../types.js';
 
 interface UseContextsDeps {
   setActiveContextId: (id: string) => void;
@@ -30,7 +30,7 @@ export function useContexts(deps: UseContextsDeps) {
     deps;
 
   /** Applies a mutation result (regenerated queue) then refreshes status. */
-  const applyResult = async (json: Record<string, any>) => {
+  const applyResult = async (json: ApiResult) => {
     if (Array.isArray(json.queue)) {
       setQueue(json.queue);
     }
@@ -101,7 +101,7 @@ export function useContexts(deps: UseContextsDeps) {
       );
       await fetchHistory();
       await refresh();
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error clearing context history:', err);
     }
   };

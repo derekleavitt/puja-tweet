@@ -5,16 +5,19 @@
 
 import { apiFetch, ApiError } from './client.js';
 import {
+  ApiResult,
   ColorData,
   BotSettings,
+  DropResponse,
   HealthInfo,
   PostLog,
   QueueSlot,
   StatusResponse,
   TweetContext,
+  VerifyResult,
 } from '../types.js';
 
-type Json = Record<string, any>;
+type Json = ApiResult;
 
 /** Resolves to null (instead of throwing) when the server answers with an error status. */
 async function orNull<T>(request: Promise<T>): Promise<T | null> {
@@ -68,7 +71,7 @@ export const postNow = (body: {
   contextId: string;
   text?: string;
   slotId?: string;
-}) => orBody(apiFetch<Json>('/api/post-now', { method: 'POST', body }));
+}) => orBody(apiFetch<DropResponse>('/api/post-now', { method: 'POST', body }));
 export const previewTemplate = (body: {
   template: string;
   color?: ColorData | null;
@@ -104,7 +107,10 @@ export const toggleContext = (id: string) =>
   orNull(apiFetch<Json>(`/api/contexts/${id}/toggle`, { method: 'POST' }));
 export const triggerContext = (id: string) =>
   orBody(
-    apiFetch<Json>(`/api/contexts/${id}/trigger`, { method: 'POST', body: { slotType: 'manual' } }),
+    apiFetch<DropResponse>(`/api/contexts/${id}/trigger`, {
+      method: 'POST',
+      body: { slotType: 'manual' },
+    }),
   );
 export const clearContextHistory = (id: string) =>
   apiFetch<Json>(`/api/contexts/${id}/clear-history`, {
@@ -117,12 +123,12 @@ export const saveSettings = (settings: Partial<BotSettings>) =>
   orNull(apiFetch<Json>('/api/settings', { method: 'POST', body: settings }));
 
 // Credentials
-export const saveCredentials = (creds: unknown) =>
+export const saveCredentials = (creds: Record<string, string>) =>
   orBody(apiFetch<Json>('/api/credentials', { method: 'POST', body: creds }));
 export const clearCredentials = (method: 'oauth1' | 'oauth2' | 'bearer') =>
   orBody(apiFetch<Json>(`/api/credentials/${method}`, { method: 'DELETE' }));
 export const verifyCredentials = () =>
-  orBody(apiFetch<Json>('/api/twitter/verify', { method: 'POST' }));
+  orBody(apiFetch<VerifyResult>('/api/twitter/verify', { method: 'POST' }));
 
 // Webhook (admin: the secret is only ever returned by these routes)
 export const getWebhookUrl = () => apiFetch<{ success: boolean; url: string }>('/api/webhook/url');

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { useAuth } from '../context/AuthContext.js';
+import { useAuth } from '../context/authState.js';
+import { errorMessage } from '../lib/errors.js';
 import { ShieldAlert, Lock, AlertTriangle } from 'lucide-react';
 
 export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -60,8 +61,8 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
                 setError(null);
                 setSigningIn(true);
                 await signIn();
-              } catch (err: any) {
-                setError(err.message || 'Sign in failed. Please try again.');
+              } catch (err) {
+                setError(errorMessage(err, 'Sign in failed. Please try again.'));
               } finally {
                 setSigningIn(false);
               }
