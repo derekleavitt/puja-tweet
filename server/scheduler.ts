@@ -89,6 +89,13 @@ class SchedulerService {
   }
 
   private async runTick(generation: number): Promise<'done'> {
+    // Reads are side-effect free (REL-3), so the tick keeps every queue topped up.
+    try {
+      services.queue.ensureQueue();
+    } catch (err) {
+      console.error('[Scheduler] Failed to top up the queue:', err);
+    }
+
     // 0. Global pause: nothing scheduled runs until the owner resumes.
     if (services.settings.isGlobalPaused()) return 'done';
 
