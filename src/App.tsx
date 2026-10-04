@@ -27,6 +27,7 @@ import { useSettings } from './hooks/useSettings.js';
 import { usePosting } from './hooks/usePosting.js';
 import { useContexts } from './hooks/useContexts.js';
 import { PostLog } from './types.js';
+import { ToastViewport } from './components/ui/Toast.js';
 
 function ChromaBotDashboard() {
   const [activeTab, setActiveTab] = useState<string>('studio');
@@ -273,6 +274,7 @@ export default function App() {
       <AuthGate>
         <ChromaBotDashboard />
       </AuthGate>
+      <ToastViewport />
     </AuthProvider>
   );
 }
