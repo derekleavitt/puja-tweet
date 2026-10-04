@@ -10,7 +10,8 @@
 import { ColorData } from './colorEngine.js';
 import { resolveTemplateText } from './templateAgent.js';
 import { HttpError } from './middleware/error.js';
-import { storage, TweetContext } from './storage.js';
+import { services } from './services/index.js';
+import type { TweetContext } from '../shared/types.js';
 import { postColorTweet } from './twitterClient.js';
 
 export interface ExecuteDropOptions {
@@ -46,11 +47,13 @@ class SchedulerService {
    * Execute drop for a specific context or the active context.
    */
   public async executeDrop(options: ExecuteDropOptions = {}) {
-    const requested = options.contextId ? storage.getContext(options.contextId) : undefined;
+    const requested = options.contextId
+      ? services.contexts.getContext(options.contextId)
+      : undefined;
     if (options.contextId && !requested) {
       throw new HttpError(404, `Context ${options.contextId} not found`);
     }
-    const context: TweetContext = requested || storage.getActiveContext();
+    const context: TweetContext = requested || services.contexts.getActiveContext();
 
     const isMorning = options.slotType
       ? options.slotType === 'morning'
@@ -59,7 +62,7 @@ class SchedulerService {
     const slotType = options.slotType || (isMorning ? 'morning' : 'evening');
     const color: ColorData =
       options.color ||
-      storage.popNextQueueSlot(slotType === 'morning' ? 'morning' : 'evening', context.id);
+      services.queue.popNextQueueSlot(slotType === 'morning' ? 'morning' : 'evening', context.id);
     const timeTag = isMorning ? '6:00 AM' : '6:00 PM';
     const text = await resolveTemplateText(context.template, color, {
       slotLabel: timeTag,
@@ -70,7 +73,7 @@ class SchedulerService {
     const engagementMode = context.engagementMode || 'reply';
     let replyToTweetId: string | undefined = undefined;
     let quoteTweetId: string | undefined = undefined;
-    const replyTargetInfo = storage.getEffectiveReplyTargetId(context);
+    const replyTargetInfo = services.contexts.getEffectiveReplyTargetId(context);
 
     if (engagementMode === 'reply') {
       replyToTweetId = replyTargetInfo.targetTweetId;
@@ -79,7 +82,7 @@ class SchedulerService {
     }
 
     const isDryRun = options.forceLive ? false : (context.dryRun ?? false);
-    const creds = storage.getEffectiveCredentials();
+    const creds = services.credentials.getEffectiveCredentials();
 
     console.log(
       `[Scheduler] Executing drop for context "${context.name}" (${context.id}) ` +
@@ -123,7 +126,7 @@ class SchedulerService {
           `[Scheduler] Cascading anchor #${replyToTweetId} for context "${context.name}" appears deleted or invalid (${finalTweetRes.error}). Resetting anchor to primary root post #${context.targetTweetId}.`,
         );
         context.lastPostedTweetId = undefined;
-        storage.resetContextChain(context.id);
+        services.contexts.resetContextChain(context.id);
 
         if (!isDryRun) {
           const fallbackRes = await postColorTweet(
@@ -148,7 +151,7 @@ class SchedulerService {
 
     // Update rate limit telemetry from headers
     if (finalTweetRes.rateLimitHeaders) {
-      storage.updateRateLimitTelemetry(finalTweetRes.rateLimitHeaders);
+      services.rateLimit.updateRateLimitTelemetry(finalTweetRes.rateLimitHeaders);
     }
 
     // Set global cooldown if X returned rate limit or cooldown
@@ -159,7 +162,7 @@ class SchedulerService {
         finalTweetRes.error?.includes('cooldown') ||
         finalTweetRes.error?.includes('not permitted to access this feature'))
     ) {
-      storage.setGlobalCooldown(
+      services.rateLimit.setGlobalCooldown(
         15,
         finalTweetRes.error || 'X API Rate Limit / Reply Cooldown Active',
       );
@@ -167,7 +170,7 @@ class SchedulerService {
 
     // Record live post timestamp for anti-burst spacing
     if (!isDryRun && finalTweetRes.success) {
-      storage.recordLivePostTimestamp();
+      services.rateLimit.recordLivePostTimestamp();
     }
 
     const now = Date.now();
@@ -178,7 +181,7 @@ class SchedulerService {
       : ('error' as const);
 
     // Record stats, roll jitter, and update lastPostedTweetId for chain continuity (only for actual replies)
-    storage.recordContextPostResult(
+    services.contexts.recordContextPostResult(
       context.id,
       status,
       finalTweetRes.tweetId,
@@ -203,7 +206,7 @@ class SchedulerService {
       contextName: context.name,
     };
 
-    storage.addLog(logEntry);
+    services.logs.addLog(logEntry);
 
     return {
       success: finalTweetRes.success,
@@ -221,17 +224,17 @@ class SchedulerService {
 
     try {
       this.isProcessing = true;
-      const contexts = storage.getContexts().filter((c) => c.enabled);
+      const contexts = services.contexts.getContexts().filter((c) => c.enabled);
       if (contexts.length === 0) return;
 
       // 1. Check Global Rate Limit / Cooldown
-      const cooldown = storage.getCooldownState();
+      const cooldown = services.rateLimit.getCooldownState();
       if (cooldown.isThrottled) {
         return; // Safe standby while cooldown expires
       }
 
       // 2. Pre-Emptive Rate Window Check: If remaining requests in window is 0, wait for reset
-      const telemetry = storage.getRateLimitTelemetry();
+      const telemetry = services.rateLimit.getRateLimitTelemetry();
       if (
         telemetry.headersCaptured &&
         telemetry.remaining <= 0 &&
@@ -241,7 +244,7 @@ class SchedulerService {
       }
 
       // 3. Anti-Burst Protection: Ensure minimum 60s spacing between any live drops across all campaigns
-      if (storage.getTimeSinceLastLivePostMs() < 60 * 1000) {
+      if (services.rateLimit.getTimeSinceLastLivePostMs() < 60 * 1000) {
         return; // Stagger to next tick
       }
 
@@ -309,7 +312,7 @@ class SchedulerService {
     if (matchedTime && context.lastPostedSlot !== currentSlotKey) {
       const isMorning = matchedTime.startsWith('06') || matchedTime.startsWith('6');
       context.lastPostedSlot = currentSlotKey;
-      storage.updateContext(context.id, { lastPostedSlot: currentSlotKey });
+      services.contexts.updateContext(context.id, { lastPostedSlot: currentSlotKey });
 
       console.log(
         `[Scheduler] Context "${context.name}" fixed time reached (${matchedTime}). Firing drop...`,
@@ -324,13 +327,13 @@ class SchedulerService {
 
   public getNextScheduledPost(contextId?: string) {
     const context = contextId
-      ? storage.getContext(contextId) || storage.getActiveContext()
-      : storage.getActiveContext();
+      ? services.contexts.getContext(contextId) || services.contexts.getActiveContext()
+      : services.contexts.getActiveContext();
     return this.calculateNextPostForContext(context);
   }
 
   public getAllNextScheduledPosts() {
-    return storage.getContexts().map((c) => ({
+    return services.contexts.getContexts().map((c) => ({
       ...this.calculateNextPostForContext(c),
       enabled: c.enabled,
       targetTweetId: c.targetTweetId,

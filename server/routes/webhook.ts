@@ -14,14 +14,14 @@ const secretsMatch = (provided: unknown, expected: string): boolean => {
   return crypto.timingSafeEqual(a, b);
 };
 
-export const createWebhookRouter = ({ storage, scheduler }: AppDeps) => {
+export const createWebhookRouter = ({ services, scheduler }: AppDeps) => {
   const router = Router();
 
   router.all(['/cron/trigger', '/webhook/trigger'], async (req, res, next) => {
     try {
       const providedSecret = req.headers['x-cron-secret'] ?? req.query.secret;
 
-      if (!secretsMatch(providedSecret, storage.getWebhookSecret())) {
+      if (!secretsMatch(providedSecret, services.credentials.getWebhookSecret())) {
         return res.status(401).json({
           success: false,
           error: 'Unauthorized. Provide the webhook secret via x-cron-secret header or ?secret=',
@@ -55,7 +55,7 @@ export const createWebhookRouter = ({ storage, scheduler }: AppDeps) => {
 
   // Admin routes: the secret is only ever returned here (never in /status or /settings).
   const buildUrl = (req: any) =>
-    `${req.protocol}://${req.get('host')}/api/cron/trigger?secret=${encodeURIComponent(storage.getWebhookSecret())}`;
+    `${req.protocol}://${req.get('host')}/api/cron/trigger?secret=${encodeURIComponent(services.credentials.getWebhookSecret())}`;
 
   router.get('/webhook/url', (req, res) => {
     res.json({ success: true, url: buildUrl(req) });
@@ -68,7 +68,7 @@ export const createWebhookRouter = ({ storage, scheduler }: AppDeps) => {
         error: 'Secret is set via WEBHOOK_SECRET env var; change it there.',
       });
     }
-    storage.rotateWebhookSecret();
+    services.credentials.rotateWebhookSecret();
     res.json({ success: true, url: buildUrl(req) });
   });
 

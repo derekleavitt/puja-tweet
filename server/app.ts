@@ -5,7 +5,7 @@
 
 import express from 'express';
 import type { scheduler as schedulerInstance } from './scheduler.js';
-import type { storage as storageInstance } from './storage.js';
+import type { Services } from './services/index.js';
 import { requireAdmin, type TokenVerifier } from './middleware/auth.js';
 import { errorHandler } from './middleware/error.js';
 import { createContextsRouter } from './routes/contexts.js';
@@ -20,7 +20,7 @@ import { createStatusRouter } from './routes/status.js';
 import { createWebhookRouter } from './routes/webhook.js';
 
 export interface AppDeps {
-  storage: typeof storageInstance;
+  services: Services;
   scheduler: typeof schedulerInstance;
   /** Injectable Firebase ID-token verifier (tests stub it); defaults to firebase-admin. */
   verifyToken?: TokenVerifier;

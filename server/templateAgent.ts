@@ -9,7 +9,7 @@
 
 import { GoogleGenAI } from '@google/genai';
 import type { ColorData, PostLog } from '../shared/types.js';
-import { storage } from './storage.js';
+import { services } from './services/index.js';
 import { substituteTemplate } from '../shared/template/substitute.js';
 import {
   COMBINED_HISTORY_AGENT_REGEX,
@@ -60,7 +60,7 @@ export function getSeriesHistory(
   targetTweetId?: string,
   limitCount = 10,
 ): PostLog[] {
-  const allLogs = storage.getLogs(); // returns newest first
+  const allLogs = services.logs.getLogs(); // returns newest first
   // Filter for matching series
   const filtered = allLogs.filter((log) => {
     if (contextId && log.contextId === contextId) return true;
