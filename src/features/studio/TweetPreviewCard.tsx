@@ -6,6 +6,8 @@
 import React from 'react';
 import { Send, ExternalLink, ArrowUpRight, Sparkles, RefreshCw } from 'lucide-react';
 import { ColorData } from '../../types.js';
+import { AiUnavailableBadge } from '../../components/AiUnavailableBadge.js';
+import { AI_UNAVAILABLE_HINT, useAiUnavailable } from '../../context/serverInfo.js';
 import { TweetMockup } from './TweetMockup.js';
 
 interface TweetPreviewCardProps {
@@ -37,6 +39,7 @@ export const TweetPreviewCard: React.FC<TweetPreviewCardProps> = ({
   onRegenerate,
   onPost,
 }) => {
+  const aiUnavailable = useAiUnavailable();
   const charCount = tweetText.length;
   const isOverLimit = charCount > 280;
   const weatherWordsCount = (color.weatherDesc || '').split(/\s+/).filter(Boolean).length;
@@ -51,6 +54,7 @@ export const TweetPreviewCard: React.FC<TweetPreviewCardProps> = ({
             </svg>
             X Live Reply Preview
           </span>
+          <AiUnavailableBadge />
           {hasAgentTag && (
             <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 flex items-center gap-1">
               <Sparkles className="w-2.5 h-2.5 text-purple-500" />
@@ -64,9 +68,9 @@ export const TweetPreviewCard: React.FC<TweetPreviewCardProps> = ({
             <button
               type="button"
               onClick={onRegenerate}
-              disabled={isGeneratingAi}
+              disabled={isGeneratingAi || aiUnavailable}
               className="p-1 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/60 rounded transition-colors cursor-pointer"
-              title="Regenerate AI poem"
+              title={aiUnavailable ? AI_UNAVAILABLE_HINT : 'Regenerate AI poem'}
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isGeneratingAi ? 'animate-spin' : ''}`} />
             </button>

@@ -16,3 +16,9 @@ export interface ServerInfo {
 export const ServerInfoContext = createContext<ServerInfo>({ defaultTargetTweetId: '' });
 
 export const useServerInfo = () => useContext(ServerInfoContext);
+
+export const AI_UNAVAILABLE_HINT =
+  'AI generation is unavailable: set GEMINI_API_KEY on the server to enable it. Agent tags fall back to static text.';
+
+/** True once the server has reported that Gemini is not configured. */
+export const useAiUnavailable = (): boolean => useServerInfo().geminiConfigured === false;
