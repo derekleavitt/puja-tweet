@@ -91,7 +91,7 @@ gcloud run deploy chromabot \
   --service-account="$SA" \
   --min-instances=1 --max-instances=1 --no-cpu-throttling \
   --allow-unauthenticated \
-  --set-env-vars="FIREBASE_PROJECT_ID=${PROJECT_ID},AUTHORIZED_EMAILS=the.derek.leavitt@gmail.com,STORE=firestore,SCHEDULE_TIMEZONE=America/Denver" \
+  --set-env-vars="FIREBASE_PROJECT_ID=${PROJECT_ID},AUTHORIZED_EMAILS=the.derek.leavitt@gmail.com,STORE=firestore,SCHEDULE_TIMEZONE=America/Denver,TARGET_TWEET_ID=2103110008212992249" \
   --set-secrets="CREDENTIALS_ENCRYPTION_KEY=CREDENTIALS_ENCRYPTION_KEY:latest,TWITTER_API_KEY=TWITTER_API_KEY:latest,TWITTER_API_SECRET=TWITTER_API_SECRET:latest,TWITTER_ACCESS_TOKEN=TWITTER_ACCESS_TOKEN:latest,TWITTER_ACCESS_TOKEN_SECRET=TWITTER_ACCESS_TOKEN_SECRET:latest,TWITTER_BEARER_TOKEN=TWITTER_BEARER_TOKEN:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,WEBHOOK_SECRET=WEBHOOK_SECRET:latest"
 ```
 
