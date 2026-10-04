@@ -11,6 +11,7 @@ import { checkTweetText } from '../../shared/tweetLength.js';
 import { HttpError } from '../middleware/error.js';
 import { resolveTemplateText } from '../templateAgent.js';
 import { postColorTweet } from '../twitterClient.js';
+import { classifyXError } from '../xErrors.js';
 import { services, type Services } from './index.js';
 
 export interface ExecuteDropOptions {
@@ -41,10 +42,9 @@ const isCooldown = (r: TweetResult) =>
     r.error?.includes('not permitted to access this feature')
   );
 
-/** Temporary failures where the chain anchor must be kept (superset of cooldown). */
-const isTemporaryFailure = (r: TweetResult) =>
-  isCooldown(r) ||
-  !!(r.error?.includes('Credits Depleted') || r.error?.includes('Payment Required'));
+/** Classifies a failed post by HTTP status and X error body (network/timeouts have no status). */
+const classify = (r: TweetResult) =>
+  classifyXError(r.httpStatus ?? r.rawResponse?.status, r.rawResponse ?? { detail: r.error });
 
 export const createDropService = (deps: DropDeps) => {
   const s = deps.services;
@@ -68,7 +68,7 @@ export const createDropService = (deps: DropDeps) => {
     return mode === 'standalone' ? '(Timeline post)' : '';
   };
 
-  /** Retry once on the root post when a cascading reply failed because the anchor is gone. */
+  /** Retry once on the root post, only when the cascading anchor was deleted (target_missing). */
   const recoverChain = async (
     context: TweetContext,
     first: TweetResult,
@@ -77,17 +77,16 @@ export const createDropService = (deps: DropDeps) => {
     creds: Creds,
     isDryRun: boolean,
   ): Promise<TweetResult> => {
-    if (isTemporaryFailure(first)) {
+    if (classify(first) !== 'target_missing') {
       console.log(
-        `[Drop] Preserving chain anchor #${replyTo} for context "${context.name}" during temporary X cooldown.`,
+        `[Drop] Preserving chain anchor #${replyTo} for context "${context.name}" (${classify(first)}: ${first.error}).`,
       );
       return first;
     }
     console.log(
-      `[Drop] Cascading anchor #${replyTo} for context "${context.name}" appears deleted or invalid (${first.error}). Resetting anchor to primary root post #${context.targetTweetId}.`,
+      `[Drop] Cascading anchor #${replyTo} for context "${context.name}" no longer exists (${first.error}). Resetting anchor to primary root post #${context.targetTweetId}.`,
     );
-    context.lastPostedTweetId = undefined;
-    s.contexts.resetContextChain(context.id);
+    s.contexts.clearContextAnchor(context.id);
     if (isDryRun) return first;
     const fallback = await deps.postColorTweet(
       creds,
@@ -162,12 +161,18 @@ export const createDropService = (deps: DropDeps) => {
     recordTelemetry(res, isDryRun);
 
     const status = res.success ? (res.simulated ? 'simulated' : 'success') : 'error';
-    s.contexts.recordContextPostResult(
+    const failure = res.success ? undefined : { errorClass: classify(res), message: res.error };
+    const { autoPausedReason } = s.contexts.recordContextPostResult(
       context.id,
       status,
       res.tweetId,
       res.engagementMode || engagementMode,
+      failure,
     );
+    const errorMessage =
+      autoPausedReason && res.error
+        ? `${res.error} [Campaign auto-paused: ${autoPausedReason}]`
+        : res.error;
     const logEntry = {
       id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       timestamp: new Date().toISOString(),
@@ -181,7 +186,7 @@ export const createDropService = (deps: DropDeps) => {
       tweetId: res.tweetId,
       tweetUrl: res.url,
       status,
-      errorMessage: res.error,
+      errorMessage,
       contextId: context.id,
       contextName: context.name,
     } as const;
