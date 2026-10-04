@@ -47,3 +47,12 @@ describe('SEC-2 auth', () => {
     expect((await request(app).get('/api/health')).status).toBe(200);
   });
 });
+
+describe('default allow-list', () => {
+  it('is locked to the owner email when AUTHORIZED_EMAILS is unset', async () => {
+    const { authConfig } = await import('../../server/config.js');
+    if (!process.env.AUTHORIZED_EMAILS) {
+      expect(authConfig.authorizedEmails).toEqual(['the.derek.leavitt@gmail.com']);
+    }
+  });
+});
