@@ -4,6 +4,8 @@
 
 import { Router } from 'express';
 import type { AppDeps } from '../app.js';
+import type { AiStatus } from '../../shared/types.js';
+import { isGeminiConfigured } from '../geminiConfig.js';
 import { getDefaultTargetTweetId } from '../store/defaults.js';
 
 export const createStatusRouter = ({ services, scheduler }: AppDeps) => {
@@ -20,7 +22,9 @@ export const createStatusRouter = ({ services, scheduler }: AppDeps) => {
       failedPosts: logs.filter((l) => l.status === 'error').length,
     };
 
+    const ai: Required<AiStatus> = { geminiConfigured: isGeminiConfigured() };
     res.json({
+      ...ai,
       settings: services.settings.getSettings(),
       defaultTargetTweetId: getDefaultTargetTweetId(),
       activeContext: services.contexts.getActiveContext(),

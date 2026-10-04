@@ -190,3 +190,15 @@ describe('POST /api/contexts whitelisting', () => {
     expect(res.body).toEqual({ success: false, error: expect.stringContaining('targetTweetId') });
   });
 });
+
+describe('geminiConfigured on /api/status', () => {
+  it('reflects GEMINI_API_KEY without leaking it', async () => {
+    vi.stubEnv('GEMINI_API_KEY', '');
+    expect((await request(app).get('/api/status')).body.geminiConfigured).toBe(false);
+    vi.stubEnv('GEMINI_API_KEY', 'sekret-key');
+    const res = await request(app).get('/api/status').expect(200);
+    expect(res.body.geminiConfigured).toBe(true);
+    expect(JSON.stringify(res.body)).not.toContain('sekret-key');
+    vi.unstubAllEnvs();
+  });
+});
