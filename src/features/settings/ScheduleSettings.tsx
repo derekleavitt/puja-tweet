@@ -64,7 +64,7 @@ export const ScheduleSettings: React.FC<ScheduleSettingsProps> = ({ value, onCha
             }`}
           >
             <Clock className="w-3.5 h-3.5 inline mr-1" />
-            Fixed Clock Times (6am & 6pm)
+            Fixed Clock Times
           </button>
         </div>
       </div>

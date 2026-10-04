@@ -136,7 +136,7 @@ export const TargetTweetEditor: React.FC<TargetTweetEditorProps> = ({
               Target Reply Post
             </h3>
             <p className="text-xs text-neutral-500">
-              The X post where ChromaBot posts automated 6am/6pm chromatic color drops.
+              The X post where ChromaBot posts automated chromatic color drops.
             </p>
           </div>
         </div>

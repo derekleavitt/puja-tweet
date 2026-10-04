@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ExternalLink, Clock, Repeat, UserCheck } from 'lucide-react';
+import { formatHHmm12h, tzAbbreviation } from '../../shared/time.js';
 import { NextPostInfo, CredentialsStatus, BotSettings, TweetContext } from '../types.js';
 
 interface StatusBarProps {
@@ -14,16 +15,21 @@ interface StatusBarProps {
 }
 
 const FREQUENCY_OPTIONS = [
-  { label: 'Every 1 minute (Test)', mode: 'interval' as const, minutes: 1 },
-  { label: 'Every 15 minutes', mode: 'interval' as const, minutes: 15 },
-  { label: 'Every 30 minutes', mode: 'interval' as const, minutes: 30 },
-  { label: 'Every 1 hour', mode: 'interval' as const, minutes: 60 },
-  { label: 'Every 3 hours', mode: 'interval' as const, minutes: 180 },
-  { label: 'Every 6 hours', mode: 'interval' as const, minutes: 360 },
-  { label: 'Every 12 hours', mode: 'interval' as const, minutes: 720 },
-  { label: 'Every 24 hours', mode: 'interval' as const, minutes: 1440 },
-  { label: 'Daily at 6:00 AM & 6:00 PM', mode: 'fixed_times' as const, minutes: 720 },
+  { label: 'Every 1 minute (Test)', minutes: 1 },
+  { label: 'Every 15 minutes', minutes: 15 },
+  { label: 'Every 30 minutes', minutes: 30 },
+  { label: 'Every 1 hour', minutes: 60 },
+  { label: 'Every 3 hours', minutes: 180 },
+  { label: 'Every 6 hours', minutes: 360 },
+  { label: 'Every 12 hours', minutes: 720 },
+  { label: 'Every 24 hours', minutes: 1440 },
 ];
+
+/** "Daily at 6:00 AM & 6:00 PM MST", from the schedule actually in effect. */
+function fixedTimesLabel(times: string[] | undefined, timezone: string | undefined): string {
+  if (!times || times.length === 0) return 'Daily at fixed clock times';
+  return `Daily at ${times.map(formatHHmm12h).join(' & ')} ${tzAbbreviation(new Date(), timezone)}`.trim();
+}
 
 export const StatusBar: React.FC<StatusBarProps> = ({
   nextPost,
@@ -62,6 +68,12 @@ export const StatusBar: React.FC<StatusBarProps> = ({
   const targetUrl = `https://x.com/i/status/${effectiveTargetId}`;
   const isInterval = (activeContext?.schedule?.mode || settings?.intervalMode) === 'interval';
   const intervalMins = activeContext?.schedule?.intervalMinutes || settings?.intervalMinutes || 720;
+
+  const schedule = activeContext?.schedule;
+  const fixedLabel = fixedTimesLabel(
+    schedule?.scheduleTimes ?? settings?.scheduleTimes,
+    schedule?.timezone ?? settings?.timezone,
+  );
 
   // Selected value for select dropdown
   const currentValue = isInterval ? `interval_${intervalMins}` : 'fixed_720';
@@ -116,18 +128,21 @@ export const StatusBar: React.FC<StatusBarProps> = ({
               onChange={handleSelectChange}
               className="bg-transparent font-medium text-neutral-900 dark:text-neutral-100 focus:outline-none cursor-pointer pr-1 text-xs"
             >
-              {FREQUENCY_OPTIONS.map((opt) => {
-                const key = opt.mode === 'interval' ? `interval_${opt.minutes}` : 'fixed_720';
-                return (
-                  <option
-                    key={key}
-                    value={key}
-                    className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100"
-                  >
-                    {opt.label}
-                  </option>
-                );
-              })}
+              {[
+                ...FREQUENCY_OPTIONS.map((opt) => ({
+                  key: `interval_${opt.minutes}`,
+                  label: opt.label,
+                })),
+                { key: 'fixed_720', label: fixedLabel },
+              ].map(({ key, label }) => (
+                <option
+                  key={key}
+                  value={key}
+                  className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100"
+                >
+                  {label}
+                </option>
+              ))}
             </select>
           </div>
 
