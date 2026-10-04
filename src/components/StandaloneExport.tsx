@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Copy, Check, Terminal, ExternalLink, Globe, Key, ShieldCheck, Zap } from 'lucide-react';
 import { BotSettings } from '../types.js';
-import { getExportScript } from '../api/endpoints.js';
+import { getExportScript, getWebhookUrl } from '../api/endpoints.js';
 
 interface StandaloneExportProps {
   settings: BotSettings;
@@ -24,8 +24,12 @@ export const StandaloneExport: React.FC<StandaloneExportProps> = ({ settings }) 
     setTimeout(() => setCopiedKey(null), 1800);
   };
 
-  const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
-  const webhookUrl = `${currentOrigin}/api/cron/trigger?secret=${encodeURIComponent(settings.webhookSecret || 'chroma_auto_secret')}`;
+  const [webhookUrl, setWebhookUrl] = useState('');
+  useEffect(() => {
+    getWebhookUrl()
+      .then((r) => setWebhookUrl(r.url))
+      .catch(() => setWebhookUrl(''));
+  }, []);
 
   const curlSnippet = `curl -X POST https://api.x.com/2/tweets \\
   -H "Authorization: Bearer YOUR_TWITTER_BEARER_TOKEN" \\
