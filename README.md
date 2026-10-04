@@ -51,7 +51,7 @@ npm run post-drop -- --slot evening
 
 Start the interactive web dashboard & local scheduler:
 ```bash
-npm install
+npm ci   # Node 22 (see .nvmrc)
 npm run dev
 ```
 Open `http://localhost:3000` to preview palettes, adjust the target tweet ID, or post live drops.
