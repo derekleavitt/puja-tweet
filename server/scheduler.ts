@@ -4,25 +4,32 @@
  *  - Checks every enabled Tweet Context on each tick.
  *  - Evaluates individual schedules (Interval or Fixed Clock Times).
  *  - Applies humanized anti-bot jitter per context.
- *  - Dispatches targeted replies to each context's specific targetTweetId.
+ *  - Hands each due drop to dropService.executeDrop (no posting logic lives here).
  */
 
-import { formatTweetText, generateColor, ColorData } from './colorEngine.js';
-import { resolveTemplateText } from './templateAgent.js';
-import { storage, TweetContext } from './storage.js';
-import { postColorTweet } from './twitterClient.js';
+import {
+  formatHHmm12h,
+  matchFixedTime,
+  normalizeHHmm,
+  resolveTimezone,
+  slotTypeForHour,
+  zonedParts,
+} from '../shared/time.js';
+import { dropService } from './services/dropService.js';
+import { services } from './services/index.js';
+import type { TweetContext } from '../shared/types.js';
 
-export interface ExecuteDropOptions {
-  contextId?: string;
-  slotType?: 'morning' | 'evening' | 'manual';
-  color?: ColorData;
-  forceLive?: boolean;
-  source?: 'scheduler' | 'webhook' | 'manual';
-}
+/** Minimum spacing between any two live drops across all campaigns. */
+const MIN_LIVE_SPACING_MS = 60 * 1000;
 
 class SchedulerService {
   private timer: NodeJS.Timeout | null = null;
   private isProcessing = false;
+  private tickGeneration = 0;
+  private pendingFires = new Map<
+    string,
+    { slotKey: string; slotType: 'morning' | 'evening'; matchedTime: string; fireAt: number }
+  >();
 
   public start() {
     if (this.timer) {
@@ -41,197 +48,72 @@ class SchedulerService {
     console.log('[Scheduler] Stopped.');
   }
 
-  /**
-   * Execute drop for a specific context or the active context.
-   */
-  public async executeDrop(options: ExecuteDropOptions = {}) {
-    const context: TweetContext = options.contextId
-      ? (storage.getContext(options.contextId) || storage.getActiveContext())
-      : storage.getActiveContext();
+  /** Per-tick deadline (env SCHEDULER_TICK_TIMEOUT_MS, default 120 000). */
+  private tickTimeoutMs() {
+    const n = Number(process.env.SCHEDULER_TICK_TIMEOUT_MS);
+    return Number.isFinite(n) && n > 0 ? n : 120_000;
+  }
 
-    const isMorning = options.slotType
-      ? options.slotType === 'morning'
-      : (new Date().getUTCHours() - 7 + 24) % 24 < 12;
-
-    const slotType = options.slotType || (isMorning ? 'morning' : 'evening');
-    const color: ColorData = options.color || storage.popNextQueueSlot(slotType === 'morning' ? 'morning' : 'evening', context.id);
-    const timeTag = isMorning ? '6:00 AM' : '6:00 PM';
-    const text = await resolveTemplateText(context.template, color, {
-      slotLabel: timeTag,
-      contextId: context.id,
-      targetTweetId: context.targetTweetId,
-    });
-
-    const engagementMode = context.engagementMode || 'reply';
-    let replyToTweetId: string | undefined = undefined;
-    let quoteTweetId: string | undefined = undefined;
-    const replyTargetInfo = storage.getEffectiveReplyTargetId(context);
-
-    if (engagementMode === 'reply') {
-      replyToTweetId = replyTargetInfo.targetTweetId;
-    } else if (engagementMode === 'quote') {
-      quoteTweetId = context.targetTweetId;
-    }
-
-    const isDryRun = options.forceLive ? false : (context.dryRun ?? false);
-    const creds = storage.getEffectiveCredentials();
-
-    console.log(
-      `[Scheduler] Executing drop for context "${context.name}" (${context.id}) ` +
-      `-> Mode: ${engagementMode.toUpperCase()} ` +
-      `${engagementMode === 'reply' ? `(Target #${replyToTweetId}, ${context.replyTargetMode === 'last_comment' ? (replyTargetInfo.isFirstInChain ? 'Initiating cascade from root' : 'Cascading reply to last comment') : 'Direct reply to original root'})` : ''}` +
-      `${engagementMode === 'quote' ? `(Quoting Post #${quoteTweetId})` : ''}` +
-      `${engagementMode === 'standalone' ? '(Timeline post)' : ''}` +
-      `, source: ${options.source || 'manual'}, mode: ${isDryRun ? 'DRY-RUN' : 'LIVE X'}`
-    );
-
-    let finalTweetRes = await postColorTweet(
-      creds,
-      {
-        text,
-        replyToTweetId,
-        quoteTweetId,
-        engagementMode,
-      },
-      isDryRun
-    );
-
-    // AUTO-RECOVERY: If replyTargetMode was 'last_comment' and the reply to the previous comment failed
-    // due to the previous comment being deleted/invalid (NOT a temporary rate limit or cooldown),
-    // reset broken chain anchor back to root post and retry once on root.
-    if (!finalTweetRes.success && engagementMode === 'reply' && context.replyTargetMode === 'last_comment' && !replyTargetInfo.isFirstInChain) {
-      const isThrottleOrCooldown =
-        finalTweetRes.isRateLimitOrCooldown ||
-        finalTweetRes.error?.includes('cooldown') ||
-        finalTweetRes.error?.includes('not permitted to access this feature') ||
-        finalTweetRes.error?.includes('Credits Depleted') ||
-        finalTweetRes.error?.includes('Payment Required') ||
-        finalTweetRes.rawResponse?.status === 429;
-
-      if (!isThrottleOrCooldown) {
-        console.log(
-          `[Scheduler] Cascading anchor #${replyToTweetId} for context "${context.name}" appears deleted or invalid (${finalTweetRes.error}). Resetting anchor to primary root post #${context.targetTweetId}.`
-        );
-        context.lastPostedTweetId = undefined;
-        storage.resetContextChain(context.id);
-
-        if (!isDryRun) {
-          const fallbackRes = await postColorTweet(
-            creds,
-            {
-              text,
-              replyToTweetId: context.targetTweetId,
-              engagementMode: 'reply',
-            },
-            isDryRun
-          );
-          if (fallbackRes.success) {
-            finalTweetRes = fallbackRes;
-          }
-        }
-      } else {
-        console.log(
-          `[Scheduler] Preserving chain anchor #${replyToTweetId} for context "${context.name}" during temporary X cooldown.`
-        );
-      }
-    }
-
-    // Update rate limit telemetry from headers
-    if (finalTweetRes.rateLimitHeaders) {
-      storage.updateRateLimitTelemetry(finalTweetRes.rateLimitHeaders);
-    }
-
-    // Set global cooldown if X returned rate limit or cooldown
-    if (!isDryRun && (finalTweetRes.isRateLimitOrCooldown || finalTweetRes.rawResponse?.status === 429 || finalTweetRes.error?.includes('cooldown') || finalTweetRes.error?.includes('not permitted to access this feature'))) {
-      storage.setGlobalCooldown(15, finalTweetRes.error || 'X API Rate Limit / Reply Cooldown Active');
-    }
-
-    // Record live post timestamp for anti-burst spacing
-    if (!isDryRun && finalTweetRes.success) {
-      storage.recordLivePostTimestamp();
-    }
-
-    const now = Date.now();
-    const status = finalTweetRes.success ? (finalTweetRes.simulated ? ('simulated' as const) : ('success' as const)) : ('error' as const);
-
-    // Record stats, roll jitter, and update lastPostedTweetId for chain continuity (only for actual replies)
-    storage.recordContextPostResult(
-      context.id,
-      status,
-      finalTweetRes.tweetId,
-      finalTweetRes.engagementMode || engagementMode
-    );
-
-    const logEntry = {
-      id: `log_${now}_${Math.random().toString(36).substring(2, 6)}`,
-      timestamp: new Date().toISOString(),
-      slotType,
-      targetTweetId: context.targetTweetId,
-      replyToTweetId: finalTweetRes.replyTo || replyToTweetId,
-      quoteTweetId: finalTweetRes.quoteTweetId || quoteTweetId,
-      engagementMode: finalTweetRes.engagementMode || engagementMode,
-      color,
-      tweetText: text,
-      tweetId: finalTweetRes.tweetId,
-      tweetUrl: finalTweetRes.url,
-      status,
-      errorMessage: finalTweetRes.error,
-      contextId: context.id,
-      contextName: context.name,
-    };
-
-    storage.addLog(logEntry);
-
-    return {
-      success: finalTweetRes.success,
-      result: finalTweetRes,
-      log: logEntry,
-      context,
-    };
+  /** Anti-burst + cooldown gate, evaluated right before every live drop. */
+  private canFireNow(): boolean {
+    if (services.rateLimit.getCooldownState().isThrottled) return false;
+    return services.rateLimit.getTimeSinceLastLivePostMs() >= MIN_LIVE_SPACING_MS;
   }
 
   /**
    * Main scheduler loop: runs every 10 seconds and checks each enabled context.
+   * A watchdog deadline guarantees `isProcessing` is released even if a post hangs.
    */
   public async tick() {
     if (this.isProcessing) return;
-
+    this.isProcessing = true;
+    const generation = ++this.tickGeneration;
+    const timeoutMs = this.tickTimeoutMs();
+    let timer: NodeJS.Timeout | undefined;
+    const deadline = new Promise<'timeout'>((resolve) => {
+      timer = setTimeout(() => resolve('timeout'), timeoutMs);
+    });
     try {
-      this.isProcessing = true;
-      const contexts = storage.getContexts().filter(c => c.enabled);
-      if (contexts.length === 0) return;
-
-      // 1. Check Global Rate Limit / Cooldown
-      const cooldown = storage.getCooldownState();
-      if (cooldown.isThrottled) {
-        return; // Safe standby while cooldown expires
-      }
-
-      // 2. Pre-Emptive Rate Window Check: If remaining requests in window is 0, wait for reset
-      const telemetry = storage.getRateLimitTelemetry();
-      if (telemetry.headersCaptured && telemetry.remaining <= 0 && telemetry.secondsUntilReset > 0) {
-        return; // Standby until 15-minute window resets
-      }
-
-      // 3. Anti-Burst Protection: Ensure minimum 60s spacing between any live drops across all campaigns
-      if (storage.getTimeSinceLastLivePostMs() < 60 * 1000) {
-        return; // Stagger to next tick
-      }
-
-      const now = Date.now();
-
-      for (const context of contexts) {
-        try {
-          await this.evaluateContextSchedule(context, now);
-        } catch (ctxErr) {
-          console.error(`[Scheduler] Error evaluating context "${context.name}":`, ctxErr);
-        }
+      const outcome = await Promise.race([this.runTick(generation), deadline]);
+      if (outcome === 'timeout') {
+        console.error(`[Scheduler] Tick exceeded ${timeoutMs} ms; releasing the scheduler lock.`);
       }
     } catch (err) {
       console.error('[Scheduler] Error during schedule tick loop:', err);
     } finally {
+      clearTimeout(timer);
+      // Invalidate a timed-out body so it stops firing further contexts.
+      this.tickGeneration++;
       this.isProcessing = false;
     }
+  }
+
+  private async runTick(generation: number): Promise<'done'> {
+    // 0. Global pause: nothing scheduled runs until the owner resumes.
+    if (services.settings.isGlobalPaused()) return 'done';
+
+    const contexts = services.contexts.getContexts().filter((c) => c.enabled);
+    if (contexts.length === 0) return 'done';
+
+    // 1. Global Rate Limit / Cooldown: safe standby while it expires
+    if (services.rateLimit.getCooldownState().isThrottled) return 'done';
+
+    // 2. Pre-Emptive Rate Window Check: if no requests remain in the window, wait for reset
+    const telemetry = services.rateLimit.getRateLimitTelemetry();
+    if (telemetry.headersCaptured && telemetry.remaining <= 0 && telemetry.secondsUntilReset > 0) {
+      return 'done';
+    }
+
+    const now = Date.now();
+    for (const context of contexts) {
+      if (generation !== this.tickGeneration) break; // superseded by the watchdog
+      try {
+        await this.evaluateContextSchedule(context, now);
+      } catch (ctxErr) {
+        console.error(`[Scheduler] Error evaluating context "${context.name}":`, ctxErr);
+      }
+    }
+    return 'done';
   }
 
   private async evaluateContextSchedule(context: TweetContext, now: number) {
@@ -245,12 +127,18 @@ class SchedulerService {
       const jitterMs = context.currentJitterMs || 0;
       const effectiveRequiredMs = intervalMs + jitterMs;
 
-      if (!lastPosted || (now - lastPosted) >= effectiveRequiredMs) {
+      if (!lastPosted) {
+        // Legacy/unset clock: start the interval now instead of firing immediately.
+        services.contexts.setContextLastPostedTimestamp(context.id, now);
+        return;
+      }
+      if (now - lastPosted >= effectiveRequiredMs) {
+        if (!this.canFireNow()) return; // anti-burst: wait for the next tick
         console.log(
           `[Scheduler] Context "${context.name}" interval reached ` +
-          `(${intervalMinutes}m base + ${Math.round(jitterMs / 1000)}s jitter). Firing drop...`
+            `(${intervalMinutes}m base + ${Math.round(jitterMs / 1000)}s jitter). Firing drop...`,
         );
-        await this.executeDrop({
+        await dropService.executeDrop({
           contextId: context.id,
           source: 'scheduler',
         });
@@ -259,47 +147,60 @@ class SchedulerService {
     }
 
     // MODE 2: FIXED TIMES (e.g. ["06:00", "18:00"])
-    const nowDate = new Date(now);
-    const timezone = schedule.timezone || 'America/Denver';
-
-    const timeInZone = new Intl.DateTimeFormat('en-US', {
-      timeZone: timezone,
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    }).format(nowDate);
-
-    const dateInZone = new Intl.DateTimeFormat('en-CA', {
-      timeZone: timezone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(nowDate);
-
-    const currentSlotKey = `${dateInZone}-${timeInZone}`;
-    const matchedTime = (schedule.scheduleTimes || []).find((t) => t === timeInZone);
-
-    if (matchedTime && context.lastPostedSlot !== currentSlotKey) {
-      const isMorning = matchedTime.startsWith('06') || matchedTime.startsWith('6');
-      context.lastPostedSlot = currentSlotKey;
-      storage.updateContext(context.id, { lastPostedSlot: currentSlotKey });
-
-      console.log(`[Scheduler] Context "${context.name}" fixed time reached (${matchedTime}). Firing drop...`);
-      await this.executeDrop({
-        contextId: context.id,
-        slotType: isMorning ? 'morning' : 'evening',
-        source: 'scheduler',
-      });
+    // A slot is armed when its HH:mm (normalised, in the context timezone) is reached, then fires
+    // after the context's jitter delay. Pending fires are in-memory; only lastPostedSlot persists.
+    const pending = this.pendingFires.get(context.id);
+    if (pending) {
+      if (now < pending.fireAt || !this.canFireNow()) return;
+      this.pendingFires.delete(context.id);
+      await this.fireFixedSlot(context, pending.slotKey, pending.slotType, pending.matchedTime);
+      return;
     }
+
+    const match = matchFixedTime(schedule.scheduleTimes, new Date(now), schedule.timezone);
+    if (!match || context.lastPostedSlot === match.slotKey) return;
+
+    const slotType = slotTypeForHour(match.parts.hour);
+    const jitterMs = schedule.humanizeJitterEnabled ? context.currentJitterMs || 0 : 0;
+    if (jitterMs > 0 || !this.canFireNow()) {
+      this.pendingFires.set(context.id, {
+        slotKey: match.slotKey,
+        slotType,
+        matchedTime: match.matchedTime,
+        fireAt: now + jitterMs,
+      });
+      console.log(
+        `[Scheduler] Context "${context.name}" fixed time ${match.matchedTime} (${resolveTimezone(schedule.timezone)}) reached; ` +
+          `delaying (${Math.round(jitterMs / 1000)}s jitter, anti-burst gate).`,
+      );
+      return;
+    }
+    await this.fireFixedSlot(context, match.slotKey, slotType, match.matchedTime);
+  }
+
+  private async fireFixedSlot(
+    context: TweetContext,
+    slotKey: string,
+    slotType: 'morning' | 'evening',
+    matchedTime: string,
+  ) {
+    // Record before posting so a slow/failed post can never double-fire the same slot.
+    services.contexts.setContextLastPostedSlot(context.id, slotKey);
+    console.log(
+      `[Scheduler] Context "${context.name}" fixed time reached (${matchedTime}). Firing drop...`,
+    );
+    await dropService.executeDrop({ contextId: context.id, slotType, source: 'scheduler' });
   }
 
   public getNextScheduledPost(contextId?: string) {
-    const context = contextId ? (storage.getContext(contextId) || storage.getActiveContext()) : storage.getActiveContext();
+    const context = contextId
+      ? services.contexts.getContext(contextId) || services.contexts.getActiveContext()
+      : services.contexts.getActiveContext();
     return this.calculateNextPostForContext(context);
   }
 
   public getAllNextScheduledPosts() {
-    return storage.getContexts().map(c => ({
+    return services.contexts.getContexts().map((c) => ({
       ...this.calculateNextPostForContext(c),
       enabled: c.enabled,
       targetTweetId: c.targetTweetId,
@@ -335,9 +236,10 @@ class SchedulerService {
         return `Every ${hrs}h`;
       };
 
-      const jitterFormatted = jitterSeconds > 0
-        ? `+${jitterSeconds >= 60 ? `${Math.floor(jitterSeconds / 60)}m ${jitterSeconds % 60}s` : `${jitterSeconds}s`} jitter`
-        : undefined;
+      const jitterFormatted =
+        jitterSeconds > 0
+          ? `+${jitterSeconds >= 60 ? `${Math.floor(jitterSeconds / 60)}m ${jitterSeconds % 60}s` : `${jitterSeconds}s`} jitter`
+          : undefined;
 
       return {
         contextId: context.id,
@@ -354,41 +256,26 @@ class SchedulerService {
     }
 
     // Fixed Times Mode
-    const nowDate = new Date(now);
-    const timezone = schedule.timezone || 'America/Denver';
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: timezone,
-      year: 'numeric',
-      month: 'numeric',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: 'numeric',
-      second: 'numeric',
-      hour12: false,
-    });
-
-    const parts = formatter.formatToParts(nowDate);
-    const getVal = (type: string) => parseInt(parts.find((p) => p.type === type)?.value || '0', 10);
-    const curHour = getVal('hour');
-    const curMinute = getVal('minute');
-    const curSecond = getVal('second');
-
-    const curSecondsOfDay = curHour * 3600 + curMinute * 60 + curSecond;
+    const timezone = resolveTimezone(schedule.timezone);
+    const zoned = zonedParts(new Date(now), timezone);
+    const curSecondsOfDay = zoned.hour * 3600 + zoned.minute * 60 + zoned.second;
 
     const parsedSlots = (schedule.scheduleTimes || ['06:00', '18:00'])
+      .map((raw) => normalizeHHmm(raw))
+      .filter((t): t is string => t !== null)
       .map((timeStr) => {
         const [h, m] = timeStr.split(':').map(Number);
         return {
           timeStr,
           secondsOfDay: h * 3600 + m * 60,
           isMorning: h < 12,
-          label: h === 6 ? '6:00 AM Drop' : h === 18 ? '6:00 PM Drop' : `${timeStr} Drop`,
+          label: `${formatHHmm12h(timeStr)} Drop`,
         };
       })
       .sort((a, b) => a.secondsOfDay - b.secondsOfDay);
 
     let nextSlot = parsedSlots.find((s) => s.secondsOfDay > curSecondsOfDay);
-    let secondsUntil = 0;
+    let secondsUntil: number;
 
     if (nextSlot) {
       secondsUntil = nextSlot.secondsOfDay - curSecondsOfDay;

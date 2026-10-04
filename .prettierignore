@@ -1,0 +1,10 @@
+node_modules
+dist
+data
+coverage
+package-lock.json
+*.md
+firebase-applet-config.json
+firebase-blueprint.json
+metadata.json
+.claude

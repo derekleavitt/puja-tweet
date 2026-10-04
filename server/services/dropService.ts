@@ -1,0 +1,256 @@
+/**
+ * Drop service for X ChromaBot.
+ * The single code path that composes and posts one drop (template -> X -> telemetry -> log).
+ * Used by the scheduler tick, manual post/trigger routes, the webhook and the CLI.
+ * It knows nothing about timers; X and Gemini are injected so tests can stub them.
+ */
+
+import type { ColorData, TweetContext } from '../../shared/types.js';
+import { formatTimeInZone, hourInZone, slotTypeForHour } from '../../shared/time.js';
+import { checkTweetText } from '../../shared/tweetLength.js';
+import { HttpError } from '../middleware/error.js';
+import { resolveTemplateText } from '../templateAgent.js';
+import { postColorTweet } from '../twitterClient.js';
+import { classifyXError } from '../xErrors.js';
+import { services, type Services } from './index.js';
+
+export interface ExecuteDropOptions {
+  contextId?: string;
+  slotType?: 'morning' | 'evening' | 'manual';
+  color?: ColorData;
+  /**
+   * Overrides the per-campaign dry-run only. It never overrides the global dry-run switch,
+   * which only the owner can turn off (Settings / `globalDryRun`).
+   */
+  forceLive?: boolean;
+  /** Forces a simulation for this call (CLI `--dry-run`); a pure preview, so it ignores global pause. */
+  forceDryRun?: boolean;
+  /** Exact text to post (e.g. the previewed text); skips template resolution. Still length-checked. */
+  text?: string;
+  source?: 'scheduler' | 'webhook' | 'manual' | 'cli';
+}
+
+export interface DropDeps {
+  services: Pick<
+    Services,
+    'contexts' | 'queue' | 'logs' | 'credentials' | 'rateLimit' | 'settings'
+  >;
+  postColorTweet: typeof postColorTweet;
+  resolveTemplateText: typeof resolveTemplateText;
+}
+
+type TweetResult = Awaited<ReturnType<typeof postColorTweet>>;
+type Creds = ReturnType<Services['credentials']['getEffectiveCredentials']>;
+
+/** Rate-limit / cooldown responses: set the global cooldown. */
+const isCooldown = (r: TweetResult) =>
+  !!(
+    r.isRateLimitOrCooldown ||
+    r.rawResponse?.status === 429 ||
+    r.error?.includes('cooldown') ||
+    r.error?.includes('not permitted to access this feature')
+  );
+
+/** Classifies a failed post by HTTP status and X error body (network/timeouts have no status). */
+const classify = (r: TweetResult) =>
+  classifyXError(r.httpStatus ?? r.rawResponse?.status, r.rawResponse ?? { detail: r.error });
+
+export const createDropService = (deps: DropDeps) => {
+  const s = deps.services;
+
+  const describeMode = (
+    context: TweetContext,
+    mode: string,
+    replyTo: string | undefined,
+    chainInfo: { isFirstInChain: boolean },
+  ) => {
+    if (mode === 'reply') {
+      const how =
+        context.replyTargetMode === 'last_comment'
+          ? chainInfo.isFirstInChain
+            ? 'Initiating cascade from root'
+            : 'Cascading reply to last comment'
+          : 'Direct reply to original root';
+      return `(Target #${replyTo}, ${how})`;
+    }
+    if (mode === 'quote') return `(Quoting Post #${context.targetTweetId})`;
+    return mode === 'standalone' ? '(Timeline post)' : '';
+  };
+
+  /** Retry once on the root post, only when the cascading anchor was deleted (target_missing). */
+  const recoverChain = async (
+    context: TweetContext,
+    first: TweetResult,
+    text: string,
+    replyTo: string | undefined,
+    creds: Creds,
+    isDryRun: boolean,
+  ): Promise<TweetResult> => {
+    if (classify(first) !== 'target_missing') {
+      console.log(
+        `[Drop] Preserving chain anchor #${replyTo} for context "${context.name}" (${classify(first)}: ${first.error}).`,
+      );
+      return first;
+    }
+    console.log(
+      `[Drop] Cascading anchor #${replyTo} for context "${context.name}" no longer exists (${first.error}). Resetting anchor to primary root post #${context.targetTweetId}.`,
+    );
+    s.contexts.clearContextAnchor(context.id);
+    if (isDryRun) return first;
+    const fallback = await deps.postColorTweet(
+      creds,
+      { text, replyToTweetId: context.targetTweetId, engagementMode: 'reply' },
+      isDryRun,
+    );
+    return fallback.success ? fallback : first;
+  };
+
+  /** One quote-tweet retry of a reply X refused (cooldown / reply restriction), opt-in per campaign. */
+  const quoteFallback = async (
+    context: TweetContext,
+    first: TweetResult,
+    text: string,
+    creds: Creds,
+    isDryRun: boolean,
+  ): Promise<TweetResult | undefined> => {
+    const errorClass = classify(first);
+    if (errorClass !== 'cooldown' && errorClass !== 'reply_restricted') return undefined;
+    if (!/^\d+$/.test(context.targetTweetId)) return undefined;
+    console.log(
+      `[Drop] Reply for context "${context.name}" refused (${errorClass}: ${first.error}). Retrying once as a quote of #${context.targetTweetId}.`,
+    );
+    const retry = await deps.postColorTweet(
+      creds,
+      { text, quoteTweetId: context.targetTweetId, engagementMode: 'quote' },
+      isDryRun,
+    );
+    return retry.success ? retry : undefined;
+  };
+
+  const recordTelemetry = (res: TweetResult, isDryRun: boolean) => {
+    if (res.rateLimitHeaders) s.rateLimit.updateRateLimitTelemetry(res.rateLimitHeaders);
+    if (!isDryRun && isCooldown(res)) {
+      s.rateLimit.setGlobalCooldown(15, res.error || 'X API Rate Limit / Reply Cooldown Active');
+    }
+    if (!isDryRun && res.success) s.rateLimit.recordLivePostTimestamp();
+  };
+
+  /** Execute a drop for a specific context or the active context. */
+  const executeDrop = async (options: ExecuteDropOptions = {}) => {
+    const source = options.source || 'manual';
+    // Global pause stops every scheduled path; manual posting is still allowed.
+    if (source !== 'manual' && !options.forceDryRun && s.settings.isGlobalPaused()) {
+      throw new HttpError(409, 'Global pause is on: scheduled drops are stopped');
+    }
+    const requested = options.contextId ? s.contexts.getContext(options.contextId) : undefined;
+    if (options.contextId && !requested) {
+      throw new HttpError(404, `Context ${options.contextId} not found`);
+    }
+    const context: TweetContext = requested || s.contexts.getActiveContext();
+
+    const isMorning = options.slotType
+      ? options.slotType === 'morning'
+      : slotTypeForHour(hourInZone(new Date(), context.schedule?.timezone)) === 'morning';
+    const slotType = options.slotType || (isMorning ? 'morning' : 'evening');
+    const color: ColorData =
+      options.color ||
+      s.queue.popNextQueueSlot(slotType === 'morning' ? 'morning' : 'evening', context.id);
+    const text =
+      options.text ??
+      (await deps.resolveTemplateText(context.template, color, {
+        slotLabel: formatTimeInZone(new Date(), context.schedule?.timezone),
+        contextId: context.id,
+        targetTweetId: context.targetTweetId,
+      }));
+    const textCheck = checkTweetText(text);
+    if (!textCheck.ok) {
+      throw new HttpError(400, `Tweet text invalid (${textCheck.length}/280 weighted chars)`);
+    }
+
+    const engagementMode = context.engagementMode || 'reply';
+    const chainInfo = s.contexts.getEffectiveReplyTargetId(context);
+    const replyToTweetId = engagementMode === 'reply' ? chainInfo.targetTweetId : undefined;
+    const quoteTweetId = engagementMode === 'quote' ? context.targetTweetId : undefined;
+    const isDryRun =
+      s.settings.isGlobalDryRun() ||
+      !!options.forceDryRun ||
+      (options.forceLive ? false : (context.dryRun ?? false));
+    const creds = s.credentials.getEffectiveCredentials();
+
+    console.log(
+      `[Drop] Executing drop for context "${context.name}" (${context.id}) ` +
+        `-> Mode: ${engagementMode.toUpperCase()} ` +
+        `${describeMode(context, engagementMode, replyToTweetId, chainInfo)}` +
+        `, source: ${source}, mode: ${isDryRun ? 'DRY-RUN' : 'LIVE X'}${s.settings.isGlobalDryRun() ? ' (global dry-run)' : ''}`,
+    );
+
+    let res = await deps.postColorTweet(
+      creds,
+      { text, replyToTweetId, quoteTweetId, engagementMode },
+      isDryRun,
+    );
+    if (
+      !res.success &&
+      engagementMode === 'reply' &&
+      context.replyTargetMode === 'last_comment' &&
+      !chainInfo.isFirstInChain
+    ) {
+      res = await recoverChain(context, res, text, replyToTweetId, creds, isDryRun);
+    }
+    let fallbackTriggered = false;
+    if (!res.success && engagementMode === 'reply' && context.autoFallbackToQuote) {
+      const quoted = await quoteFallback(context, res, text, creds, isDryRun);
+      if (quoted) {
+        res = quoted;
+        fallbackTriggered = true;
+      }
+    }
+    recordTelemetry(res, isDryRun);
+    const finalMode = fallbackTriggered ? 'quote' : engagementMode;
+
+    const status = res.success ? (res.simulated ? 'simulated' : 'success') : 'error';
+    const failure = res.success ? undefined : { errorClass: classify(res), message: res.error };
+    const { autoPausedReason } = s.contexts.recordContextPostResult(
+      context.id,
+      status,
+      res.tweetId,
+      res.engagementMode || finalMode,
+      failure,
+    );
+    const errorMessage =
+      autoPausedReason && res.error
+        ? `${res.error} [Campaign auto-paused: ${autoPausedReason}]`
+        : res.error;
+    const logEntry = {
+      id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      timestamp: new Date().toISOString(),
+      slotType,
+      targetTweetId: context.targetTweetId,
+      replyToTweetId: fallbackTriggered ? undefined : res.replyTo || replyToTweetId,
+      quoteTweetId: res.quoteTweetId || (fallbackTriggered ? context.targetTweetId : quoteTweetId),
+      engagementMode: res.engagementMode || finalMode,
+      ...(fallbackTriggered ? { fallbackTriggered: true } : {}),
+      color,
+      tweetText: text,
+      tweetId: res.tweetId,
+      tweetUrl: res.url,
+      status,
+      errorMessage,
+      contextId: context.id,
+      contextName: context.name,
+    } as const;
+    s.logs.addLog(logEntry);
+
+    return { success: res.success, result: res, log: logEntry, context };
+  };
+
+  return { executeDrop };
+};
+
+export type DropService = ReturnType<typeof createDropService>;
+
+export const dropService: DropService = createDropService({
+  services,
+  postColorTweet,
+  resolveTemplateText,
+});

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext.js';
-import { ShieldAlert, LogIn, Lock, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { ShieldAlert, Lock, AlertTriangle } from 'lucide-react';
 
 export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading, isAuthorized, signIn, signOut, authorizedEmail } = useAuth();
@@ -38,7 +38,8 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
             <div className="flex items-start gap-2.5">
               <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
               <div className="text-xs text-neutral-300 leading-relaxed">
-                This console is locked behind Google Authentication. Access is strictly whitelisted for:
+                This console is locked behind Google Authentication. Access is strictly whitelisted
+                for:
                 <div className="mt-1 font-mono font-medium text-indigo-400 bg-neutral-900 px-2 py-1 rounded inline-block">
                   {authorizedEmail}
                 </div>
@@ -108,7 +109,8 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
           <h2 className="text-lg font-bold text-neutral-100 mb-1">Access Denied</h2>
           <p className="text-xs text-neutral-400 mb-4">
-            You are signed in as <span className="font-mono text-neutral-200">{user.email}</span>, which is not authorized to manage this bot.
+            You are signed in as <span className="font-mono text-neutral-200">{user.email}</span>,
+            which is not authorized to manage this bot.
           </p>
 
           <div className="p-3 rounded-lg bg-neutral-950/80 border border-neutral-800 text-xs text-neutral-400 mb-6 text-left">

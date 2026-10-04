@@ -1,11 +1,26 @@
 import React, { useState } from 'react';
-import { Sun, Moon, RefreshCw, Send, Layers, MessageSquare, Clock, Target, Sparkles } from 'lucide-react';
+import {
+  Sun,
+  Moon,
+  RefreshCw,
+  Send,
+  Layers,
+  MessageSquare,
+  Clock,
+  Target,
+  Sparkles,
+} from 'lucide-react';
 import { QueueSlot, ColorData, TweetContext } from '../types.js';
+import { formatHHmm12h, tzAbbreviation } from '../../shared/time.js';
 
 interface QueueViewerProps {
   queue: QueueSlot[];
   onRerollSlot: (slotId: string) => void;
-  onPostNow: (color: ColorData, slotType: 'morning' | 'evening' | 'manual') => void;
+  onPostNow: (
+    color: ColorData,
+    slotType: 'morning' | 'evening' | 'manual',
+    slot: QueueSlot,
+  ) => void;
   isPosting: boolean;
   contexts?: TweetContext[];
   activeContextId?: string;
@@ -25,7 +40,10 @@ export const QueueViewer: React.FC<QueueViewerProps> = ({
 }) => {
   const [isRegenerating, setIsRegenerating] = useState(false);
 
-  const activeContext = contexts.find(c => c.id === activeContextId) || contexts[0];
+  const activeContext = contexts.find((c) => c.id === activeContextId) || contexts[0];
+
+  const queueTz = (slot: QueueSlot) =>
+    (contexts.find((c) => c.id === slot.contextId) || activeContext)?.schedule?.timezone;
 
   const handleRegenerate = async () => {
     if (!onRegenerateQueue) return;
@@ -40,17 +58,17 @@ export const QueueViewer: React.FC<QueueViewerProps> = ({
   const cadenceLabel = activeContext
     ? activeContext.schedule?.mode === 'interval'
       ? `Every ${activeContext.schedule.intervalMinutes}m`
-      : `Daily at ${(activeContext.schedule?.scheduleTimes || ['06:00', '18:00']).join(', ')} (${activeContext.schedule?.timezone || 'America/Denver'})`
+      : `Daily at ${(activeContext.schedule?.scheduleTimes || ['06:00', '18:00']).map(formatHHmm12h).join(', ')} (${tzAbbreviation(new Date(), activeContext.schedule?.timezone)})`
     : 'Twice Daily Cadence';
 
   const modeLabel = activeContext
     ? activeContext.engagementMode === 'quote'
       ? 'Quote Tweet'
       : activeContext.engagementMode === 'standalone'
-      ? 'Timeline Drop'
-      : activeContext.replyTargetMode === 'last_comment'
-      ? 'Cascading Chain Reply'
-      : 'Direct Reply (Root)'
+        ? 'Timeline Drop'
+        : activeContext.replyTargetMode === 'last_comment'
+          ? 'Cascading Chain Reply'
+          : 'Direct Reply (Root)'
     : 'Direct Reply';
 
   return (
@@ -71,7 +89,11 @@ export const QueueViewer: React.FC<QueueViewerProps> = ({
                   className="bg-transparent font-medium text-neutral-900 dark:text-neutral-100 focus:outline-none cursor-pointer pr-1 text-xs"
                 >
                   {contexts.map((c) => (
-                    <option key={c.id} value={c.id} className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100">
+                    <option
+                      key={c.id}
+                      value={c.id}
+                      className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100"
+                    >
                       {c.name}
                     </option>
                   ))}
@@ -80,7 +102,8 @@ export const QueueViewer: React.FC<QueueViewerProps> = ({
             )}
           </div>
           <p className="text-sm text-neutral-500 mt-1">
-            Any save or edit to a campaign automatically clears and regenerates its 14 upcoming slots using the updated template &amp; schedule.
+            Any save or edit to a campaign automatically clears and regenerates its 14 upcoming
+            slots using the updated template &amp; schedule.
           </p>
         </div>
 
@@ -113,24 +136,37 @@ export const QueueViewer: React.FC<QueueViewerProps> = ({
             <div className="flex items-center gap-1.5 font-semibold text-neutral-900 dark:text-neutral-100">
               <Target className="w-3.5 h-3.5 text-indigo-500" />
               <span>Target:</span>
-              <span className="font-mono text-indigo-600 dark:text-indigo-400">#{activeContext.targetTweetId}</span>
+              <span className="font-mono text-indigo-600 dark:text-indigo-400">
+                #{activeContext.targetTweetId}
+              </span>
             </div>
             <span className="text-neutral-300 dark:text-neutral-700">·</span>
             <div className="flex items-center gap-1.5 text-neutral-600 dark:text-neutral-400">
               <MessageSquare className="w-3.5 h-3.5 text-blue-500" />
-              <span>Mode: <strong className="text-neutral-800 dark:text-neutral-200">{modeLabel}</strong></span>
+              <span>
+                Mode:{' '}
+                <strong className="text-neutral-800 dark:text-neutral-200">{modeLabel}</strong>
+              </span>
             </div>
             <span className="text-neutral-300 dark:text-neutral-700">·</span>
             <div className="flex items-center gap-1.5 text-neutral-600 dark:text-neutral-400">
               <Clock className="w-3.5 h-3.5 text-emerald-500" />
-              <span>Schedule: <strong className="text-neutral-800 dark:text-neutral-200 font-mono">{cadenceLabel}</strong></span>
+              <span>
+                Schedule:{' '}
+                <strong className="text-neutral-800 dark:text-neutral-200 font-mono">
+                  {cadenceLabel}
+                </strong>
+              </span>
             </div>
           </div>
 
           <div className="flex items-center gap-2 min-w-0 bg-neutral-50 dark:bg-neutral-800/70 px-3 py-1.5 rounded-lg border border-neutral-200/70 dark:border-neutral-700/70">
             <Sparkles className="w-3.5 h-3.5 text-purple-500 shrink-0" />
             <span className="text-neutral-500 shrink-0">Active Template:</span>
-            <span className="font-mono text-neutral-800 dark:text-neutral-200 truncate max-w-md" title={activeContext.template}>
+            <span
+              className="font-mono text-neutral-800 dark:text-neutral-200 truncate max-w-md"
+              title={activeContext.template}
+            >
               {activeContext.template}
             </span>
           </div>
@@ -142,8 +178,14 @@ export const QueueViewer: React.FC<QueueViewerProps> = ({
         {queue.map((slot, idx) => {
           const isMorning = slot.slotType === 'morning';
           const dateObj = new Date(slot.dateStr + 'T12:00:00');
-          const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-          const previewMessage = slot.previewText || `${slot.color.colorPick || slot.color.name} ${slot.color.weatherDesc || slot.color.mood} #eternal #colors`;
+          const dayName = dateObj.toLocaleDateString('en-US', {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric',
+          });
+          const previewMessage =
+            slot.previewText ||
+            `${slot.color.colorPick || slot.color.name} ${slot.color.weatherDesc || slot.color.mood} #eternal #colors`;
 
           return (
             <div
@@ -159,18 +201,30 @@ export const QueueViewer: React.FC<QueueViewerProps> = ({
                   <span
                     className="px-2 py-0.5 text-[11px] font-medium rounded-md shadow-xs backdrop-blur-md flex items-center gap-1 font-mono"
                     style={{
-                      backgroundColor: slot.color.contrastText === '#000000' ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.5)',
+                      backgroundColor:
+                        slot.color.contrastText === '#000000'
+                          ? 'rgba(255,255,255,0.85)'
+                          : 'rgba(0,0,0,0.5)',
                       color: slot.color.contrastText === '#000000' ? '#111' : '#fff',
                     }}
                   >
-                    {isMorning ? <Sun className="w-3 h-3 text-amber-500" /> : <Moon className="w-3 h-3 text-indigo-400" />}
-                    <span>#{idx + 1} · {slot.timeSlot}</span>
+                    {isMorning ? (
+                      <Sun className="w-3 h-3 text-amber-500" />
+                    ) : (
+                      <Moon className="w-3 h-3 text-indigo-400" />
+                    )}
+                    <span>
+                      #{idx + 1} · {slot.timeSlot}
+                    </span>
                   </span>
 
                   <span
                     className="px-2 py-0.5 text-[11px] font-mono font-bold rounded-md shadow-xs backdrop-blur-md"
                     style={{
-                      backgroundColor: slot.color.contrastText === '#000000' ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.5)',
+                      backgroundColor:
+                        slot.color.contrastText === '#000000'
+                          ? 'rgba(255,255,255,0.85)'
+                          : 'rgba(0,0,0,0.5)',
                       color: slot.color.contrastText === '#000000' ? '#111' : '#fff',
                     }}
                   >
@@ -189,9 +243,11 @@ export const QueueViewer: React.FC<QueueViewerProps> = ({
               <div className="p-3.5 space-y-3 flex-1 flex flex-col justify-between text-xs">
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-neutral-400 text-[11px]">
-                    <span className="font-medium text-neutral-700 dark:text-neutral-300">{dayName}</span>
+                    <span className="font-medium text-neutral-700 dark:text-neutral-300">
+                      {dayName}
+                    </span>
                     <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300">
-                      {slot.timeSlot} MST
+                      {formatHHmm12h(slot.timeSlot)} {tzAbbreviation(new Date(), queueTz(slot))}
                     </span>
                   </div>
 
@@ -201,7 +257,10 @@ export const QueueViewer: React.FC<QueueViewerProps> = ({
                       <span>Queued Message</span>
                       {slot.targetTweetId && <span>→ #{slot.targetTweetId.slice(0, 6)}…</span>}
                     </div>
-                    <p className="text-neutral-800 dark:text-neutral-200 text-[11px] font-mono leading-snug line-clamp-3 break-words" title={previewMessage}>
+                    <p
+                      className="text-neutral-800 dark:text-neutral-200 text-[11px] font-mono leading-snug line-clamp-3 break-words"
+                      title={previewMessage}
+                    >
                       {previewMessage}
                     </p>
                   </div>
@@ -209,7 +268,10 @@ export const QueueViewer: React.FC<QueueViewerProps> = ({
 
                 {/* Harmonious companion preview pills */}
                 <div className="flex items-center gap-1 pt-1">
-                  <span className="w-3 h-3 rounded-full border border-neutral-300 dark:border-neutral-700" style={{ backgroundColor: slot.color.hex }} />
+                  <span
+                    className="w-3 h-3 rounded-full border border-neutral-300 dark:border-neutral-700"
+                    style={{ backgroundColor: slot.color.hex }}
+                  />
                   {slot.color.companions.slice(0, 3).map((comp, cIdx) => (
                     <span
                       key={cIdx}
@@ -235,7 +297,7 @@ export const QueueViewer: React.FC<QueueViewerProps> = ({
                   </button>
 
                   <button
-                    onClick={() => onPostNow(slot.color, slot.slotType)}
+                    onClick={() => onPostNow(slot.color, slot.slotType, slot)}
                     disabled={isPosting}
                     className="py-1.5 px-2.5 text-xs font-medium text-white bg-neutral-900 hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200 rounded-md transition-colors flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
                     title="Send this color reply immediately"
