@@ -5,6 +5,7 @@
  */
 
 import { auth, logoutUser } from '../lib/firebase.js';
+import { DEV_AUTH_BYPASS } from '../lib/devAuth.js';
 import { toast } from '../components/ui/toastStore.js';
 
 export class ApiError extends Error {
@@ -32,7 +33,8 @@ async function buildHeaders(hasBody: boolean): Promise<Record<string, string>> {
   if (hasBody) {
     headers['Content-Type'] = 'application/json';
   }
-  const token = await auth.currentUser?.getIdToken();
+  // Dev auth bypass: the server runs with AUTH_DISABLED, so never send a token.
+  const token = DEV_AUTH_BYPASS ? undefined : await auth.currentUser?.getIdToken();
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }

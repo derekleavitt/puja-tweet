@@ -7,6 +7,7 @@ import {
   logoutUser,
   AUTHORIZED_EMAIL,
 } from '../lib/firebase.js';
+import { DEV_AUTH_BYPASS, devOwnerUser } from '../lib/devAuth.js';
 
 interface AuthContextType {
   user: User | null;
@@ -27,10 +28,11 @@ const AuthContext = createContext<AuthContextType>({
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [user, setUser] = useState<User | null>(DEV_AUTH_BYPASS ? devOwnerUser() : null);
+  const [loading, setLoading] = useState<boolean>(!DEV_AUTH_BYPASS);
 
   useEffect(() => {
+    if (DEV_AUTH_BYPASS) return;
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setLoading(false);
