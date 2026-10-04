@@ -34,64 +34,67 @@ export const CardFrequency: React.FC<CardFrequencyProps> = ({
   context: ctx,
   countdown,
   onUpdate,
-}) => (
-  <div className="p-2.5 rounded-lg bg-neutral-50 dark:bg-neutral-800/40 border border-neutral-200/80 dark:border-neutral-700/60 space-y-2 text-xs">
-    <div className="flex items-center justify-between">
-      <div className="flex items-center gap-1.5 text-neutral-700 dark:text-neutral-200 font-medium">
-        <Clock className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-        <span>Campaign Frequency:</span>
-        <span className="text-indigo-600 dark:text-indigo-400 font-mono text-[11px]">
-          {ctx.schedule.mode === 'interval'
-            ? `Every ${ctx.schedule.intervalMinutes}m`
-            : `${(ctx.schedule.scheduleTimes || ['06:00', '18:00']).map(formatHHmm12h).join(', ')} ${tzAbbreviation(new Date(), ctx.schedule.timezone)}`}
-        </span>
+}) => {
+  const fixedTimes = ctx.schedule.scheduleTimes || [];
+  const zone = tzAbbreviation(new Date(), ctx.schedule.timezone);
+  const fixedLabel = fixedTimes.length > 0 ? fixedTimes.map(formatHHmm12h).join(' / ') : 'Fixed';
+  return (
+    <div className="p-2.5 rounded-lg bg-neutral-50 dark:bg-neutral-800/40 border border-neutral-200/80 dark:border-neutral-700/60 space-y-2 text-xs">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5 text-neutral-700 dark:text-neutral-200 font-medium">
+          <Clock className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+          <span>Campaign Frequency:</span>
+          <span className="text-indigo-600 dark:text-indigo-400 font-mono text-[11px]">
+            {ctx.schedule.mode === 'interval'
+              ? `Every ${ctx.schedule.intervalMinutes}m`
+              : `${fixedTimes.map(formatHHmm12h).join(', ')} ${zone}`}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1 text-[11px] font-mono text-neutral-500">
+          <span>Next:</span>
+          <span className="font-semibold text-neutral-800 dark:text-neutral-200">
+            {ctx.enabled ? countdown || 'Calculating...' : 'Paused'}
+          </span>
+        </div>
       </div>
 
-      <div className="flex items-center gap-1 text-[11px] font-mono text-neutral-500">
-        <span>Next:</span>
-        <span className="font-semibold text-neutral-800 dark:text-neutral-200">
-          {ctx.enabled ? countdown || 'Calculating...' : 'Paused'}
-        </span>
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {QUICK_PRESETS.map((preset) => {
+          const isSelected =
+            ctx.schedule.mode === 'interval' && ctx.schedule.intervalMinutes === preset.minutes;
+          return (
+            <button
+              key={preset.label}
+              type="button"
+              onClick={() =>
+                onUpdate({
+                  schedule: { ...ctx.schedule, mode: 'interval', intervalMinutes: preset.minutes },
+                })
+              }
+              className={`${CHIP_BASE} ${isSelected ? CHIP_ON : CHIP_OFF}`}
+            >
+              {preset.label}
+            </button>
+          );
+        })}
+
+        <button
+          type="button"
+          onClick={() =>
+            onUpdate({
+              schedule: {
+                ...ctx.schedule,
+                mode: 'fixed_times',
+              },
+            })
+          }
+          className={`${CHIP_BASE} ${ctx.schedule.mode === 'fixed_times' ? CHIP_ON : CHIP_OFF}`}
+          title={`Post daily at ${fixedLabel} ${zone} (this campaign's fixed clock times)`}
+        >
+          {fixedLabel}
+        </button>
       </div>
     </div>
-
-    <div className="flex items-center gap-1.5 flex-wrap">
-      {QUICK_PRESETS.map((preset) => {
-        const isSelected =
-          ctx.schedule.mode === 'interval' && ctx.schedule.intervalMinutes === preset.minutes;
-        return (
-          <button
-            key={preset.label}
-            type="button"
-            onClick={() =>
-              onUpdate({
-                schedule: { ...ctx.schedule, mode: 'interval', intervalMinutes: preset.minutes },
-              })
-            }
-            className={`${CHIP_BASE} ${isSelected ? CHIP_ON : CHIP_OFF}`}
-          >
-            {preset.label}
-          </button>
-        );
-      })}
-
-      <button
-        type="button"
-        onClick={() =>
-          onUpdate({
-            schedule: {
-              ...ctx.schedule,
-              mode: 'fixed_times',
-              scheduleTimes: ['06:00', '18:00'],
-              timezone: ctx.schedule.timezone || 'America/Denver',
-            },
-          })
-        }
-        className={`${CHIP_BASE} ${ctx.schedule.mode === 'fixed_times' ? CHIP_ON : CHIP_OFF}`}
-        title="Post at 6:00 AM & 6:00 PM in the campaign timezone"
-      >
-        6am/6pm
-      </button>
-    </div>
-  </div>
-);
+  );
+};
