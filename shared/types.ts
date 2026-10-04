@@ -47,6 +47,8 @@ export interface TweetContext {
   lastPostedTimestamp?: number;
   currentJitterMs?: number;
   lastPostedSlot?: string;
+  /** Armed fixed-time slot waiting out its jitter; persisted so a restart still fires it once. */
+  pendingFire?: PendingFire;
   consecutiveErrors?: number;
   /** Set when the circuit breaker disabled this campaign (cleared on resume). */
   autoPausedReason?: string;
@@ -192,4 +194,12 @@ export interface QueueSlot {
 /** AI availability fields on `GET /api/status` (`geminiConfigured` is false when GEMINI_API_KEY is unset). */
 export interface AiStatus {
   geminiConfigured?: boolean;
+}
+
+/** A fixed-time slot that was reached and is waiting (jitter / anti-burst) to fire. */
+export interface PendingFire {
+  slotKey: string;
+  slotType: 'morning' | 'evening';
+  matchedTime: string;
+  fireAt: number;
 }

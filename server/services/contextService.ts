@@ -6,7 +6,7 @@ import { DEFAULT_TWEET_TEMPLATE } from '../colorEngine.js';
 import { HttpError } from '../middleware/error.js';
 import { extractTweetId } from '../../shared/tweetId.js';
 import { getDefaultTargetTweetId } from '../store/defaults.js';
-import type { TweetContext, TweetContextSchedule } from '../../shared/types.js';
+import type { PendingFire, TweetContext, TweetContextSchedule } from '../../shared/types.js';
 import {
   generateJitterForContext,
   resolveLastPostedTweetId,
@@ -208,6 +208,14 @@ export class ContextService {
     const ctx = this.sm.getContext(contextId);
     if (!ctx) return;
     ctx.lastPostedSlot = slotKey;
+    this.sm.persist();
+  }
+
+  /** Persists (or clears, with undefined) the armed fixed-time fire so restarts don't lose it. */
+  setContextPendingFire(contextId: string, pending: PendingFire | undefined) {
+    const ctx = this.sm.getContext(contextId);
+    if (!ctx) return;
+    ctx.pendingFire = pending;
     this.sm.persist();
   }
 
