@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Save, Check, ExternalLink, RefreshCw, Clock, Repeat, Globe, Key, ShieldCheck, Sparkles, UserCheck, Target, Link2, RotateCcw } from 'lucide-react';
 import { BotSettings } from '../types.js';
-import { extractTweetId } from './TargetTweetEditor.js';
+import { extractTweetId } from '../../shared/tweetId.js';
+import { TEMPLATE_TOKENS } from '../../shared/template/substitute.js';
 import { previewTemplate, getWebhookUrl, rotateWebhookSecret } from '../api/endpoints.js';
 
 interface SettingsPanelProps {
@@ -622,19 +623,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
                 </button>
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {[
-                  '{color_pick}',
-                  '{weather_desc}',
-                  '{weather_tweet}',
-                  '{time_tag}',
-                  '{color_name}',
-                  '{hex}',
-                  '{rgb}',
-                  '{hsl}',
-                  '{cmyk}',
-                  '{mood}',
-                  '{swatch_bar}',
-                ].map((token) => (
+                {TEMPLATE_TOKENS.map((token) => (
                   <button
                     type="button"
                     key={token}

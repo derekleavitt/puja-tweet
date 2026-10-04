@@ -3,6 +3,8 @@ import { Sun, Moon, Shuffle, Send, ExternalLink, Check, Copy, AlertCircle, Arrow
 import { ColorData, BotSettings, TweetContext } from '../types.js';
 import { TargetTweetEditor } from './TargetTweetEditor.js';
 import { previewTemplate } from '../api/endpoints.js';
+import { substituteTemplate } from '../../shared/template/substitute.js';
+import { hasAgentTag as templateHasAgentTag, hasHistoryTag as templateHasHistoryTag } from '../../shared/template/agentTags.js';
 
 interface LiveStudioProps {
   color: ColorData | null;
@@ -55,31 +57,17 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
 
   const slotLabel = selectedSlot === 'morning' ? '6:00 AM' : selectedSlot === 'evening' ? '6:00 PM' : 'Live Drop';
 
-  const hasAgentTag = /<agent>/i.test(settings.template);
-  const hasHistoryTag = /<history>/i.test(settings.template);
+  const hasAgentTag = templateHasAgentTag(settings.template);
+  const hasHistoryTag = templateHasHistoryTag(settings.template);
 
   const [aiPreviewText, setAiPreviewText] = useState<string>('');
   const [isGeneratingAi, setIsGeneratingAi] = useState<boolean>(false);
 
   // Construct Tweet text based on settings template (fallback / base)
-  const colorPick = color.colorPick || color.name;
-  const weatherDesc = color.weatherDesc || 'warming crisp morning air';
-  const weatherTweet = `${colorPick} ${weatherDesc} #eternal #colors`;
-
-  const staticTweetText = settings.template
-    .replace(/{weather_tweet}/g, weatherTweet)
-    .replace(/{color_pick}/g, colorPick)
-    .replace(/{weather_desc}/g, weatherDesc)
-    .replace(/{weather_description}/g, weatherDesc)
-    .replace(/{time_tag}/g, slotLabel)
-    .replace(/{color_name}/g, color.name)
-    .replace(/{hex}/g, color.hex)
-    .replace(/{rgb}/g, `${color.rgb.r}, ${color.rgb.g}, ${color.rgb.b}`)
-    .replace(/{hsl}/g, `${color.hsl.h}°, ${color.hsl.s}%, ${color.hsl.l}%`)
-    .replace(/{cmyk}/g, `C:${color.cmyk.c}% M:${color.cmyk.m}% Y:${color.cmyk.y}% K:${color.cmyk.k}%`)
-    .replace(/{mood}/g, color.mood)
-    .replace(/{swatch_bar}/g, color.swatchBar)
-    .replace(/{companions}/g, color.companions.join(' '));
+  const staticTweetText = substituteTemplate(settings.template, color, {
+    slotLabel,
+    fallbackWeatherDesc: 'warming crisp morning air',
+  });
 
   const fetchAiPreview = useCallback(async () => {
     if (!hasAgentTag) return;

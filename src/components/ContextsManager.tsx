@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { TweetContext, TweetContextSchedule } from '../types.js';
 import { previewTemplate } from '../api/endpoints.js';
+import { extractTweetId } from '../../shared/tweetId.js';
 
 interface ContextsManagerProps {
   contexts: TweetContext[];
@@ -65,15 +66,6 @@ const INTERVAL_PRESETS = [
   { label: 'Every 12 hours', minutes: 720 },
   { label: 'Every 24 hours', minutes: 1440 },
 ];
-
-export function extractTweetId(input: string): string | null {
-  const trimmed = input.trim();
-  const urlMatch = trimmed.match(/(?:twitter\.com|x\.com)\/[^/]+\/status\/(\d+)/i);
-  if (urlMatch && urlMatch[1]) return urlMatch[1];
-  const digitMatch = trimmed.match(/\b\d{8,25}\b/);
-  if (digitMatch) return digitMatch[0];
-  return null;
-}
 
 export const ContextsManager: React.FC<ContextsManagerProps> = ({
   contexts,
