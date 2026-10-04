@@ -105,7 +105,7 @@ class StorageService {
     if (!fs.existsSync(DATA_DIR)) {
       try {
         fs.mkdirSync(DATA_DIR, { recursive: true });
-      } catch (e) {
+      } catch {
         // ignore
       }
     }
@@ -1025,8 +1025,8 @@ class StorageService {
       const intervalMins = Math.max(1, ctx.schedule.intervalMinutes || 15);
       const futureDate = new Date(baseTimeMs + (slotIndex + 1) * intervalMins * 60 * 1000);
       let dateStr = futureDate.toISOString().split('T')[0];
-      let timeSlot = '06:00';
-      let isMorning = true;
+      let timeSlot: string;
+      let isMorning: boolean;
 
       try {
         const parts = new Intl.DateTimeFormat('en-CA', {

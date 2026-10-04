@@ -40,7 +40,25 @@ interface LiveStudioProps {
   onUpdateContext?: (id: string, updates: Partial<TweetContext>) => Promise<void>;
 }
 
-export const LiveStudio: React.FC<LiveStudioProps> = ({
+type LiveStudioReadyProps = Omit<LiveStudioProps, 'color'> & { color: ColorData };
+
+/**
+ * Loading gate: the studio body owns many hooks, so the "no color yet" state is rendered here
+ * (before the hooks run) rather than as an early return in the middle of the body.
+ */
+export const LiveStudio: React.FC<LiveStudioProps> = ({ color, ...props }) => {
+  if (!color) {
+    return (
+      <div className="p-12 text-center text-neutral-500">
+        <div className="w-8 h-8 mx-auto mb-3 rounded-full border-2 border-neutral-300 border-t-neutral-800 animate-spin" />
+        <p>Loading Chroma Engine...</p>
+      </div>
+    );
+  }
+  return <LiveStudioReady color={color} {...props} />;
+};
+
+const LiveStudioReady: React.FC<LiveStudioReadyProps> = ({
   color,
   onGenerateColor,
   onPostNow,
@@ -60,15 +78,6 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   const replyTargetMode =
     currentContext?.replyTargetMode || settings.replyTargetMode || 'original_post';
   const lastPostedTweetId = currentContext?.lastPostedTweetId || settings.lastPostedTweetId;
-
-  if (!color) {
-    return (
-      <div className="p-12 text-center text-neutral-500">
-        <div className="w-8 h-8 mx-auto mb-3 rounded-full border-2 border-neutral-300 border-t-neutral-800 animate-spin" />
-        <p>Loading Chroma Engine...</p>
-      </div>
-    );
-  }
 
   const copyToClipboard = (text: string, fieldName: string) => {
     navigator.clipboard.writeText(text);

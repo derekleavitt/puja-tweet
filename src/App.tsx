@@ -4,7 +4,7 @@
  * Secured behind Google Authentication & synced with Cloud Firestore.
  */
 
-import React, { useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { Header } from './components/Header.js';
 import { StatusBar } from './components/StatusBar.js';
 import { LiveStudio } from './components/LiveStudio.js';
@@ -137,8 +137,6 @@ function ChromaBotDashboard() {
         targetTweetId={settings.targetTweetId}
         schedulerEnabled={settings.schedulerEnabled}
         onToggleScheduler={handleToggleScheduler}
-        timezone={settings.timezone}
-        scheduleTimes={settings.scheduleTimes}
         settings={settings}
         activeContext={activeContext}
         onChangeFrequency={async (mode, minutes) => {

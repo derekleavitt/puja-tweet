@@ -4,17 +4,13 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock,
-  ExternalLink,
   Flame,
-  HelpCircle,
   Info,
   RefreshCw,
   ShieldAlert,
   X,
   Zap,
   DollarSign,
-  Layers,
-  MessageSquare,
   Quote,
 } from 'lucide-react';
 import { RateLimitTelemetry, CooldownState } from '../types.js';

@@ -8,7 +8,6 @@ import {
   Repeat,
   Globe,
   Key,
-  ShieldCheck,
   Sparkles,
   UserCheck,
   Target,
@@ -95,7 +94,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
   };
 
   const hasAgentTag = /<agent>/i.test(template);
-  const hasHistoryTag = /<history>/i.test(template);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

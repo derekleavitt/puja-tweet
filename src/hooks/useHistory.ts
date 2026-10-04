@@ -15,7 +15,7 @@ export function useHistory() {
     try {
       // 1. Fetch server logs
       const data = await getHistory();
-      let combinedLogs: PostLog[] = data?.logs || [];
+      const combinedLogs: PostLog[] = data?.logs || [];
 
       // 2. Fetch firestore logs if present
       const cloudLogs = await loadFirestoreLogs();

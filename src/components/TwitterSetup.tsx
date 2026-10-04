@@ -7,7 +7,6 @@ import {
   RefreshCw,
   ShieldCheck,
   Check,
-  Info,
   Sparkles,
   Shield,
 } from 'lucide-react';

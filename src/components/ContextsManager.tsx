@@ -12,21 +12,18 @@ import {
   Clock,
   Check,
   AlertCircle,
-  ShieldAlert,
   Flame,
   Globe,
   Sliders,
   X,
-  Repeat,
   Link2,
-  GitFork,
   RotateCcw,
   Target,
   MessageSquare,
   Quote,
   History,
 } from 'lucide-react';
-import { TweetContext, TweetContextSchedule } from '../types.js';
+import { TweetContext } from '../types.js';
 import { previewTemplate } from '../api/endpoints.js';
 import { extractTweetId } from '../../shared/tweetId.js';
 

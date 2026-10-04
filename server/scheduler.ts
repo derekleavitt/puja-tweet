@@ -7,7 +7,7 @@
  *  - Dispatches targeted replies to each context's specific targetTweetId.
  */
 
-import { formatTweetText, generateColor, ColorData } from './colorEngine.js';
+import { ColorData } from './colorEngine.js';
 import { resolveTemplateText } from './templateAgent.js';
 import { HttpError } from './middleware/error.js';
 import { storage, TweetContext } from './storage.js';
@@ -420,7 +420,7 @@ class SchedulerService {
       .sort((a, b) => a.secondsOfDay - b.secondsOfDay);
 
     let nextSlot = parsedSlots.find((s) => s.secondsOfDay > curSecondsOfDay);
-    let secondsUntil = 0;
+    let secondsUntil: number;
 
     if (nextSlot) {
       secondsUntil = nextSlot.secondsOfDay - curSecondsOfDay;
