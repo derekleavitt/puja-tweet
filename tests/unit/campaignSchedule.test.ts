@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { invalidTimes, normalizeHHmm, parseTimesList } from '../../src/features/campaigns/schedule.js';
+import {
+  invalidTimes,
+  normalizeHHmm,
+  parseTimesList,
+} from '../../src/features/campaigns/schedule.js';
 
 describe('normalizeHHmm', () => {
   it('pads and validates', () => {
