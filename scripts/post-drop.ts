@@ -3,6 +3,7 @@ import fs from 'fs';
 import { generateColor, formatTweetText } from '../server/colorEngine.js';
 import { postColorTweet } from '../server/twitterClient.js';
 import { storage } from '../server/storage.js';
+import { hourInZone, resolveTimezone, slotTypeForHour } from '../shared/time.js';
 
 dotenv.config();
 
@@ -43,15 +44,13 @@ function parseArgs(): CliOptions {
 }
 
 function determineSlot(): 'morning' | 'evening' {
-  // Use Mountain Standard Time (MST, UTC-7)
-  const now = new Date();
-  const mstHour = (now.getUTCHours() - 7 + 24) % 24;
-  return mstHour < 12 ? 'morning' : 'evening';
+  // Derive the slot from the local hour in SCHEDULE_TIMEZONE (DST-aware, default America/Denver)
+  return slotTypeForHour(hourInZone(new Date(), process.env.SCHEDULE_TIMEZONE));
 }
 
 /**
  * Window check for `--slot auto` live runs. Actions has no persistent state, so we can only verify
- * that "now" (America/Denver) is within WINDOW_MINUTES after a SCHEDULE_TIMES entry. Limitation: this
+ * that "now" (SCHEDULE_TIMEZONE, default America/Denver) is within WINDOW_MINUTES after a SCHEDULE_TIMES entry. Limitation: this
  * does not detect a slot that was already posted inside the window; use --force to bypass.
  */
 const WINDOW_MINUTES = 60;
@@ -59,7 +58,7 @@ const WINDOW_MINUTES = 60;
 function isWithinScheduleWindow(): boolean {
   const times = (process.env.SCHEDULE_TIMES || '06:00,18:00').split(',').map((s) => s.trim());
   const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'America/Denver',
+    timeZone: resolveTimezone(process.env.SCHEDULE_TIMEZONE),
     hour: '2-digit',
     minute: '2-digit',
     hourCycle: 'h23',
