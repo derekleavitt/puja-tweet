@@ -108,10 +108,6 @@ export const saveCredentials = (creds: unknown) =>
 export const verifyCredentials = () =>
   orBody(apiFetch<Json>('/api/twitter/verify', { method: 'POST' }));
 
-// Export
-export const getExportScript = () =>
-  apiFetch<{ githubActionsYaml: string; nodeScript: string }>('/api/export-script');
-
 // Webhook (admin: the secret is only ever returned by these routes)
 export const getWebhookUrl = () => apiFetch<{ success: boolean; url: string }>('/api/webhook/url');
 export const rotateWebhookSecret = () =>

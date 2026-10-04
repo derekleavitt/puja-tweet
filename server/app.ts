@@ -12,7 +12,6 @@ import { errorHandler } from './middleware/error.js';
 import { createContextsRouter } from './routes/contexts.js';
 import { createCredentialsRouter } from './routes/credentials.js';
 import { createDropsRouter } from './routes/drops.js';
-import { createExportRouter } from './routes/export.js';
 import { createHealthRouter } from './routes/health.js';
 import { createHistoryRouter } from './routes/history.js';
 import { createQueueRouter } from './routes/queue.js';
@@ -55,7 +54,6 @@ export const createApp = (deps: AppDeps) => {
   app.use('/api', createWebhookRouter(deps));
   app.use('/api', createQueueRouter(deps));
   app.use('/api', createHistoryRouter(deps));
-  app.use('/api', createExportRouter(deps));
 
   app.use(errorHandler);
 
