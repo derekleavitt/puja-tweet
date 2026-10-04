@@ -5,7 +5,9 @@ your own machine (or a local Claude Code session) where `gcloud` is installed an
 owner. Nothing here needs a downloaded service-account key.
 
 **Who can log in:** only `the.derek.leavitt@gmail.com`. That is enforced twice: the login screen
-(`src/lib/firebase.ts`) and the server (`AUTHORIZED_EMAILS`, checked on every `/api/*` call).
+(`src/lib/firebase.ts`) and the server (`AUTHORIZED_EMAILS`, checked on every `/api/*` call). Both
+default to `OWNER_EMAIL` in `shared/owner.ts`; override with `VITE_AUTHORIZED_EMAILS` (client, build
+time) and `AUTHORIZED_EMAILS` (server), and update the email in `firestore.rules` to match.
 
 ## 0. Prerequisites
 
@@ -117,6 +119,20 @@ Then open `$APP_URL`, sign in as the.derek.leavitt@gmail.com: the dashboard load
 account sees the "not authorized" screen and gets 403 from the API.
 
 **Safe start:** keep every campaign in dry-run until a dry-run drop looks right in the history tab.
+
+## 6b. Deploy Firestore rules and optional config
+
+```bash
+npx firebase-tools deploy --only firestore:rules   # uses firebase.json + .firebaserc (project hitthehatch)
+```
+
+`firebase.json` targets the named AI Studio database. The rules hard-code the owner email (rules cannot
+read env vars); keep it in sync with `shared/owner.ts`.
+
+Optional env vars: `X_HANDLE` (server; names your X account in error messages, blank = "your account")
+and build-time `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`,
+`VITE_FIREBASE_APP_ID`, `VITE_FIREBASE_FIRESTORE_DATABASE_ID`, which override
+`firebase-applet-config.json` (the fallback). `VITE_*` values are baked into the bundle at build time.
 
 ## 7. Firestore database (for REL-2)
 
