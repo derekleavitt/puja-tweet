@@ -30,4 +30,3 @@ Errors: `{ "success": false, "error": "<message>" }` with a real HTTP status (40
 | POST | `/api/queue/reroll` | Body `{ slotId }`; 400 missing, 404 unknown slot |
 | GET | `/api/history` | `{ logs }` |
 | DELETE | `/api/history` | Clears logs |
-| GET | `/api/export-script` | Standalone GitHub Actions YAML and Node poster |

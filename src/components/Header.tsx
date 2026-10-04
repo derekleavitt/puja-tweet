@@ -10,7 +10,6 @@ import {
   FileText,
   Clock,
   Key,
-  Radio,
   Activity,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.js';
@@ -59,7 +58,6 @@ export const Header: React.FC<HeaderProps> = ({
     { id: 'history', label: 'Logs', icon: FileText },
     { id: 'settings', label: 'Timing', icon: Clock },
     { id: 'credentials', label: 'API Keys', icon: Key },
-    { id: 'export', label: 'Ping', icon: Radio },
   ];
 
   // Close mobile drawer on escape or outside click
