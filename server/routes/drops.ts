@@ -8,7 +8,7 @@ import { generateColor } from '../colorEngine.js';
 import { toHttpError } from '../middleware/error.js';
 import { resolveTemplateText } from '../templateAgent.js';
 
-export const createDropsRouter = ({ storage, scheduler }: AppDeps) => {
+export const createDropsRouter = ({ services, scheduler }: AppDeps) => {
   const router = Router();
 
   const buildPreview = async (
@@ -18,8 +18,8 @@ export const createDropsRouter = ({ storage, scheduler }: AppDeps) => {
     slotType: string | undefined,
   ) => {
     const context = contextId
-      ? storage.getContext(contextId) || storage.getActiveContext()
-      : storage.getActiveContext();
+      ? services.contexts.getContext(contextId) || services.contexts.getActiveContext()
+      : services.contexts.getActiveContext();
     const timeTag =
       slotType === 'morning' ? '6:00 AM' : slotType === 'evening' ? '6:00 PM' : 'Drop';
     const templateToUse = template || context.template;
@@ -29,7 +29,7 @@ export const createDropsRouter = ({ storage, scheduler }: AppDeps) => {
       contextId: context.id,
       targetTweetId: context.targetTweetId,
     });
-    const replyInfo = storage.getEffectiveReplyTargetId(context);
+    const replyInfo = services.contexts.getEffectiveReplyTargetId(context);
 
     return {
       context,

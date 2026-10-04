@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { scheduler } from '../../server/scheduler.js';
-import { storage } from '../../server/storage.js';
+import { services } from '../../server/services/index.js';
 
 afterEach(() => {
   vi.useRealTimers();
@@ -8,7 +8,7 @@ afterEach(() => {
 });
 
 function setup(times: string[], jitterMs: number) {
-  const ctx = storage.updateContext(storage.getActiveContext().id, {
+  const ctx = services.contexts.patchContext(services.contexts.getActiveContext().id, {
     enabled: true,
     schedule: {
       mode: 'fixed_times',

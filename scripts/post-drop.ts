@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import { generateColor, formatTweetText } from '../server/colorEngine.js';
 import { postColorTweet } from '../server/twitterClient.js';
-import { storage } from '../server/storage.js';
+import { services } from '../server/services/index.js';
 import { hourInZone, resolveTimezone, slotTypeForHour } from '../shared/time.js';
 
 dotenv.config();
@@ -86,14 +86,14 @@ async function run() {
   );
   console.log(`🕒 Execution Time (UTC): ${new Date().toISOString()}`);
 
-  const settings = storage.getSettings();
+  const settings = services.settings.getSettings();
   const targetTweetId =
     options.targetTweetId || process.env.TARGET_TWEET_ID || settings.targetTweetId;
   // Safety default: dry run unless live posting is explicitly requested (--live or DRY_RUN=false).
   const isDryRun = options.dryRun ?? process.env.DRY_RUN !== 'false';
 
   // Retrieve Twitter credentials (process.env from GitHub Secrets or store)
-  const creds = storage.getEffectiveCredentials();
+  const creds = services.credentials.getEffectiveCredentials();
 
   const hasOAuth1 = !!(
     creds.apiKey &&
@@ -176,7 +176,7 @@ async function run() {
   }
 
   // Record log in local bot store
-  storage.addLog({
+  services.logs.addLog({
     id: `log_${Date.now()}`,
     timestamp: new Date().toISOString(),
     slotType,
@@ -223,7 +223,9 @@ Hex: ${color.hex} | RGB: ${color.rgb.r}, ${color.rgb.g}, ${color.rgb.b}
   }
 }
 
-run().catch((err) => {
-  console.error('Fatal execution error:', err);
-  process.exit(1);
-});
+run()
+  .then(() => services.flush())
+  .catch((err) => {
+    console.error('Fatal execution error:', err);
+    process.exit(1);
+  });
