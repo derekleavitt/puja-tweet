@@ -33,8 +33,29 @@ export function getGeminiDailyCap(env: NodeJS.ProcessEnv = process.env): number 
   return n > 0 ? n : null;
 }
 
-let counterDay = '';
-let counterCalls = 0;
+/** Per-day (UTC) Gemini call count. */
+export interface GeminiUsage {
+  day: string;
+  calls: number;
+}
+
+/** Where the counter lives; the services layer binds one backed by persisted bot state. */
+export interface GeminiUsageStore {
+  get(): GeminiUsage;
+  set(usage: GeminiUsage): void;
+}
+
+const memoryUsage = (): GeminiUsageStore => {
+  let usage: GeminiUsage = { day: '', calls: 0 };
+  return { get: () => usage, set: (u) => (usage = u) };
+};
+
+let usageStore: GeminiUsageStore = memoryUsage();
+
+/** Routes the daily counter through `store` (persisted across restarts). */
+export function bindGeminiUsage(store: GeminiUsageStore): void {
+  usageStore = store;
+}
 
 /** Reserve one Gemini call against today's (UTC) cap. Returns false when the cap is reached. */
 export function tryConsumeGeminiCall(
@@ -43,16 +64,16 @@ export function tryConsumeGeminiCall(
 ): boolean {
   const cap = getGeminiDailyCap(env);
   const day = now.toISOString().slice(0, 10);
-  if (day !== counterDay) {
-    counterDay = day;
-    counterCalls = 0;
+  let { calls } = usageStore.get();
+  if (usageStore.get().day !== day) calls = 0;
+  if (cap !== null && calls >= cap) {
+    usageStore.set({ day, calls });
+    return false;
   }
-  if (cap !== null && counterCalls >= cap) return false;
-  counterCalls++;
+  usageStore.set({ day, calls: calls + 1 });
   return true;
 }
 
 export function resetGeminiCallCounter(): void {
-  counterDay = '';
-  counterCalls = 0;
+  usageStore.set({ day: '', calls: 0 });
 }

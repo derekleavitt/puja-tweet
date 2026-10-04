@@ -7,6 +7,7 @@
 
 import { getFirestore } from 'firebase-admin/firestore';
 import { firestoreConfig } from '../config.js';
+import { bindGeminiUsage } from '../geminiConfig.js';
 import { getAdminApp } from '../firebaseAdmin.js';
 import { FirestoreStore } from '../store/FirestoreStore.js';
 import { JsonFileStore } from '../store/JsonFileStore.js';
@@ -14,6 +15,7 @@ import { MemoryStore } from '../store/MemoryStore.js';
 import type { Store } from '../store/Store.js';
 import { ContextService } from './contextService.js';
 import { CredentialService } from './credentialService.js';
+import { GeminiUsageService } from './geminiUsageService.js';
 import { LogService } from './logService.js';
 import { QueueService } from './queueService.js';
 import { RateLimitService } from './rateLimitService.js';
@@ -27,6 +29,7 @@ export interface Services {
   settings: SettingsService;
   credentials: CredentialService;
   rateLimit: RateLimitService;
+  geminiUsage: GeminiUsageService;
   /** Resolves once every pending write has reached the store. */
   flush(): Promise<void>;
   /** Synchronously writes any unsaved state (shutdown hook only). */
@@ -50,6 +53,7 @@ export const createServices = async (store: Store): Promise<Services> => {
     settings: new SettingsService(sm, contexts),
     credentials,
     rateLimit: new RateLimitService(sm),
+    geminiUsage: new GeminiUsageService(sm),
     flush: () => sm.flush(),
     flushSync: () => sm.flushSync(),
   };
@@ -77,3 +81,6 @@ const storeFromEnv = (): Store => {
 };
 
 export const services: Services = await createServices(storeFromEnv());
+
+// The running app counts Gemini calls in persisted state so restarts don't reset the daily cap.
+bindGeminiUsage(services.geminiUsage);
