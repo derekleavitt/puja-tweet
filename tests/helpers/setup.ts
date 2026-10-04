@@ -1,6 +1,6 @@
 /**
  * Global test setup: point the JSON store at a throwaway temp dir before any
- * module that imports `server/storage.ts` is loaded, so nothing is written into the repo.
+ * module that imports `server/services/index.ts` is loaded; the services use the in-memory store.
  */
 
 import fs from 'fs';
@@ -10,6 +10,7 @@ import { afterAll } from 'vitest';
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'chromabot-test-'));
 process.env.DATA_DIR = dataDir;
+process.env.STORE = 'memory';
 
 afterAll(() => {
   fs.rmSync(dataDir, { recursive: true, force: true });

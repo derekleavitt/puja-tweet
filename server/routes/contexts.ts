@@ -7,11 +7,11 @@ import { Router } from 'express';
 import type { AppDeps } from '../app.js';
 import { HttpError, toHttpError } from '../middleware/error.js';
 
-export const createContextsRouter = ({ storage, scheduler }: AppDeps) => {
+export const createContextsRouter = ({ services, scheduler }: AppDeps) => {
   const router = Router();
 
   router.param('id', (_req, _res, next, id) => {
-    if (!storage.getContext(id)) {
+    if (!services.contexts.getContext(id)) {
       return next(new HttpError(404, `Context ${id} not found`));
     }
     next();
@@ -19,20 +19,20 @@ export const createContextsRouter = ({ storage, scheduler }: AppDeps) => {
 
   router.get('/contexts', (_req, res) => {
     res.json({
-      contexts: storage.getContexts(),
-      activeContextId: storage.getActiveContext().id,
+      contexts: services.contexts.getContexts(),
+      activeContextId: services.contexts.getActiveContext().id,
       nextPosts: scheduler.getAllNextScheduledPosts(),
     });
   });
 
   router.post('/contexts', (req, res, next) => {
     try {
-      const created = storage.createContext(req.body);
+      const created = services.contexts.createContext(req.body);
       res.json({
         success: true,
         context: created,
-        contexts: storage.getContexts(),
-        queue: storage.getQueue(),
+        contexts: services.contexts.getContexts(),
+        queue: services.queue.getQueue(),
       });
     } catch (err) {
       next(toHttpError(err, 400));
@@ -41,12 +41,12 @@ export const createContextsRouter = ({ storage, scheduler }: AppDeps) => {
 
   router.put('/contexts/:id', (req, res, next) => {
     try {
-      const updated = storage.updateContext(req.params.id, req.body);
+      const updated = services.contexts.updateContext(req.params.id, req.body);
       res.json({
         success: true,
         context: updated,
-        contexts: storage.getContexts(),
-        queue: storage.getQueue(),
+        contexts: services.contexts.getContexts(),
+        queue: services.queue.getQueue(),
       });
     } catch (err) {
       next(toHttpError(err, 400));
@@ -55,12 +55,12 @@ export const createContextsRouter = ({ storage, scheduler }: AppDeps) => {
 
   router.delete('/contexts/:id', (req, res, next) => {
     try {
-      const ok = storage.deleteContext(req.params.id);
+      const ok = services.contexts.deleteContext(req.params.id);
       res.json({
         success: ok,
-        contexts: storage.getContexts(),
-        activeContextId: storage.getActiveContext().id,
-        queue: storage.getQueue(),
+        contexts: services.contexts.getContexts(),
+        activeContextId: services.contexts.getActiveContext().id,
+        queue: services.queue.getQueue(),
       });
     } catch (err) {
       next(toHttpError(err, 400));
@@ -69,12 +69,12 @@ export const createContextsRouter = ({ storage, scheduler }: AppDeps) => {
 
   router.post('/contexts/:id/activate', (req, res, next) => {
     try {
-      const active = storage.setActiveContextId(req.params.id);
+      const active = services.contexts.setActiveContextId(req.params.id);
       res.json({
         success: true,
         activeContext: active,
-        contexts: storage.getContexts(),
-        queue: storage.getQueue(active.id),
+        contexts: services.contexts.getContexts(),
+        queue: services.queue.getQueue(active.id),
       });
     } catch (err) {
       next(toHttpError(err, 400));
@@ -83,12 +83,12 @@ export const createContextsRouter = ({ storage, scheduler }: AppDeps) => {
 
   router.post('/contexts/:id/toggle', (req, res, next) => {
     try {
-      const toggled = storage.toggleContext(req.params.id);
+      const toggled = services.contexts.toggleContext(req.params.id);
       res.json({
         success: true,
         context: toggled,
-        contexts: storage.getContexts(),
-        queue: storage.getQueue(),
+        contexts: services.contexts.getContexts(),
+        queue: services.queue.getQueue(),
       });
     } catch (err) {
       next(toHttpError(err, 400));
@@ -97,12 +97,12 @@ export const createContextsRouter = ({ storage, scheduler }: AppDeps) => {
 
   router.post('/contexts/:id/duplicate', (req, res, next) => {
     try {
-      const duplicated = storage.duplicateContext(req.params.id);
+      const duplicated = services.contexts.duplicateContext(req.params.id);
       res.json({
         success: true,
         context: duplicated,
-        contexts: storage.getContexts(),
-        queue: storage.getQueue(),
+        contexts: services.contexts.getContexts(),
+        queue: services.queue.getQueue(),
       });
     } catch (err) {
       next(toHttpError(err, 400));
@@ -111,12 +111,12 @@ export const createContextsRouter = ({ storage, scheduler }: AppDeps) => {
 
   router.post('/contexts/:id/reset-chain', (req, res, next) => {
     try {
-      const updated = storage.resetContextChain(req.params.id);
+      const updated = services.contexts.resetContextChain(req.params.id);
       res.json({
         success: true,
         context: updated,
-        contexts: storage.getContexts(),
-        queue: storage.getQueue(),
+        contexts: services.contexts.getContexts(),
+        queue: services.queue.getQueue(),
       });
     } catch (err) {
       next(toHttpError(err, 400));
@@ -125,14 +125,14 @@ export const createContextsRouter = ({ storage, scheduler }: AppDeps) => {
 
   router.post('/contexts/:id/clear-history', (req, res, next) => {
     try {
-      const result = storage.clearContextHistory(req.params.id);
+      const result = services.logs.clearContextHistory(req.params.id);
       res.json({
         success: true,
         clearedCount: result.clearedCount,
         context: result.context,
-        contexts: storage.getContexts(),
-        logs: storage.getLogs(),
-        queue: storage.getQueue(),
+        contexts: services.contexts.getContexts(),
+        logs: services.logs.getLogs(),
+        queue: services.queue.getQueue(),
       });
     } catch (err) {
       next(toHttpError(err, 400));
