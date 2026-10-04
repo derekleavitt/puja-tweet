@@ -35,6 +35,8 @@ export const buildSettingsView = (active: TweetContext, stored: BotSettings): Bo
   timezone: active.schedule.timezone,
   schedulerEnabled: active.enabled,
   dryRun: active.dryRun ?? stored.dryRun,
+  globalDryRun: stored.globalDryRun !== false,
+  globalPaused: stored.globalPaused !== false,
   template: active.template,
   themePreference: active.themePreference,
   intervalMode: active.schedule.mode,

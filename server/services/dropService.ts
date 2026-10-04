@@ -18,6 +18,10 @@ export interface ExecuteDropOptions {
   contextId?: string;
   slotType?: 'morning' | 'evening' | 'manual';
   color?: ColorData;
+  /**
+   * Overrides the per-campaign dry-run only. It never overrides the global dry-run switch,
+   * which only the owner can turn off (Settings / `globalDryRun`).
+   */
   forceLive?: boolean;
   /** Exact text to post (e.g. the previewed text); skips template resolution. Still length-checked. */
   text?: string;
@@ -25,7 +29,10 @@ export interface ExecuteDropOptions {
 }
 
 export interface DropDeps {
-  services: Pick<Services, 'contexts' | 'queue' | 'logs' | 'credentials' | 'rateLimit'>;
+  services: Pick<
+    Services,
+    'contexts' | 'queue' | 'logs' | 'credentials' | 'rateLimit' | 'settings'
+  >;
   postColorTweet: typeof postColorTweet;
   resolveTemplateText: typeof resolveTemplateText;
 }
@@ -106,6 +113,11 @@ export const createDropService = (deps: DropDeps) => {
 
   /** Execute a drop for a specific context or the active context. */
   const executeDrop = async (options: ExecuteDropOptions = {}) => {
+    const source = options.source || 'manual';
+    // Global pause stops every scheduled path; manual posting is still allowed.
+    if (source !== 'manual' && s.settings.isGlobalPaused()) {
+      throw new HttpError(409, 'Global pause is on: scheduled drops are stopped');
+    }
     const requested = options.contextId ? s.contexts.getContext(options.contextId) : undefined;
     if (options.contextId && !requested) {
       throw new HttpError(404, `Context ${options.contextId} not found`);
@@ -135,14 +147,15 @@ export const createDropService = (deps: DropDeps) => {
     const chainInfo = s.contexts.getEffectiveReplyTargetId(context);
     const replyToTweetId = engagementMode === 'reply' ? chainInfo.targetTweetId : undefined;
     const quoteTweetId = engagementMode === 'quote' ? context.targetTweetId : undefined;
-    const isDryRun = options.forceLive ? false : (context.dryRun ?? false);
+    const isDryRun =
+      s.settings.isGlobalDryRun() || (options.forceLive ? false : (context.dryRun ?? false));
     const creds = s.credentials.getEffectiveCredentials();
 
     console.log(
       `[Drop] Executing drop for context "${context.name}" (${context.id}) ` +
         `-> Mode: ${engagementMode.toUpperCase()} ` +
         `${describeMode(context, engagementMode, replyToTweetId, chainInfo)}` +
-        `, source: ${options.source || 'manual'}, mode: ${isDryRun ? 'DRY-RUN' : 'LIVE X'}`,
+        `, source: ${source}, mode: ${isDryRun ? 'DRY-RUN' : 'LIVE X'}${s.settings.isGlobalDryRun() ? ' (global dry-run)' : ''}`,
     );
 
     let res = await deps.postColorTweet(

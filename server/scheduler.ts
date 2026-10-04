@@ -88,6 +88,9 @@ class SchedulerService {
   }
 
   private async runTick(generation: number): Promise<'done'> {
+    // 0. Global pause: nothing scheduled runs until the owner resumes.
+    if (services.settings.isGlobalPaused()) return 'done';
+
     const contexts = services.contexts.getContexts().filter((c) => c.enabled);
     if (contexts.length === 0) return 'done';
 

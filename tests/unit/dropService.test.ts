@@ -22,6 +22,7 @@ const configure = (patch: Record<string, unknown>) => {
 
 beforeEach(async () => {
   svc = await createServices(new MemoryStore());
+  svc.settings.updateSettings({ globalDryRun: false, globalPaused: false });
   post.mockReset().mockResolvedValue({ success: true, tweetId: '999', url: 'u' });
   resolveText.mockReset().mockResolvedValue('hello');
 });
@@ -72,6 +73,47 @@ describe('dropService.executeDrop', () => {
 
     await makeDrops().executeDrop({ slotType: 'morning', forceLive: true });
     expect(post.mock.calls[1][2]).toBe(false);
+  });
+
+  describe('global switches', () => {
+    it('defaults to dry-run and paused on a fresh store', async () => {
+      const fresh = await createServices(new MemoryStore());
+      expect(fresh.settings.getSettings()).toMatchObject({
+        globalDryRun: true,
+        globalPaused: true,
+      });
+    });
+
+    it('treats a legacy store without the fields as dry-run and paused', async () => {
+      const store = new MemoryStore();
+      const raw = await store.load();
+      delete (raw.settings as { globalDryRun?: boolean }).globalDryRun;
+      delete (raw.settings as { globalPaused?: boolean }).globalPaused;
+      store.load = async () => raw;
+      const legacy = await createServices(store);
+      expect(legacy.settings.isGlobalDryRun()).toBe(true);
+      expect(legacy.settings.isGlobalPaused()).toBe(true);
+    });
+
+    it('global dry-run simulates a live campaign, even with forceLive', async () => {
+      configure({ dryRun: false });
+      svc.settings.updateSettings({ globalDryRun: true });
+      post.mockResolvedValue({ success: true, simulated: true, tweetId: 'sim' });
+      const out = await makeDrops().executeDrop({ source: 'manual', forceLive: true });
+      expect(post.mock.calls[0][2]).toBe(true);
+      expect(out.log.status).toBe('simulated');
+    });
+
+    it('global pause blocks scheduled sources but not manual posting', async () => {
+      configure({ dryRun: false });
+      svc.settings.updateSettings({ globalPaused: true });
+      for (const source of ['scheduler', 'webhook', 'cli'] as const) {
+        await expect(makeDrops().executeDrop({ source })).rejects.toMatchObject({ status: 409 });
+      }
+      expect(post).not.toHaveBeenCalled();
+      await makeDrops().executeDrop({ source: 'manual' });
+      expect(post).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('sets the global cooldown on a rate-limited live post and logs an error', async () => {
