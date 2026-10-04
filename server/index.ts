@@ -7,7 +7,7 @@ import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { createApp } from './app.js';
-import { config } from './config.js';
+import { config, schedulerConfig } from './config.js';
 import { markSchedulerStarted } from './routes/health.js';
 import { scheduler } from './scheduler.js';
 import { dropService } from './services/dropService.js';
@@ -18,9 +18,15 @@ const rootDir = config.rootDir;
 async function startServer() {
   const app = createApp({ services, scheduler, drops: dropService });
 
-  // Start background multi-context scheduler
-  scheduler.start();
-  markSchedulerStarted();
+  // `services` (imported above) has already loaded state from the store (top-level await), so the
+  // first request, including a cold-start tick, sees persisted state.
+  // Interval mode runs the in-process loop; external mode (Cloud Run) waits for POST /api/cron/tick.
+  if (schedulerConfig.mode === 'interval') {
+    scheduler.start();
+    markSchedulerStarted();
+  } else {
+    console.log('[Scheduler] SCHEDULER_MODE=external: no loop; waiting for POST /api/cron/tick.');
+  }
 
   // Vite or Static files handling
   if (config.isProduction) {

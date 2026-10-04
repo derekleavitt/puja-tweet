@@ -8,9 +8,12 @@ import type { scheduler as schedulerInstance } from './scheduler.js';
 import type { DropService } from './services/dropService.js';
 import type { Services } from './services/index.js';
 import { requireAdmin, type TokenVerifier } from './middleware/auth.js';
+import { schedulerConfig, type SchedulerMode } from './config.js';
 import { errorHandler } from './middleware/error.js';
+import { flushBeforeResponse } from './middleware/flushOnWrite.js';
 import { createContextsRouter } from './routes/contexts.js';
 import { createCredentialsRouter } from './routes/credentials.js';
+import { createCronRouter } from './routes/cron.js';
 import { createDropsRouter } from './routes/drops.js';
 import { createHealthRouter } from './routes/health.js';
 import { createHistoryRouter } from './routes/history.js';
@@ -27,6 +30,12 @@ export interface AppDeps {
   verifyToken?: TokenVerifier;
   authorizedEmails?: string[];
   authDisabled?: boolean;
+  /** Defaults to SCHEDULER_MODE. `external` flushes state before every non-GET response. */
+  schedulerMode?: SchedulerMode;
+  /** Overrides CRON_SECRET ('' = unset, the tick route answers 503). */
+  cronSecret?: string;
+  /** Overrides MAX_DROPS_PER_TICK. */
+  maxDropsPerTick?: number;
 }
 
 export const createApp = (deps: AppDeps) => {
@@ -37,6 +46,13 @@ export const createApp = (deps: AppDeps) => {
   // Public; must stay above any auth middleware
   app.use('/api/health', createHealthRouter());
 
+  if ((deps.schedulerMode ?? schedulerConfig.mode) === 'external') {
+    app.use(
+      '/api',
+      flushBeforeResponse(() => deps.services.flush()),
+    );
+  }
+
   app.use(
     '/api',
     requireAdmin({
@@ -46,6 +62,7 @@ export const createApp = (deps: AppDeps) => {
     }),
   );
 
+  app.use('/api', createCronRouter(deps));
   app.use('/api', createStatusRouter(deps));
   app.use('/api', createContextsRouter(deps));
   app.use('/api', createSettingsRouter(deps));

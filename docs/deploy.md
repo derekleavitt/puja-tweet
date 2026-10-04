@@ -1,13 +1,17 @@
 # Deploying X ChromaBot
 
-X ChromaBot is a single Node process (Express API + built Vite frontend + in-process scheduler).
+X ChromaBot is a single Node process (Express API + built Vite frontend + scheduler, either an in-process
+loop or driven externally through `POST /api/cron/tick`).
 
 ## Constraints (read first)
 
-- **Run exactly one instance, always on.** The scheduler runs inside the server and state is stored in
-  `data/bot-store.json` on local disk. Two instances would double-post, and a scale-to-zero platform
-  would miss scheduled drops. Persistence moves to Firestore in a later ticket; until then, mount a
-  persistent volume at `/app/data` or accept that state resets on redeploy.
+- **Never run more than one instance.** Two instances would double-post. Two supported shapes:
+  - **Scale-to-zero (recommended, Cloud Run):** `SCHEDULER_MODE=external`, `STORE=firestore`,
+    `--min-instances=0 --max-instances=1`. Cloud Scheduler calls `POST /api/cron/tick` every minute
+    with `x-cron-secret`; no background timers run, and state is flushed before each response. The full
+    keyless GitHub Actions + Cloud Scheduler walkthrough is in [gcp-setup.md](gcp-setup.md).
+  - **Always-on:** default `SCHEDULER_MODE=interval` (in-process loop). Needs CPU always allocated and,
+    with `STORE=json`, a persistent volume at `/app/data`.
 - Posting is real. Do not set live X credentials on an environment you are only testing.
 
 ## Run locally
@@ -39,13 +43,18 @@ X ChromaBot is a single Node process (Express API + built Vite frontend + in-pro
 | `TARGET_TWEET_ID` | no | Default target tweet |
 | `SCHEDULE_TIMES`, `SCHEDULE_TIMEZONE` | no | Default posting schedule |
 | `APP_URL` | no | Public URL of the deployment |
+| `SCHEDULER_MODE` | no (`interval`) | `external` for scale-to-zero; see docs/api.md "Serverless mode" |
+| `CRON_SECRET` | with `external` | Secret for `POST /api/cron/tick` |
+| `MAX_DROPS_PER_TICK` | no (5) | Drops per tick |
 
 See `.env.example` for the full list. Set secrets through the platform's secret manager, not the image.
 
 ## Platforms
 
-- **Cloud Run:** `gcloud run deploy chromabot --source . --min-instances=1 --max-instances=1 --no-cpu-throttling`
-  (CPU must stay allocated so the scheduler ticks between requests). Health path: `/api/health`.
+- **Cloud Run (scale-to-zero):** see [gcp-setup.md](gcp-setup.md) (`--min-instances=0 --max-instances=1
+  --cpu-throttling`, `SCHEDULER_MODE=external`, Cloud Scheduler job `chromabot-tick`). Always-on variant:
+  `--min-instances=1 --max-instances=1 --no-cpu-throttling` with the default interval scheduler.
+  Health path: `/api/health`.
 - **Fly.io:** `fly launch`, internal port 3000, `min_machines_running = 1`, `auto_stop_machines = false`,
   one machine only; add a volume mounted at `/app/data`.
 - **Railway:** deploy from the Dockerfile, 1 replica, attach a volume at `/app/data`, health check `/api/health`.

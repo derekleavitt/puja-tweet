@@ -4,7 +4,7 @@
  */
 
 import { Router } from 'express';
-import { config } from '../config.js';
+import { config, schedulerConfig } from '../config.js';
 import { storeKind } from '../services/index.js';
 
 let schedulerRunning = false;
@@ -24,6 +24,7 @@ export const createHealthRouter = () => {
       version: config.version,
       store: storeKind(),
       schedulerRunning,
+      schedulerMode: schedulerConfig.mode,
       uptimeSeconds: Math.round(process.uptime()),
     });
   });
