@@ -305,8 +305,8 @@ export const RateLimitModal: React.FC<RateLimitModalProps> = ({
                     <strong className="text-neutral-800 dark:text-neutral-200">
                       Quote Tweet Auto-Fallback:
                     </strong>{' '}
-                    If direct in-thread replies hit 403 restrictions, drops seamlessly quote the
-                    post to guarantee delivery.
+                    Optional per campaign (off by default). When on, a reply X refuses with a
+                    cooldown or restriction (403) is retried once as a quote tweet.
                   </li>
                 </ul>
               </div>

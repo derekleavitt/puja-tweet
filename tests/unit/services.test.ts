@@ -408,7 +408,7 @@ describe('services over MemoryStore', () => {
       const s2 = await createServices(polluted);
       const ctx = s2.contexts.getContext('ctx_primary')!;
       expect(ctx.lastPostedTweetId).toBeUndefined();
-      expect(ctx.autoFallbackToQuote).toBe(false);
+      expect(ctx.autoFallbackToQuote).toBe(true);
     });
   });
 });

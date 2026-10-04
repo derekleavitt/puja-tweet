@@ -17,6 +17,16 @@ export class SettingsService {
     return buildSettingsView(this.contexts.getActiveContext(), this.sm.state.settings);
   }
 
+  /** Global dry-run overrides every campaign and every path; unset (legacy stores) means on. */
+  isGlobalDryRun(): boolean {
+    return this.sm.state.settings.globalDryRun !== false;
+  }
+
+  /** Global pause stops scheduled drops (scheduler, webhook, CLI); unset (legacy stores) means on. */
+  isGlobalPaused(): boolean {
+    return this.sm.state.settings.globalPaused !== false;
+  }
+
   updateSettings(newSettings: Partial<BotSettings>): BotSettings {
     const active = this.contexts.getActiveContext();
     const schedule: Partial<TweetContextSchedule> = {};
@@ -42,6 +52,13 @@ export class SettingsService {
     if (newSettings.template) updates.template = newSettings.template;
     if (newSettings.themePreference) updates.themePreference = newSettings.themePreference;
     if (Object.keys(schedule).length > 0) updates.schedule = { ...active.schedule, ...schedule };
+
+    if (typeof newSettings.globalDryRun === 'boolean') {
+      this.sm.state.settings.globalDryRun = newSettings.globalDryRun;
+    }
+    if (typeof newSettings.globalPaused === 'boolean') {
+      this.sm.state.settings.globalPaused = newSettings.globalPaused;
+    }
 
     this.contexts.updateContext(active.id, updates);
     return this.getSettings();

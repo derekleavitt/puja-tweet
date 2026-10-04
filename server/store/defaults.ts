@@ -15,6 +15,8 @@ export const createDefaultSettings = (): BotSettings => ({
   timezone: process.env.SCHEDULE_TIMEZONE || 'America/Denver',
   schedulerEnabled: true,
   dryRun: false,
+  globalDryRun: true,
+  globalPaused: true,
   template: DEFAULT_TWEET_TEMPLATE,
   themePreference: 'dynamic',
   intervalMode: 'interval',
