@@ -106,4 +106,57 @@ describe('dropService.executeDrop', () => {
     });
     expect(post).not.toHaveBeenCalled();
   });
+
+  describe('chain recovery', () => {
+    const chain = () => {
+      const id = configure({
+        engagementMode: 'reply',
+        replyTargetMode: 'last_comment',
+        dryRun: false,
+        lastPostedTweetId: '555',
+      });
+      svc.logs.addLog({
+        id: 'log_1',
+        timestamp: new Date().toISOString(),
+        slotType: 'manual',
+        targetTweetId: '111',
+        replyToTweetId: '111',
+        engagementMode: 'reply',
+        tweetText: 'x',
+        tweetId: '555',
+        status: 'success',
+        contextId: id,
+      } as never);
+      return id;
+    };
+
+    it('retries on the root and only moves the anchor when the anchor tweet is gone', async () => {
+      const id = chain();
+      post
+        .mockResolvedValueOnce({ success: false, error: 'gone', httpStatus: 404, rawResponse: {} })
+        .mockResolvedValueOnce({ success: true, tweetId: '777', url: 'u' });
+      const regen = vi.spyOn(svc.queue, 'clearAndRegenerateQueue');
+      const out = await makeDrops().executeDrop({ contextId: id, slotType: 'morning' });
+      expect(post).toHaveBeenCalledTimes(2);
+      expect(post.mock.calls[1][1]).toMatchObject({ replyToTweetId: '111' });
+      expect(out.success).toBe(true);
+      expect(svc.contexts.getContext(id)!.lastPostedTweetId).toBe('777');
+      expect(regen).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['401', { httpStatus: 401, rawResponse: {} }],
+      ['402', { httpStatus: 402, rawResponse: {} }],
+      ['network', {}],
+      ['timeout', { isTimeout: true }],
+      ['500', { httpStatus: 500, rawResponse: {} }],
+    ])('keeps the anchor and does not re-post on %s', async (_n, extra) => {
+      const id = chain();
+      post.mockResolvedValue({ success: false, error: 'boom', ...extra });
+      const out = await makeDrops().executeDrop({ contextId: id, slotType: 'morning' });
+      expect(post).toHaveBeenCalledTimes(1);
+      expect(out.success).toBe(false);
+      expect(svc.contexts.getContext(id)!.lastPostedTweetId).toBe('555');
+    });
+  });
 });

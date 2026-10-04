@@ -62,6 +62,8 @@ export interface TweetResponse {
   quoteTweetId?: string;
   url?: string;
   error?: string;
+  /** HTTP status of a failed X response (absent for network errors and timeouts). */
+  httpStatus?: number;
   rawResponse?: any;
   simulated?: boolean;
   engagementMode?: 'reply' | 'quote' | 'standalone';
@@ -445,6 +447,7 @@ export async function postColorTweet(
       return {
         success: false,
         error: errorMsg,
+        httpStatus: response.status,
         rawResponse: data,
         isRateLimitOrCooldown,
         rateLimitReset: isRateLimitOrCooldown ? rateLimitReset : undefined,
