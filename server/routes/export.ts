@@ -4,7 +4,7 @@
 
 import { Router } from 'express';
 import type { AppDeps } from '../app.js';
-import type { TweetContext } from '../storage.js';
+import type { TweetContext } from '../../shared/types.js';
 
 const buildExportScripts = (activeContext: TweetContext) => {
   const githubActionsYaml = `name: Daily Color Replies to X (${activeContext.name})
@@ -118,11 +118,11 @@ main().catch(console.error);
   return { githubActionsYaml, nodeScript };
 };
 
-export const createExportRouter = ({ storage }: AppDeps) => {
+export const createExportRouter = ({ services }: AppDeps) => {
   const router = Router();
 
   router.get('/export-script', (_req, res) => {
-    const activeContext = storage.getActiveContext();
+    const activeContext = services.contexts.getActiveContext();
     const { githubActionsYaml, nodeScript } = buildExportScripts(activeContext);
 
     res.json({

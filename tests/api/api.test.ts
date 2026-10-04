@@ -1,6 +1,6 @@
 import request from 'supertest';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { makeApp, storage } from '../helpers/makeApp.js';
+import { makeApp, services } from '../helpers/makeApp.js';
 
 // Never reach X: stub the posting call. Dry-run results are simulated, as in production.
 vi.mock('../../server/twitterClient.js', async (importOriginal) => {
@@ -69,12 +69,12 @@ describe('contexts', () => {
 
 describe('POST /api/post-now', () => {
   it('in dry-run returns simulated:true and appends a log', async () => {
-    const ctx = storage.createContext({
+    const ctx = services.contexts.createContext({
       name: 'Dry',
       targetTweetId: '1234567890123456789',
       dryRun: true,
     });
-    const before = storage.getLogs().length;
+    const before = services.logs.getLogs().length;
 
     const res = await request(app)
       .post('/api/post-now')
@@ -84,8 +84,8 @@ describe('POST /api/post-now', () => {
     expect(res.body.success).toBe(true);
     expect(res.body.result.simulated).toBe(true);
     expect(res.body.log.status).toBe('simulated');
-    expect(storage.getLogs().length).toBe(before + 1);
-    expect(storage.getLogs()[0].contextId).toBe(ctx.id);
+    expect(services.logs.getLogs().length).toBe(before + 1);
+    expect(services.logs.getLogs()[0].contextId).toBe(ctx.id);
   });
 
   it('returns 404 for an unknown context', async () => {
