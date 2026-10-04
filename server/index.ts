@@ -5,22 +5,21 @@
 
 import express from 'express';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { createApp } from './app.js';
 import { config } from './config.js';
+import { markSchedulerStarted } from './routes/health.js';
 import { scheduler } from './scheduler.js';
 import { storage } from './storage.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const rootDir = path.resolve(__dirname, '..');
+const rootDir = config.rootDir;
 
 async function startServer() {
   const app = createApp({ storage, scheduler });
 
   // Start background multi-context scheduler
   scheduler.start();
+  markSchedulerStarted();
 
   // Vite or Static files handling
   if (config.isProduction) {
