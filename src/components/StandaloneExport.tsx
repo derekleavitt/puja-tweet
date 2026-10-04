@@ -48,7 +48,8 @@ export const StandaloneExport: React.FC<StandaloneExportProps> = ({ settings }) 
           Autonomous Automation & Ping Triggers
         </h2>
         <p className="text-sm text-neutral-500 mt-0.5">
-          Run your scheduled color replies 100% autonomously in the cloud forever at zero cost, without GitHub Actions auth friction.
+          Run your scheduled color replies 100% autonomously in the cloud forever at zero cost,
+          without GitHub Actions auth friction.
         </p>
       </div>
 
@@ -115,7 +116,9 @@ export const StandaloneExport: React.FC<StandaloneExportProps> = ({ settings }) 
             </div>
 
             <p>
-              Since this web application already has your working Twitter credentials securely saved in its database, you do not need to configure GitHub Actions secrets or deal with OAuth token permission mismatches.
+              Since this web application already has your working Twitter credentials securely saved
+              in its database, you do not need to configure GitHub Actions secrets or deal with
+              OAuth token permission mismatches.
             </p>
 
             <div className="p-3.5 bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-lg space-y-2">
@@ -125,23 +128,32 @@ export const StandaloneExport: React.FC<StandaloneExportProps> = ({ settings }) 
               <ol className="list-decimal pl-5 space-y-1.5 text-neutral-600 dark:text-neutral-400">
                 <li>
                   Sign up for free at{' '}
-                  <a href="https://cron-job.org" target="_blank" rel="noreferrer" className="text-blue-600 dark:text-blue-400 font-semibold underline">
+                  <a
+                    href="https://cron-job.org"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-blue-600 dark:text-blue-400 font-semibold underline"
+                  >
                     cron-job.org
                   </a>{' '}
                   or{' '}
-                  <a href="https://uptimerobot.com" target="_blank" rel="noreferrer" className="text-blue-600 dark:text-blue-400 font-semibold underline">
+                  <a
+                    href="https://uptimerobot.com"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-blue-600 dark:text-blue-400 font-semibold underline"
+                  >
                     UptimeRobot
                   </a>
                   .
                 </li>
-                <li>
-                  Create a new recurring monitor/cron job.
-                </li>
+                <li>Create a new recurring monitor/cron job.</li>
                 <li>
                   Paste your <strong>One-Click Autonomous URL</strong> below.
                 </li>
                 <li>
-                  Choose your schedule: <em>Every 1 minute, every 15m, 30m, 60m, 3h, 6h, 12h, or daily at 6am & 6pm</em>.
+                  Choose your schedule:{' '}
+                  <em>Every 1 minute, every 15m, 30m, 60m, 3h, 6h, 12h, or daily at 6am & 6pm</em>.
                 </li>
               </ol>
             </div>
@@ -149,12 +161,18 @@ export const StandaloneExport: React.FC<StandaloneExportProps> = ({ settings }) 
 
           <div className="border border-neutral-200 dark:border-neutral-800 rounded-xl overflow-hidden bg-neutral-950 shadow-xs">
             <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-900 border-b border-neutral-800 text-xs">
-              <span className="font-mono text-neutral-400">Autonomous Webhook URL (GET or POST)</span>
+              <span className="font-mono text-neutral-400">
+                Autonomous Webhook URL (GET or POST)
+              </span>
               <button
                 onClick={() => copyToClipboard(webhookUrl, 'webhook')}
                 className="px-2.5 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-mono flex items-center gap-1.5 transition-colors cursor-pointer"
               >
-                {copiedKey === 'webhook' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                {copiedKey === 'webhook' ? (
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                ) : (
+                  <Copy className="w-3.5 h-3.5" />
+                )}
                 {copiedKey === 'webhook' ? 'Copied URL' : 'Copy URL'}
               </button>
             </div>
@@ -173,7 +191,8 @@ export const StandaloneExport: React.FC<StandaloneExportProps> = ({ settings }) 
               GitHub Actions Cron Runner
             </h3>
             <p>
-              Runs inside GitHub's free runners. Requires valid `Read and Write` Twitter API keys placed in your GitHub Repository Secrets.
+              Runs inside GitHub's free runners. Requires valid `Read and Write` Twitter API keys
+              placed in your GitHub Repository Secrets.
             </p>
           </div>
 
@@ -184,7 +203,11 @@ export const StandaloneExport: React.FC<StandaloneExportProps> = ({ settings }) 
                 onClick={() => copyToClipboard(data?.githubActionsYaml || '', 'yaml')}
                 className="px-2.5 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-mono flex items-center gap-1.5 transition-colors cursor-pointer"
               >
-                {copiedKey === 'yaml' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                {copiedKey === 'yaml' ? (
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                ) : (
+                  <Copy className="w-3.5 h-3.5" />
+                )}
                 {copiedKey === 'yaml' ? 'Copied YAML' : 'Copy Workflow'}
               </button>
             </div>
@@ -203,7 +226,8 @@ export const StandaloneExport: React.FC<StandaloneExportProps> = ({ settings }) 
               Self-Contained ES Module Runner
             </h3>
             <p>
-              This standalone script has zero external dependencies (uses native Node.js crypto and fetch). Run it via crontab, Raspberry Pi, or Cloud Run.
+              This standalone script has zero external dependencies (uses native Node.js crypto and
+              fetch). Run it via crontab, Raspberry Pi, or Cloud Run.
             </p>
           </div>
 
@@ -214,7 +238,11 @@ export const StandaloneExport: React.FC<StandaloneExportProps> = ({ settings }) 
                 onClick={() => copyToClipboard(data?.nodeScript || '', 'node')}
                 className="px-2.5 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-mono flex items-center gap-1.5 transition-colors cursor-pointer"
               >
-                {copiedKey === 'node' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                {copiedKey === 'node' ? (
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                ) : (
+                  <Copy className="w-3.5 h-3.5" />
+                )}
                 {copiedKey === 'node' ? 'Copied Script' : 'Copy Script'}
               </button>
             </div>
@@ -233,7 +261,11 @@ export const StandaloneExport: React.FC<StandaloneExportProps> = ({ settings }) 
               Terminal Verification Command
             </h3>
             <p>
-              Execute a direct reply to tweet <code className="font-mono text-neutral-900 dark:text-neutral-100">#{settings.targetTweetId}</code> using raw cURL with an OAuth 2.0 Bearer token.
+              Execute a direct reply to tweet{' '}
+              <code className="font-mono text-neutral-900 dark:text-neutral-100">
+                #{settings.targetTweetId}
+              </code>{' '}
+              using raw cURL with an OAuth 2.0 Bearer token.
             </p>
           </div>
 
@@ -244,7 +276,11 @@ export const StandaloneExport: React.FC<StandaloneExportProps> = ({ settings }) 
                 onClick={() => copyToClipboard(curlSnippet, 'curl')}
                 className="px-2.5 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-mono flex items-center gap-1.5 transition-colors cursor-pointer"
               >
-                {copiedKey === 'curl' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                {copiedKey === 'curl' ? (
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                ) : (
+                  <Copy className="w-3.5 h-3.5" />
+                )}
                 {copiedKey === 'curl' ? 'Copied cURL' : 'Copy Command'}
               </button>
             </div>

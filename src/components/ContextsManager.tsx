@@ -83,7 +83,11 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
   const [editingContext, setEditingContext] = useState<Partial<TweetContext> | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [triggeringId, setTriggeringId] = useState<string | null>(null);
-  const [triggerResult, setTriggerResult] = useState<{ id: string; success: boolean; message: string } | null>(null);
+  const [triggerResult, setTriggerResult] = useState<{
+    id: string;
+    success: boolean;
+    message: string;
+  } | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [testingAi, setTestingAi] = useState(false);
@@ -110,7 +114,7 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
     }
   };
 
-  const activeContext = contexts.find(c => c.id === activeContextId) || contexts[0];
+  const activeContext = contexts.find((c) => c.id === activeContextId) || contexts[0];
 
   const handleOpenCreate = () => {
     setFormError(null);
@@ -184,7 +188,9 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
       setTriggerResult({
         id,
         success: res.success,
-        message: res.success ? 'Reply posted successfully!' : (res.result?.error || 'Failed to dispatch reply'),
+        message: res.success
+          ? 'Reply posted successfully!'
+          : res.result?.error || 'Failed to dispatch reply',
       });
       setTimeout(() => setTriggerResult(null), 4000);
     } catch (err: any) {
@@ -222,7 +228,8 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
                 </span>
               </h2>
               <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">
-                Configure distinct target posts, independent repetition schedules, anti-bot delays, and templates.
+                Configure distinct target posts, independent repetition schedules, anti-bot delays,
+                and templates.
               </p>
             </div>
           </div>
@@ -241,7 +248,7 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {contexts.map((ctx) => {
           const isActive = ctx.id === activeContextId;
-          const nextInfo = nextPosts.find(p => p.contextId === ctx.id);
+          const nextInfo = nextPosts.find((p) => p.contextId === ctx.id);
           const isTriggering = triggeringId === ctx.id;
           const resultNotice = triggerResult?.id === ctx.id ? triggerResult : null;
 
@@ -297,7 +304,9 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
                         ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 shadow-xs'
                         : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-900/40'
                     }`}
-                    title={ctx.enabled ? 'Click to Pause this campaign' : 'Click to Resume this campaign'}
+                    title={
+                      ctx.enabled ? 'Click to Pause this campaign' : 'Click to Resume this campaign'
+                    }
                   >
                     {ctx.enabled ? (
                       <>
@@ -334,7 +343,11 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
                     className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 rounded transition-colors cursor-pointer shrink-0"
                     title="Copy Tweet ID"
                   >
-                    {copiedId === ctx.targetTweetId ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copiedId === ctx.targetTweetId ? (
+                      <Check className="w-3.5 h-3.5 text-emerald-500" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5" />
+                    )}
                   </button>
                 </div>
 
@@ -354,7 +367,7 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
                     <div className="flex items-center gap-1 text-[11px] font-mono text-neutral-500">
                       <span>Next:</span>
                       <span className="font-semibold text-neutral-800 dark:text-neutral-200">
-                        {ctx.enabled ? (nextInfo?.countdownFormatted || 'Calculating...') : 'Paused'}
+                        {ctx.enabled ? nextInfo?.countdownFormatted || 'Calculating...' : 'Paused'}
                       </span>
                     </div>
                   </div>
@@ -369,9 +382,10 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
                       { label: '6h', minutes: 360 },
                       { label: '12h', minutes: 720 },
                       { label: '24h', minutes: 1440 },
-                    ].map(preset => {
+                    ].map((preset) => {
                       const isSelected =
-                        ctx.schedule.mode === 'interval' && ctx.schedule.intervalMinutes === preset.minutes;
+                        ctx.schedule.mode === 'interval' &&
+                        ctx.schedule.intervalMinutes === preset.minutes;
                       return (
                         <button
                           key={preset.label}
@@ -471,86 +485,95 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
                     </div>
                   </div>
                   <div className="text-[10px] text-neutral-500">
-                    {(ctx.engagementMode || 'reply') === 'reply' && 'Replies directly in the comment thread of the target post.'}
-                    {ctx.engagementMode === 'quote' && 'Embeds the target post as an aesthetic Quote Tweet on your profile (bypasses reply cooldowns).'}
-                    {ctx.engagementMode === 'standalone' && 'Publishes directly to your timeline without referencing a parent post.'}
+                    {(ctx.engagementMode || 'reply') === 'reply' &&
+                      'Replies directly in the comment thread of the target post.'}
+                    {ctx.engagementMode === 'quote' &&
+                      'Embeds the target post as an aesthetic Quote Tweet on your profile (bypasses reply cooldowns).'}
+                    {ctx.engagementMode === 'standalone' &&
+                      'Publishes directly to your timeline without referencing a parent post.'}
                   </div>
                 </div>
 
                 {/* Reply Threading Strategy Bar (Active in Reply Thread Mode) */}
                 {(ctx.engagementMode || 'reply') === 'reply' && (
-                <div className="p-2.5 rounded-lg bg-neutral-50 dark:bg-neutral-800/40 border border-neutral-200/80 dark:border-neutral-700/60 space-y-2 text-xs">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-medium text-neutral-600 dark:text-neutral-400">
-                      Reply Behavior
-                    </span>
-                    <div className="flex items-center gap-1 bg-neutral-200/70 dark:bg-neutral-700/70 p-0.5 rounded-md">
-                      <button
-                        type="button"
-                        onClick={() => onUpdateContext(ctx.id, { replyTargetMode: 'original_post' })}
-                        className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors cursor-pointer ${
-                          ctx.replyTargetMode !== 'last_comment'
-                            ? 'bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 shadow-xs'
-                            : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100'
-                        }`}
-                        title="All drops comment directly under the campaign's root post"
-                      >
-                        Root Mode
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onUpdateContext(ctx.id, { replyTargetMode: 'last_comment' })}
-                        className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors cursor-pointer ${
-                          ctx.replyTargetMode === 'last_comment'
-                            ? 'bg-purple-600 text-white shadow-xs'
-                            : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100'
-                        }`}
-                        title="Each drop replies to the previous comment, creating a cascading thread"
-                      >
-                        Chain Mode
-                      </button>
+                  <div className="p-2.5 rounded-lg bg-neutral-50 dark:bg-neutral-800/40 border border-neutral-200/80 dark:border-neutral-700/60 space-y-2 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-medium text-neutral-600 dark:text-neutral-400">
+                        Reply Behavior
+                      </span>
+                      <div className="flex items-center gap-1 bg-neutral-200/70 dark:bg-neutral-700/70 p-0.5 rounded-md">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onUpdateContext(ctx.id, { replyTargetMode: 'original_post' })
+                          }
+                          className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors cursor-pointer ${
+                            ctx.replyTargetMode !== 'last_comment'
+                              ? 'bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 shadow-xs'
+                              : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100'
+                          }`}
+                          title="All drops comment directly under the campaign's root post"
+                        >
+                          Root Mode
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onUpdateContext(ctx.id, { replyTargetMode: 'last_comment' })
+                          }
+                          className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors cursor-pointer ${
+                            ctx.replyTargetMode === 'last_comment'
+                              ? 'bg-purple-600 text-white shadow-xs'
+                              : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100'
+                          }`}
+                          title="Each drop replies to the previous comment, creating a cascading thread"
+                        >
+                          Chain Mode
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="text-[11px] text-neutral-600 dark:text-neutral-400 flex items-center justify-between gap-2">
+                      {ctx.replyTargetMode === 'last_comment' ? (
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <Link2 className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                          <span className="truncate">
+                            {ctx.lastPostedTweetId
+                              ? `Chain active: next drop replies to comment #${ctx.lastPostedTweetId}`
+                              : `Starting chain: next drop will reply to root #${ctx.targetTweetId}`}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <Target className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                          <span className="truncate">
+                            All drops reply directly under root post #{ctx.targetTweetId}
+                          </span>
+                        </div>
+                      )}
+
+                      {ctx.replyTargetMode === 'last_comment' && ctx.lastPostedTweetId && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await onUpdateContext(ctx.id, { lastPostedTweetId: undefined });
+                          }}
+                          className="px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded hover:bg-amber-100 transition-colors flex items-center gap-1 cursor-pointer shrink-0"
+                          title="Restart chain from original root post"
+                        >
+                          <RotateCcw className="w-2.5 h-2.5" />
+                          <span>Reset to Root</span>
+                        </button>
+                      )}
                     </div>
                   </div>
-
-                  <div className="text-[11px] text-neutral-600 dark:text-neutral-400 flex items-center justify-between gap-2">
-                    {ctx.replyTargetMode === 'last_comment' ? (
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <Link2 className="w-3.5 h-3.5 text-purple-500 shrink-0" />
-                        <span className="truncate">
-                          {ctx.lastPostedTweetId
-                            ? `Chain active: next drop replies to comment #${ctx.lastPostedTweetId}`
-                            : `Starting chain: next drop will reply to root #${ctx.targetTweetId}`}
-                        </span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <Target className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                        <span className="truncate">
-                          All drops reply directly under root post #{ctx.targetTweetId}
-                        </span>
-                      </div>
-                    )}
-
-                    {ctx.replyTargetMode === 'last_comment' && ctx.lastPostedTweetId && (
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          await onUpdateContext(ctx.id, { lastPostedTweetId: undefined });
-                        }}
-                        className="px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded hover:bg-amber-100 transition-colors flex items-center gap-1 cursor-pointer shrink-0"
-                        title="Restart chain from original root post"
-                      >
-                        <RotateCcw className="w-2.5 h-2.5" />
-                        <span>Reset to Root</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
                 )}
 
                 {/* Template Preview */}
                 <div className="text-xs">
-                  <span className="text-[10px] uppercase font-mono text-neutral-400">Template:</span>
+                  <span className="text-[10px] uppercase font-mono text-neutral-400">
+                    Template:
+                  </span>
                   <div className="mt-1 p-2 rounded-md bg-neutral-100/70 dark:bg-neutral-800/80 font-mono text-[11px] text-neutral-700 dark:text-neutral-300 break-words">
                     {ctx.template}
                   </div>
@@ -578,7 +601,7 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
                       onClick={async () => {
                         if (
                           confirm(
-                            `Clear history for "${ctx.name}"?\n\nThis will remove all post logs and reset stats for this campaign.`
+                            `Clear history for "${ctx.name}"?\n\nThis will remove all post logs and reset stats for this campaign.`,
                           )
                         ) {
                           await onClearContextHistory(ctx.id);
@@ -602,7 +625,11 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
                         : 'bg-red-50 dark:bg-red-950/50 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800'
                     }`}
                   >
-                    {resultNotice.success ? <Check className="w-3.5 h-3.5 shrink-0" /> : <AlertCircle className="w-3.5 h-3.5 shrink-0" />}
+                    {resultNotice.success ? (
+                      <Check className="w-3.5 h-3.5 shrink-0" />
+                    ) : (
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    )}
                     <span>{resultNotice.message}</span>
                   </div>
                 )}
@@ -653,7 +680,7 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
                       onClick={async () => {
                         if (
                           confirm(
-                            `Clear history for "${ctx.name}"?\n\nThis will remove all post logs and reset stats for this campaign.`
+                            `Clear history for "${ctx.name}"?\n\nThis will remove all post logs and reset stats for this campaign.`,
                           )
                         ) {
                           await onClearContextHistory(ctx.id);
@@ -739,7 +766,9 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
                   type="text"
                   required
                   value={editingContext.targetTweetId || ''}
-                  onChange={(e) => setEditingContext({ ...editingContext, targetTweetId: e.target.value })}
+                  onChange={(e) =>
+                    setEditingContext({ ...editingContext, targetTweetId: e.target.value })
+                  }
                   placeholder="e.g. 2091597504928428416 or https://x.com/user/status/2091597504928428416"
                   className="w-full px-3 py-2 font-mono rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
@@ -755,7 +784,9 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
                     Reply Threading Strategy
                   </label>
                   <span className="text-[11px] font-mono text-neutral-400">
-                    {editingContext.replyTargetMode === 'last_comment' ? 'Cascading Chain' : 'Root Anchor'}
+                    {editingContext.replyTargetMode === 'last_comment'
+                      ? 'Cascading Chain'
+                      : 'Root Anchor'}
                   </span>
                 </div>
 
@@ -779,7 +810,8 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
                       <span>Reply to Original Post</span>
                     </div>
                     <div className="text-[10px] text-neutral-500 dark:text-neutral-400 font-normal mt-1 leading-snug">
-                      All drops reply directly to the root post (#{editingContext.targetTweetId || '...'}).
+                      All drops reply directly to the root post (#
+                      {editingContext.targetTweetId || '...'}).
                     </div>
                   </button>
 
@@ -802,7 +834,8 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
                       <span>Reply to Last Comment</span>
                     </div>
                     <div className="text-[10px] text-neutral-500 dark:text-neutral-400 font-normal mt-1 leading-snug">
-                      Each next drop replies to the last comment made by us, forming an unbroken cascading thread.
+                      Each next drop replies to the last comment made by us, forming an unbroken
+                      cascading thread.
                     </div>
                   </button>
                 </div>
@@ -815,11 +848,16 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
                       <div className="truncate text-purple-900 dark:text-purple-200 text-[11px]">
                         {editingContext.lastPostedTweetId ? (
                           <span>
-                            Current chain anchor: <strong className="font-mono">#{editingContext.lastPostedTweetId}</strong>
+                            Current chain anchor:{' '}
+                            <strong className="font-mono">
+                              #{editingContext.lastPostedTweetId}
+                            </strong>
                           </span>
                         ) : (
                           <span>
-                            No prior comment recorded. First drop will reply to root post <strong className="font-mono">#{editingContext.targetTweetId}</strong> to begin the chain.
+                            No prior comment recorded. First drop will reply to root post{' '}
+                            <strong className="font-mono">#{editingContext.targetTweetId}</strong>{' '}
+                            to begin the chain.
                           </span>
                         )}
                       </div>
@@ -855,8 +893,8 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
                     {editingContext.engagementMode === 'quote'
                       ? 'Quote Tweet'
                       : editingContext.engagementMode === 'standalone'
-                      ? 'Standalone Post'
-                      : 'Direct Reply'}
+                        ? 'Standalone Post'
+                        : 'Direct Reply'}
                   </span>
                 </div>
 
@@ -953,7 +991,9 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
                     }`}
                   >
                     <div>Repeating Interval</div>
-                    <div className="text-[10px] text-neutral-500 font-normal">Every X minutes or hours</div>
+                    <div className="text-[10px] text-neutral-500 font-normal">
+                      Every X minutes or hours
+                    </div>
                   </button>
 
                   <button
@@ -971,7 +1011,9 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
                     }`}
                   >
                     <div>Fixed Clock Drops</div>
-                    <div className="text-[10px] text-neutral-500 font-normal">e.g. 6:00 AM &amp; 6:00 PM</div>
+                    <div className="text-[10px] text-neutral-500 font-normal">
+                      e.g. 6:00 AM &amp; 6:00 PM
+                    </div>
                   </button>
                 </div>
               </div>
@@ -987,7 +1029,10 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
                     onChange={(e) =>
                       setEditingContext({
                         ...editingContext,
-                        schedule: { ...editingContext.schedule!, intervalMinutes: parseInt(e.target.value, 10) },
+                        schedule: {
+                          ...editingContext.schedule!,
+                          intervalMinutes: parseInt(e.target.value, 10),
+                        },
                       })
                     }
                     className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -1016,7 +1061,10 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
                           ...editingContext,
                           schedule: {
                             ...editingContext.schedule!,
-                            scheduleTimes: e.target.value.split(',').map((s) => s.trim()).filter(Boolean),
+                            scheduleTimes: e.target.value
+                              .split(',')
+                              .map((s) => s.trim())
+                              .filter(Boolean),
                           },
                         })
                       }
@@ -1064,14 +1112,18 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
                     onChange={(e) =>
                       setEditingContext({
                         ...editingContext,
-                        schedule: { ...editingContext.schedule!, humanizeJitterEnabled: e.target.checked },
+                        schedule: {
+                          ...editingContext.schedule!,
+                          humanizeJitterEnabled: e.target.checked,
+                        },
                       })
                     }
                     className="rounded text-indigo-600 focus:ring-indigo-500"
                   />
                 </div>
                 <p className="text-[11px] text-neutral-500">
-                  Adds a random delay (0 to {editingContext.schedule?.jitterPercentage ?? 25}%) so replies don't post at exact mathematical minute marks.
+                  Adds a random delay (0 to {editingContext.schedule?.jitterPercentage ?? 25}%) so
+                  replies don't post at exact mathematical minute marks.
                 </p>
               </div>
 
@@ -1099,7 +1151,9 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
                 <textarea
                   rows={3}
                   value={editingContext.template || ''}
-                  onChange={(e) => setEditingContext({ ...editingContext, template: e.target.value })}
+                  onChange={(e) =>
+                    setEditingContext({ ...editingContext, template: e.target.value })
+                  }
                   placeholder="{color_pick} {weather_desc} #eternal #colors"
                   className="w-full px-3 py-2 font-mono rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 leading-relaxed text-xs"
                 />
@@ -1112,21 +1166,39 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
                   <div className="flex flex-wrap gap-1.5">
                     <button
                       type="button"
-                      onClick={() => setEditingContext({ ...editingContext, template: '<history><agent>consider whats already and been said and respond with just the body of a tweet that is unique pablo neruda like expression that plays on the series thats been written thus far</agent></history>' })}
+                      onClick={() =>
+                        setEditingContext({
+                          ...editingContext,
+                          template:
+                            '<history><agent>consider whats already and been said and respond with just the body of a tweet that is unique pablo neruda like expression that plays on the series thats been written thus far</agent></history>',
+                        })
+                      }
                       className="px-2 py-0.5 text-[11px] font-medium rounded bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800 hover:bg-amber-100 cursor-pointer"
                     >
                       📜 Neruda Arc with History
                     </button>
                     <button
                       type="button"
-                      onClick={() => setEditingContext({ ...editingContext, template: '<agent>respond with just the body of a tweet that is unique pablo neruda like expression</agent>' })}
+                      onClick={() =>
+                        setEditingContext({
+                          ...editingContext,
+                          template:
+                            '<agent>respond with just the body of a tweet that is unique pablo neruda like expression</agent>',
+                        })
+                      }
                       className="px-2 py-0.5 text-[11px] font-medium rounded bg-purple-50 dark:bg-purple-950/40 text-purple-800 dark:text-purple-300 border border-purple-300 dark:border-purple-800 hover:bg-purple-100 cursor-pointer"
                     >
                       ✍️ Neruda Solo Poem
                     </button>
                     <button
                       type="button"
-                      onClick={() => setEditingContext({ ...editingContext, template: '{color_pick} {hex} | <history><agent>Write a visceral 2-line Neruda-style poem connecting this new hue to previous drops</agent></history> #eternal #colors' })}
+                      onClick={() =>
+                        setEditingContext({
+                          ...editingContext,
+                          template:
+                            '{color_pick} {hex} | <history><agent>Write a visceral 2-line Neruda-style poem connecting this new hue to previous drops</agent></history> #eternal #colors',
+                        })
+                      }
                       className="px-2 py-0.5 text-[11px] font-medium rounded bg-indigo-50 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-800 hover:bg-indigo-100 cursor-pointer"
                     >
                       ✨ Swatch + History Arc
@@ -1139,21 +1211,37 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
                   <span>Tokens:</span>
                   <button
                     type="button"
-                    onClick={() => setEditingContext({ ...editingContext, template: `${editingContext.template || ''} <agent>Write a poetic expression</agent>` })}
+                    onClick={() =>
+                      setEditingContext({
+                        ...editingContext,
+                        template: `${editingContext.template || ''} <agent>Write a poetic expression</agent>`,
+                      })
+                    }
                     className="bg-purple-100 dark:bg-purple-900/60 px-1 py-0.5 rounded text-purple-700 dark:text-purple-300 cursor-pointer"
                   >
                     + &lt;agent&gt;
                   </button>
                   <button
                     type="button"
-                    onClick={() => setEditingContext({ ...editingContext, template: `${editingContext.template || ''} <history><agent>Consider prior tweets...</agent></history>` })}
+                    onClick={() =>
+                      setEditingContext({
+                        ...editingContext,
+                        template: `${editingContext.template || ''} <history><agent>Consider prior tweets...</agent></history>`,
+                      })
+                    }
                     className="bg-amber-100 dark:bg-amber-900/60 px-1 py-0.5 rounded text-amber-700 dark:text-amber-300 cursor-pointer"
                   >
                     + &lt;history&gt;&lt;agent&gt;
                   </button>
-                  <span className="bg-neutral-100 dark:bg-neutral-800 px-1 py-0.5 rounded text-neutral-600 dark:text-neutral-300">{'{color_pick}'}</span>
-                  <span className="bg-neutral-100 dark:bg-neutral-800 px-1 py-0.5 rounded text-neutral-600 dark:text-neutral-300">{'{hex}'}</span>
-                  <span className="bg-neutral-100 dark:bg-neutral-800 px-1 py-0.5 rounded text-neutral-600 dark:text-neutral-300">{'{mood}'}</span>
+                  <span className="bg-neutral-100 dark:bg-neutral-800 px-1 py-0.5 rounded text-neutral-600 dark:text-neutral-300">
+                    {'{color_pick}'}
+                  </span>
+                  <span className="bg-neutral-100 dark:bg-neutral-800 px-1 py-0.5 rounded text-neutral-600 dark:text-neutral-300">
+                    {'{hex}'}
+                  </span>
+                  <span className="bg-neutral-100 dark:bg-neutral-800 px-1 py-0.5 rounded text-neutral-600 dark:text-neutral-300">
+                    {'{mood}'}
+                  </span>
                 </div>
 
                 {/* AI Preview Output in Modal */}
@@ -1178,7 +1266,9 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
                   </label>
                   <select
                     value={editingContext.themePreference || 'dynamic'}
-                    onChange={(e: any) => setEditingContext({ ...editingContext, themePreference: e.target.value })}
+                    onChange={(e: any) =>
+                      setEditingContext({ ...editingContext, themePreference: e.target.value })
+                    }
                     className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
                     <option value="dynamic">Dynamic (Atmospheric)</option>
@@ -1194,7 +1284,12 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
                   </label>
                   <select
                     value={editingContext.dryRun ? 'simulated' : 'live'}
-                    onChange={(e) => setEditingContext({ ...editingContext, dryRun: e.target.value === 'simulated' })}
+                    onChange={(e) =>
+                      setEditingContext({
+                        ...editingContext,
+                        dryRun: e.target.value === 'simulated',
+                      })
+                    }
                     className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
                     <option value="live">Live X API (Real Tweets)</option>
@@ -1206,7 +1301,8 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
               {/* Modal Buttons */}
               <div className="pt-3 border-t border-neutral-200 dark:border-neutral-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <span className="text-[11px] text-neutral-500">
-                  Saving automatically clears and regenerates this campaign's 14-slot scheduled queue.
+                  Saving automatically clears and regenerates this campaign's 14-slot scheduled
+                  queue.
                 </span>
                 <div className="flex items-center justify-end gap-2 shrink-0">
                   <button

@@ -75,7 +75,9 @@ export const RateLimitModal: React.FC<RateLimitModalProps> = ({
         {/* Header */}
         <div className="p-4 sm:p-5 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between bg-neutral-50/80 dark:bg-neutral-900/80">
           <div className="flex items-center gap-2.5">
-            <div className={`p-2 rounded-xl ${isThrottled ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400' : 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'}`}>
+            <div
+              className={`p-2 rounded-xl ${isThrottled ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400' : 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'}`}
+            >
               <Activity className="w-5 h-5" />
             </div>
             <div>
@@ -86,11 +88,15 @@ export const RateLimitModal: React.FC<RateLimitModalProps> = ({
                     isThrottled
                       ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
                       : remaining < 5
-                      ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
-                      : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                        ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                        : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
                   }`}
                 >
-                  {isThrottled ? 'Throttled / Cooldown' : remaining < 5 ? 'Warning: Low Quota' : 'Optimal Pacing'}
+                  {isThrottled
+                    ? 'Throttled / Cooldown'
+                    : remaining < 5
+                      ? 'Warning: Low Quota'
+                      : 'Optimal Pacing'}
                 </span>
               </h3>
               <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
@@ -107,7 +113,9 @@ export const RateLimitModal: React.FC<RateLimitModalProps> = ({
               className="p-1.5 text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
               title="Refresh telemetry headers"
             >
-              <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-indigo-500' : ''}`} />
+              <RefreshCw
+                className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-indigo-500' : ''}`}
+              />
             </button>
             <button
               type="button"
@@ -173,10 +181,12 @@ export const RateLimitModal: React.FC<RateLimitModalProps> = ({
                     <ShieldAlert className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
                     <div>
                       <div className="font-semibold text-rose-800 dark:text-rose-200">
-                        X Account Cooldown Active: {Math.floor(cooldownState.secondsRemaining / 60)}m {cooldownState.secondsRemaining % 60}s remaining
+                        X Account Cooldown Active: {Math.floor(cooldownState.secondsRemaining / 60)}
+                        m {cooldownState.secondsRemaining % 60}s remaining
                       </div>
                       <p className="text-neutral-600 dark:text-neutral-400 mt-0.5 leading-relaxed">
-                        {cooldownState.reason || 'X placed a temporary write cooldown on automated in-thread replies. Automated drops are paused.'}
+                        {cooldownState.reason ||
+                          'X placed a temporary write cooldown on automated in-thread replies. Automated drops are paused.'}
                       </p>
                     </div>
                   </div>
@@ -200,9 +210,7 @@ export const RateLimitModal: React.FC<RateLimitModalProps> = ({
                       <Clock className="w-3.5 h-3.5 text-indigo-500" />
                       <span>15-Minute Rolling Window</span>
                     </span>
-                    <span className="font-mono text-neutral-500">
-                      POST /2/tweets
-                    </span>
+                    <span className="font-mono text-neutral-500">POST /2/tweets</span>
                   </div>
 
                   <div>
@@ -210,9 +218,7 @@ export const RateLimitModal: React.FC<RateLimitModalProps> = ({
                       <span className="text-2xl font-bold font-mono text-neutral-900 dark:text-neutral-100">
                         {remaining}
                       </span>
-                      <span className="text-xs font-mono text-neutral-500">
-                        / {limit} requests
-                      </span>
+                      <span className="text-xs font-mono text-neutral-500">/ {limit} requests</span>
                     </div>
 
                     {/* Progress Bar */}
@@ -222,8 +228,8 @@ export const RateLimitModal: React.FC<RateLimitModalProps> = ({
                           percentRemaining > 40
                             ? 'bg-emerald-500'
                             : percentRemaining > 15
-                            ? 'bg-amber-500'
-                            : 'bg-rose-500'
+                              ? 'bg-amber-500'
+                              : 'bg-rose-500'
                         }`}
                         style={{ width: `${percentRemaining}%` }}
                       />
@@ -287,13 +293,24 @@ export const RateLimitModal: React.FC<RateLimitModalProps> = ({
                 </div>
                 <ul className="space-y-1 text-neutral-600 dark:text-neutral-400 pl-5 list-disc text-[11px]">
                   <li>
-                    <strong className="text-neutral-800 dark:text-neutral-200">Pre-Emptive Rate Window Hold:</strong> Automated drops hold automatically if remaining calls reach zero until window resets.
+                    <strong className="text-neutral-800 dark:text-neutral-200">
+                      Pre-Emptive Rate Window Hold:
+                    </strong>{' '}
+                    Automated drops hold automatically if remaining calls reach zero until window
+                    resets.
                   </li>
                   <li>
-                    <strong className="text-neutral-800 dark:text-neutral-200">Anti-Burst Mutex:</strong> Minimum 60s spacing enforced across all campaigns to prevent burst detection.
+                    <strong className="text-neutral-800 dark:text-neutral-200">
+                      Anti-Burst Mutex:
+                    </strong>{' '}
+                    Minimum 60s spacing enforced across all campaigns to prevent burst detection.
                   </li>
                   <li>
-                    <strong className="text-neutral-800 dark:text-neutral-200">Quote Tweet Auto-Fallback:</strong> If direct in-thread replies hit 403 restrictions, drops seamlessly quote the post to guarantee delivery.
+                    <strong className="text-neutral-800 dark:text-neutral-200">
+                      Quote Tweet Auto-Fallback:
+                    </strong>{' '}
+                    If direct in-thread replies hit 403 restrictions, drops seamlessly quote the
+                    post to guarantee delivery.
                   </li>
                 </ul>
               </div>
@@ -304,7 +321,9 @@ export const RateLimitModal: React.FC<RateLimitModalProps> = ({
           {activeTab === 'reference' && (
             <div className="space-y-4 text-xs">
               <p className="text-neutral-600 dark:text-neutral-400 leading-relaxed">
-                As of 2024–2026, X API v2 operates on a modernized model with endpoint-specific rate limits measured in <strong>15-minute rolling windows</strong> alongside daily account volume ceilings.
+                As of 2024–2026, X API v2 operates on a modernized model with endpoint-specific rate
+                limits measured in <strong>15-minute rolling windows</strong> alongside daily
+                account volume ceilings.
               </p>
 
               <div className="overflow-x-auto rounded-xl border border-neutral-200 dark:border-neutral-700">
@@ -322,16 +341,24 @@ export const RateLimitModal: React.FC<RateLimitModalProps> = ({
                       <td className="p-2.5 font-sans font-semibold text-neutral-900 dark:text-neutral-100">
                         Pay-Per-Use (Standard)
                       </td>
-                      <td className="p-2.5 text-indigo-600 dark:text-indigo-400 font-semibold">50 requests / 15m</td>
+                      <td className="p-2.5 text-indigo-600 dark:text-indigo-400 font-semibold">
+                        50 requests / 15m
+                      </td>
                       <td className="p-2.5">10,000 posts / 24h</td>
-                      <td className="p-2.5 font-sans">~$0.015/tweet (no link), ~$0.20 (with URL)</td>
+                      <td className="p-2.5 font-sans">
+                        ~$0.015/tweet (no link), ~$0.20 (with URL)
+                      </td>
                     </tr>
                     <tr className="hover:bg-neutral-50 dark:hover:bg-neutral-800/40">
                       <td className="p-2.5 font-sans font-semibold text-neutral-900 dark:text-neutral-100">
                         Free Tier (Legacy)
                       </td>
-                      <td className="p-2.5 text-amber-600 dark:text-amber-400 font-semibold">1 request / 15m</td>
-                      <td className="p-2.5 text-rose-600 dark:text-rose-400 font-semibold">17 posts / 24h</td>
+                      <td className="p-2.5 text-amber-600 dark:text-amber-400 font-semibold">
+                        1 request / 15m
+                      </td>
+                      <td className="p-2.5 text-rose-600 dark:text-rose-400 font-semibold">
+                        17 posts / 24h
+                      </td>
                       <td className="p-2.5 font-sans">Free (500 writes/month cap)</td>
                     </tr>
                     <tr className="hover:bg-neutral-50 dark:hover:bg-neutral-800/40">
@@ -363,19 +390,27 @@ export const RateLimitModal: React.FC<RateLimitModalProps> = ({
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center font-mono text-[11px]">
                   <div className="p-2 rounded-lg bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700">
                     <div className="text-neutral-400 text-[10px]">TWEETS / DAY</div>
-                    <div className="font-bold text-neutral-900 dark:text-neutral-100 text-sm mt-0.5">2,400</div>
+                    <div className="font-bold text-neutral-900 dark:text-neutral-100 text-sm mt-0.5">
+                      2,400
+                    </div>
                   </div>
                   <div className="p-2 rounded-lg bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700">
                     <div className="text-neutral-400 text-[10px]">DIRECT MESSAGES</div>
-                    <div className="font-bold text-neutral-900 dark:text-neutral-100 text-sm mt-0.5">500 / day</div>
+                    <div className="font-bold text-neutral-900 dark:text-neutral-100 text-sm mt-0.5">
+                      500 / day
+                    </div>
                   </div>
                   <div className="p-2 rounded-lg bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700">
                     <div className="text-neutral-400 text-[10px]">FOLLOWS / DAY</div>
-                    <div className="font-bold text-neutral-900 dark:text-neutral-100 text-sm mt-0.5">400 / day</div>
+                    <div className="font-bold text-neutral-900 dark:text-neutral-100 text-sm mt-0.5">
+                      400 / day
+                    </div>
                   </div>
                   <div className="p-2 rounded-lg bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700">
                     <div className="text-neutral-400 text-[10px]">PROFILE EDITS</div>
-                    <div className="font-bold text-neutral-900 dark:text-neutral-100 text-sm mt-0.5">4 / hour</div>
+                    <div className="font-bold text-neutral-900 dark:text-neutral-100 text-sm mt-0.5">
+                      4 / hour
+                    </div>
                   </div>
                 </div>
               </div>
@@ -388,10 +423,15 @@ export const RateLimitModal: React.FC<RateLimitModalProps> = ({
               <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-800/40 space-y-2">
                 <div className="font-semibold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
                   <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                  <span>Understanding the 403 &quot;Not permitted to access this feature&quot; Error:</span>
+                  <span>
+                    Understanding the 403 &quot;Not permitted to access this feature&quot; Error:
+                  </span>
                 </div>
                 <p className="text-neutral-600 dark:text-neutral-300 leading-relaxed text-[11px]">
-                  X enforces automated anti-spam heuristic filters on comments and thread replies. If an automated script drops comments too quickly (e.g. every 1 minute) or cascades multiple comments consecutively on an unverified developer account, X temporarily disables in-thread replying for <strong>15 to 30 minutes</strong>.
+                  X enforces automated anti-spam heuristic filters on comments and thread replies.
+                  If an automated script drops comments too quickly (e.g. every 1 minute) or
+                  cascades multiple comments consecutively on an unverified developer account, X
+                  temporarily disables in-thread replying for <strong>15 to 30 minutes</strong>.
                 </p>
               </div>
 
@@ -407,7 +447,8 @@ export const RateLimitModal: React.FC<RateLimitModalProps> = ({
                       <span>Use Quote Tweets During Reply Lock</span>
                     </div>
                     <p className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-snug">
-                      Quote Tweets are published directly on your profile timeline and are NOT restricted by in-thread comment filters.
+                      Quote Tweets are published directly on your profile timeline and are NOT
+                      restricted by in-thread comment filters.
                     </p>
                   </div>
 
@@ -417,7 +458,8 @@ export const RateLimitModal: React.FC<RateLimitModalProps> = ({
                       <span>Maintain &ge; 15-Minute Frequency</span>
                     </div>
                     <p className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-snug">
-                      Keep automated live drops at 15m, 1h, or fixed 6am/6pm MST clock drops. Use 1m only with Dry-Run mode.
+                      Keep automated live drops at 15m, 1h, or fixed 6am/6pm MST clock drops. Use 1m
+                      only with Dry-Run mode.
                     </p>
                   </div>
                 </div>
@@ -429,7 +471,10 @@ export const RateLimitModal: React.FC<RateLimitModalProps> = ({
         {/* Footer */}
         <div className="p-3 sm:p-4 border-t border-neutral-200 dark:border-neutral-800 flex items-center justify-between bg-neutral-50/80 dark:bg-neutral-900/80 text-xs">
           <div className="text-[11px] text-neutral-500 font-mono">
-            Endpoint: <span className="font-semibold text-neutral-700 dark:text-neutral-300">api.x.com/2/tweets</span>
+            Endpoint:{' '}
+            <span className="font-semibold text-neutral-700 dark:text-neutral-300">
+              api.x.com/2/tweets
+            </span>
           </div>
           <button
             type="button"

@@ -1,5 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { ExternalLink, Clock, Radio, Power, Repeat, ChevronDown, UserCheck, Layers } from 'lucide-react';
+import {
+  ExternalLink,
+  Clock,
+  Radio,
+  Power,
+  Repeat,
+  ChevronDown,
+  UserCheck,
+  Layers,
+} from 'lucide-react';
 import { NextPostInfo, CredentialsStatus, BotSettings, TweetContext } from '../types.js';
 
 interface StatusBarProps {
@@ -67,7 +76,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
   const isInterval = (activeContext?.schedule?.mode || settings?.intervalMode) === 'interval';
   const intervalMins = activeContext?.schedule?.intervalMinutes || settings?.intervalMinutes || 720;
   const isCampaignEnabled = activeContext ? activeContext.enabled : schedulerEnabled;
-  
+
   // Selected value for select dropdown
   const currentValue = isInterval ? `interval_${intervalMins}` : 'fixed_720';
 
@@ -103,12 +112,19 @@ export const StatusBar: React.FC<StatusBarProps> = ({
             </div>
           )}
 
-          <span aria-hidden="true" className="text-neutral-300 dark:text-neutral-700 hidden sm:inline">·</span>
+          <span
+            aria-hidden="true"
+            className="text-neutral-300 dark:text-neutral-700 hidden sm:inline"
+          >
+            ·
+          </span>
 
           {/* Quick Frequency Dropdown */}
           <div className="flex items-center gap-1.5 bg-white dark:bg-neutral-800 px-2 py-1 rounded-md border border-neutral-200 dark:border-neutral-700 shadow-2xs shrink-0">
             <Repeat className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400 shrink-0" />
-            <span className="font-semibold text-neutral-700 dark:text-neutral-300 hidden sm:inline">Freq:</span>
+            <span className="font-semibold text-neutral-700 dark:text-neutral-300 hidden sm:inline">
+              Freq:
+            </span>
             <select
               value={currentValue}
               onChange={handleSelectChange}
@@ -117,7 +133,11 @@ export const StatusBar: React.FC<StatusBarProps> = ({
               {FREQUENCY_OPTIONS.map((opt) => {
                 const key = opt.mode === 'interval' ? `interval_${opt.minutes}` : 'fixed_720';
                 return (
-                  <option key={key} value={key} className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100">
+                  <option
+                    key={key}
+                    value={key}
+                    className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100"
+                  >
                     {opt.label}
                   </option>
                 );
@@ -125,7 +145,12 @@ export const StatusBar: React.FC<StatusBarProps> = ({
             </select>
           </div>
 
-          <span aria-hidden="true" className="text-neutral-300 dark:text-neutral-700 hidden sm:inline">·</span>
+          <span
+            aria-hidden="true"
+            className="text-neutral-300 dark:text-neutral-700 hidden sm:inline"
+          >
+            ·
+          </span>
 
           <div className="flex items-center gap-1.5 shrink-0">
             <Clock className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
@@ -158,17 +183,23 @@ export const StatusBar: React.FC<StatusBarProps> = ({
             <ExternalLink className="w-3 h-3" />
           </a>
 
-          <span aria-hidden="true" className="text-neutral-300 dark:text-neutral-700">·</span>
+          <span aria-hidden="true" className="text-neutral-300 dark:text-neutral-700">
+            ·
+          </span>
 
           <span className="text-neutral-500 shrink-0">
             {credentialsStatus?.isFullyConfigured ? (
-              <span className="text-emerald-600 dark:text-emerald-400 font-medium">X API Ready</span>
+              <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                X API Ready
+              </span>
             ) : (
               <span className="text-amber-600 dark:text-amber-400 font-medium">Keys Needed</span>
             )}
           </span>
 
-          <span aria-hidden="true" className="text-neutral-300 dark:text-neutral-700">·</span>
+          <span aria-hidden="true" className="text-neutral-300 dark:text-neutral-700">
+            ·
+          </span>
 
           <button
             onClick={onToggleScheduler}

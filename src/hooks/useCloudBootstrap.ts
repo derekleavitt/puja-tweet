@@ -45,7 +45,10 @@ export function useCloudBootstrap({ setSettings, loadInitialData }: UseCloudBoot
 
           // Restore activeContextId from cloudSettings without overwriting campaign schedules
           const cloudSettings = await loadFirestoreSettings();
-          if (cloudSettings?.activeContextId && cloudContexts.some(c => c.id === cloudSettings.activeContextId)) {
+          if (
+            cloudSettings?.activeContextId &&
+            cloudContexts.some((c) => c.id === cloudSettings.activeContextId)
+          ) {
             await activateContext(cloudSettings.activeContextId);
           }
         } else {

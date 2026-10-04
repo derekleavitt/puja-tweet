@@ -119,7 +119,11 @@ export const Header: React.FC<HeaderProps> = ({
                   title="Switch active tweet context"
                 >
                   {contexts.map((c) => (
-                    <option key={c.id} value={c.id} className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100">
+                    <option
+                      key={c.id}
+                      value={c.id}
+                      className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100"
+                    >
                       {c.name}
                     </option>
                   ))}
@@ -143,7 +147,9 @@ export const Header: React.FC<HeaderProps> = ({
                       : 'hover:bg-neutral-100 dark:hover:bg-neutral-900 hover:text-neutral-900 dark:hover:text-neutral-100'
                   }`}
                 >
-                  <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-amber-400 dark:text-neutral-900' : 'text-neutral-400'}`} />
+                  <Icon
+                    className={`w-3.5 h-3.5 ${isActive ? 'text-amber-400 dark:text-neutral-900' : 'text-neutral-400'}`}
+                  />
                   {item.label}
                 </button>
               );
@@ -161,8 +167,8 @@ export const Header: React.FC<HeaderProps> = ({
                 cooldownState?.isThrottled
                   ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-800 animate-pulse'
                   : (rateLimitTelemetry?.remaining ?? 50) < 5
-                  ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-800'
-                  : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+                    ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-800'
+                    : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700 hover:bg-neutral-200 dark:hover:bg-neutral-700'
               }`}
             >
               <Activity className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
@@ -179,14 +185,18 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Dry Run / Live Switch Indicator */}
             <button
               onClick={onToggleDryRun}
-              title={dryRun ? 'Dry run mode: replies simulated' : 'Live mode: replies sent to X API'}
+              title={
+                dryRun ? 'Dry run mode: replies simulated' : 'Live mode: replies sent to X API'
+              }
               className={`px-2 py-1 text-xs font-mono rounded-md border transition-colors flex items-center gap-1.5 cursor-pointer shrink-0 ${
                 dryRun
                   ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-950/60'
                   : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-950/60'
               }`}
             >
-              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dryRun ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+              <span
+                className={`w-1.5 h-1.5 rounded-full shrink-0 ${dryRun ? 'bg-amber-500' : 'bg-emerald-500'}`}
+              />
               <span className="hidden sm:inline">{dryRun ? 'Dry Run' : 'Live X API'}</span>
               <span className="sm:hidden">{dryRun ? 'Sim' : 'Live'}</span>
             </button>

@@ -18,9 +18,10 @@ export const createDropsRouter = ({ storage, scheduler }: AppDeps) => {
     slotType: string | undefined,
   ) => {
     const context = contextId
-      ? (storage.getContext(contextId) || storage.getActiveContext())
+      ? storage.getContext(contextId) || storage.getActiveContext()
       : storage.getActiveContext();
-    const timeTag = slotType === 'morning' ? '6:00 AM' : slotType === 'evening' ? '6:00 PM' : 'Drop';
+    const timeTag =
+      slotType === 'morning' ? '6:00 AM' : slotType === 'evening' ? '6:00 PM' : 'Drop';
     const templateToUse = template || context.template;
 
     const previewText = await resolveTemplateText(templateToUse, color, {
