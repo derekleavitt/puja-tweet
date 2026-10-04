@@ -15,19 +15,19 @@ import type { BotState, Store } from './Store.js';
 /** The slice of the Firestore API used here (satisfied by firebase-admin's Firestore and by test fakes). */
 export interface FirestoreDocSnapshotLike {
   exists: boolean;
-  data(): Record<string, any> | undefined;
+  data(): Record<string, unknown> | undefined;
 }
 export interface FirestoreDocRefLike {
   get(): Promise<FirestoreDocSnapshotLike>;
-  set(data: Record<string, any>): Promise<unknown>;
+  set(data: Record<string, unknown>): Promise<unknown>;
   collection(name: string): FirestoreCollectionLike;
 }
 export interface FirestoreCollectionLike {
   doc(id: string): FirestoreDocRefLike;
-  get(): Promise<{ docs: Array<{ id: string; data(): Record<string, any> }> }>;
+  get(): Promise<{ docs: Array<{ id: string; data(): Record<string, unknown> }> }>;
 }
 export interface FirestoreWriteBatchLike {
-  set(ref: FirestoreDocRefLike, data: Record<string, any>): unknown;
+  set(ref: FirestoreDocRefLike, data: Record<string, unknown>): unknown;
   delete(ref: FirestoreDocRefLike): unknown;
   commit(): Promise<unknown>;
 }
@@ -63,7 +63,7 @@ export class FirestoreStore implements Store {
       this.known = new Map();
       return createDefaultState();
     }
-    const { logOrder, ...rest } = (snap.data() ?? {}) as Record<string, any>;
+    const { logOrder, ...rest } = (snap.data() ?? {}) as Record<string, unknown>;
     const byId = new Map<string, PostLog>();
     const logSnap = await this.logsCol.get();
     for (const d of logSnap.docs) {

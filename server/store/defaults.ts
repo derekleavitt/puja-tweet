@@ -43,7 +43,7 @@ export const createDefaultState = (): BotState => ({
 export const normalizeState = (raw: unknown): BotState => {
   const state = createDefaultState();
   if (!raw || typeof raw !== 'object') return state;
-  const data = raw as Record<string, any>;
+  const data = raw as Partial<BotState>;
 
   if (data.settings) state.settings = { ...state.settings, ...data.settings };
   if (Array.isArray(data.contexts) && data.contexts.length > 0) state.contexts = data.contexts;

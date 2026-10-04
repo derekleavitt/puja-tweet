@@ -5,6 +5,7 @@
 import { Router } from 'express';
 import type { AppDeps } from '../app.js';
 import { generateColor } from '../colorEngine.js';
+import type { ColorData } from '../../shared/types.js';
 import { HttpError, toHttpError } from '../middleware/error.js';
 import { resolveTemplateText } from '../templateAgent.js';
 import { formatTimeInZone } from '../../shared/time.js';
@@ -26,7 +27,7 @@ export const createDropsRouter = ({ services, drops }: AppDeps) => {
   const buildPreview = async (
     contextId: string | undefined,
     template: string | undefined,
-    color: any,
+    color: ColorData,
   ) => {
     const context = resolveContext(contextId);
     const timeTag = formatTimeInZone(new Date(), context.schedule?.timezone);

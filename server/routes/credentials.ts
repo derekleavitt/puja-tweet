@@ -6,6 +6,7 @@ import { Router } from 'express';
 import type { AppDeps } from '../app.js';
 import { toHttpError } from '../middleware/error.js';
 import { verifyTwitterCredentials } from '../twitterClient.js';
+import { errorMessage } from '../errorMessage.js';
 
 const CREDENTIAL_FIELDS = [
   'apiKey',
@@ -56,8 +57,8 @@ export const createCredentialsRouter = ({ services }: AppDeps) => {
     try {
       const result = await verifyTwitterCredentials(services.credentials.getEffectiveCredentials());
       res.json(result);
-    } catch (err: any) {
-      res.status(500).json({ valid: false, message: err.message });
+    } catch (err) {
+      res.status(500).json({ valid: false, message: errorMessage(err) });
     }
   });
 
