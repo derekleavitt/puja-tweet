@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 
 async function load(env: { DEV: boolean; VITE_AUTH_DISABLED?: string }) {
   vi.resetModules();
-  vi.stubEnv('DEV', env.DEV as unknown as string);
+  vi.stubEnv('DEV', env.DEV);
   vi.stubEnv('VITE_AUTH_DISABLED', env.VITE_AUTH_DISABLED ?? '');
   return (await import('../../src/lib/devAuth.js')).DEV_AUTH_BYPASS;
 }
