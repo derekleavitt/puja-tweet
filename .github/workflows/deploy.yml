@@ -83,6 +83,7 @@ jobs:
           env_vars: |
             STORE=firestore
             SCHEDULER_MODE=external
+            SCHEDULER_TICK_TIMEOUT_MS=50000
             FIREBASE_PROJECT_ID=${{ vars.GCP_PROJECT_ID }}
             AUTHORIZED_EMAILS=the.derek.leavitt@gmail.com
             SCHEDULE_TIMEZONE=America/Denver

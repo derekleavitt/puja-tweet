@@ -159,7 +159,7 @@ After running the bootstrap script, you can deploy from your machine:
 gcloud run deploy chromabot --source . --region us-central1 \
   --service-account=chromabot-runtime@hitthehatch.iam.gserviceaccount.com \
   --min-instances=0 --max-instances=1 --concurrency=20 --cpu-throttling --allow-unauthenticated \
-  --set-env-vars="STORE=firestore,SCHEDULER_MODE=external,FIREBASE_PROJECT_ID=hitthehatch,AUTHORIZED_EMAILS=the.derek.leavitt@gmail.com,SCHEDULE_TIMEZONE=America/Denver,TARGET_TWEET_ID=2103110008212992249,NODE_ENV=production" \
+  --set-env-vars="STORE=firestore,SCHEDULER_MODE=external,SCHEDULER_TICK_TIMEOUT_MS=50000,FIREBASE_PROJECT_ID=hitthehatch,AUTHORIZED_EMAILS=the.derek.leavitt@gmail.com,SCHEDULE_TIMEZONE=America/Denver,TARGET_TWEET_ID=2103110008212992249,NODE_ENV=production" \
   --set-secrets="TWITTER_API_KEY=TWITTER_API_KEY:latest,TWITTER_API_SECRET=TWITTER_API_SECRET:latest,TWITTER_ACCESS_TOKEN=TWITTER_ACCESS_TOKEN:latest,TWITTER_ACCESS_TOKEN_SECRET=TWITTER_ACCESS_TOKEN_SECRET:latest,TWITTER_BEARER_TOKEN=TWITTER_BEARER_TOKEN:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,WEBHOOK_SECRET=WEBHOOK_SECRET:latest,CREDENTIALS_ENCRYPTION_KEY=CREDENTIALS_ENCRYPTION_KEY:latest,CRON_SECRET=CRON_SECRET:latest"
 ```
 
