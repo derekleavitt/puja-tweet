@@ -23,6 +23,8 @@ export interface ExecuteDropOptions {
    * which only the owner can turn off (Settings / `globalDryRun`).
    */
   forceLive?: boolean;
+  /** Forces a simulation for this call (CLI `--dry-run`); a pure preview, so it ignores global pause. */
+  forceDryRun?: boolean;
   /** Exact text to post (e.g. the previewed text); skips template resolution. Still length-checked. */
   text?: string;
   source?: 'scheduler' | 'webhook' | 'manual' | 'cli';
@@ -137,7 +139,7 @@ export const createDropService = (deps: DropDeps) => {
   const executeDrop = async (options: ExecuteDropOptions = {}) => {
     const source = options.source || 'manual';
     // Global pause stops every scheduled path; manual posting is still allowed.
-    if (source !== 'manual' && s.settings.isGlobalPaused()) {
+    if (source !== 'manual' && !options.forceDryRun && s.settings.isGlobalPaused()) {
       throw new HttpError(409, 'Global pause is on: scheduled drops are stopped');
     }
     const requested = options.contextId ? s.contexts.getContext(options.contextId) : undefined;
@@ -170,7 +172,9 @@ export const createDropService = (deps: DropDeps) => {
     const replyToTweetId = engagementMode === 'reply' ? chainInfo.targetTweetId : undefined;
     const quoteTweetId = engagementMode === 'quote' ? context.targetTweetId : undefined;
     const isDryRun =
-      s.settings.isGlobalDryRun() || (options.forceLive ? false : (context.dryRun ?? false));
+      s.settings.isGlobalDryRun() ||
+      !!options.forceDryRun ||
+      (options.forceLive ? false : (context.dryRun ?? false));
     const creds = s.credentials.getEffectiveCredentials();
 
     console.log(

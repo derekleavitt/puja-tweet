@@ -18,7 +18,7 @@ This repository includes automated GitHub Actions workflows:
 1. **`.github/workflows/chromabot-scheduler.yml`**:
    - Scheduled runs are disabled unless repository variable `CHROMABOT_ACTIONS_ENABLED=true` (Settings, Secrets and variables, Actions, Variables). Even then they are dry runs unless `CHROMABOT_ACTIONS_LIVE=true`.
    - Supports **`workflow_dispatch`** (Run workflow) from the **Actions** tab with `morning`, `evening`, or `auto`; `dry_run` defaults to on, uncheck it to post live.
-   - `scripts/post-drop.ts` defaults to dry run (live needs `--live` or `DRY_RUN=false`). Live `--slot auto` runs are refused outside a 60-minute window after a `SCHEDULE_TIMES` entry unless `--force` is passed (window check only; it cannot detect an already-posted slot because Actions keeps no state).
+   - `scripts/post-drop.ts` runs through the same `dropService` as the server (flags: `--context <id>`, `--slot`, `--dry-run`, `--live`, `--force`). It defaults to dry run (live needs `--live` or `DRY_RUN=false`), and the global switches apply: live runs are simulated while `globalDryRun` is on and refused while `globalPaused` is on (both default on; flip them in the app header, which needs a persistent store such as `STORE=firestore`). Live `--slot auto` runs are refused outside a 60-minute window after a `SCHEDULE_TIMES` entry unless `--force` is passed (window check only; it cannot detect an already-posted slot because Actions keeps no state).
 
 2. **`.github/workflows/ci.yml`**:
    - Validates TypeScript types and builds the web dashboard.
@@ -44,8 +44,11 @@ To enable the GitHub Actions workflow to post live tweets to X, navigate to your
 
 Run a test drop locally:
 ```bash
-# Test a drop in dry-run mode (simulated)
+# Test a drop in dry-run mode (simulated; prints the context name and engagement mode)
 npm run post-drop -- --dry-run
+
+# Target a specific campaign
+npm run post-drop -- --dry-run --context ctx_primary
 
 # Test a specific slot (morning or evening)
 npm run post-drop -- --slot morning
