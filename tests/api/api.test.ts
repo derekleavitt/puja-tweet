@@ -151,3 +151,14 @@ describe('POST /api/generate-color', () => {
     expect(spy).not.toHaveBeenCalled();
   });
 });
+
+describe('unknown contextId on preview routes', () => {
+  it.each(['/api/generate-color', '/api/template/preview'])('%s returns 404', async (path) => {
+    const res = await request(app).post(path).send({ contextId: 'ctx_missing' }).expect(404);
+    expect(res.body).toEqual({ success: false, error: expect.stringContaining('ctx_missing') });
+  });
+
+  it('still works without a contextId', async () => {
+    await request(app).post('/api/generate-color').send({}).expect(200);
+  });
+});
