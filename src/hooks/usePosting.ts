@@ -38,6 +38,7 @@ export function usePosting({ activeContextId, addLog, refresh }: UsePostingDeps)
     customColor?: ColorData,
     slotType: 'morning' | 'evening' | 'manual' = 'manual',
     contextId?: string,
+    opts?: { text?: string; slotId?: string },
   ) => {
     setIsPosting(true);
     setLastPostedResult(null);
@@ -47,6 +48,8 @@ export function usePosting({ activeContextId, addLog, refresh }: UsePostingDeps)
         slotType,
         color: customColor || color,
         contextId: contextId || activeContextId,
+        ...(opts?.text ? { text: opts.text } : {}),
+        ...(opts?.slotId ? { slotId: opts.slotId } : {}),
       });
       setLastPostedResult(data);
 

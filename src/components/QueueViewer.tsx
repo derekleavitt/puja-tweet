@@ -15,7 +15,11 @@ import { QueueSlot, ColorData, TweetContext } from '../types.js';
 interface QueueViewerProps {
   queue: QueueSlot[];
   onRerollSlot: (slotId: string) => void;
-  onPostNow: (color: ColorData, slotType: 'morning' | 'evening' | 'manual') => void;
+  onPostNow: (
+    color: ColorData,
+    slotType: 'morning' | 'evening' | 'manual',
+    slot: QueueSlot,
+  ) => void;
   isPosting: boolean;
   contexts?: TweetContext[];
   activeContextId?: string;
@@ -289,7 +293,7 @@ export const QueueViewer: React.FC<QueueViewerProps> = ({
                   </button>
 
                   <button
-                    onClick={() => onPostNow(slot.color, slot.slotType)}
+                    onClick={() => onPostNow(slot.color, slot.slotType, slot)}
                     disabled={isPosting}
                     className="py-1.5 px-2.5 text-xs font-medium text-white bg-neutral-900 hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200 rounded-md transition-colors flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
                     title="Send this color reply immediately"

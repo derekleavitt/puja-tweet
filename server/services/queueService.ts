@@ -72,6 +72,19 @@ export class QueueService {
     return s.queue[idx];
   }
 
+  /** Removes a sent slot (scoped to its campaign) and tops the queue back up. */
+  consumeQueueSlot(slotId: string, contextId?: string): boolean {
+    const s = this.sm.state;
+    const idx = s.queue.findIndex(
+      (q) => q.slotId === slotId && (!contextId || q.contextId === contextId),
+    );
+    if (idx === -1) return false;
+    const [removed] = s.queue.splice(idx, 1);
+    this.ensureQueue(removed.contextId);
+    this.sm.persist();
+    return true;
+  }
+
   popNextQueueSlot(slotType: 'morning' | 'evening', contextId?: string): ColorData {
     const s = this.sm.state;
     const targetId = contextId || s.activeContextId;

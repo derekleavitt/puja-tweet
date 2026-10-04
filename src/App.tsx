@@ -207,7 +207,9 @@ function ChromaBotDashboard() {
               <QueueViewer
                 queue={queue}
                 onRerollSlot={handleRerollSlot}
-                onPostNow={(slotColor, slotType) => handlePostNow(slotColor, slotType)}
+                onPostNow={(slotColor, slotType, slot) =>
+                  handlePostNow(slotColor, slotType, slot.contextId, { slotId: slot.slotId })
+                }
                 isPosting={isPosting}
                 contexts={contexts}
                 activeContextId={activeContextId}
