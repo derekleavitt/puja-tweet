@@ -27,6 +27,7 @@ import {
   History,
 } from 'lucide-react';
 import { TweetContext, TweetContextSchedule } from '../types.js';
+import { previewTemplate } from '../api/endpoints.js';
 
 interface ContextsManagerProps {
   contexts: TweetContext[];
@@ -101,15 +102,10 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
     setTestingAi(true);
     setAiPreviewResult(null);
     try {
-      const res = await fetch('/api/template/preview', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          template: editingContext.template,
-          contextId: editingContext.id,
-        }),
+      const data = await previewTemplate({
+        template: editingContext.template,
+        contextId: editingContext.id,
       });
-      const data = await res.json();
       if (data.previewText) {
         setAiPreviewResult(data.previewText);
       } else {

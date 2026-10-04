@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Sun, Moon, Shuffle, Send, ExternalLink, Check, Copy, AlertCircle, ArrowUpRight, Layers, Sparkles, RefreshCw } from 'lucide-react';
 import { ColorData, BotSettings, TweetContext } from '../types.js';
 import { TargetTweetEditor } from './TargetTweetEditor.js';
+import { previewTemplate } from '../api/endpoints.js';
 
 interface LiveStudioProps {
   color: ColorData | null;
@@ -84,17 +85,12 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     if (!hasAgentTag) return;
     setIsGeneratingAi(true);
     try {
-      const res = await fetch('/api/template/preview', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          template: settings.template,
-          color,
-          slotType: selectedSlot,
-          contextId: activeContextId,
-        }),
+      const data = await previewTemplate({
+        template: settings.template,
+        color,
+        slotType: selectedSlot,
+        contextId: activeContextId,
       });
-      const data = await res.json();
       if (data.previewText) {
         setAiPreviewText(data.previewText);
       }

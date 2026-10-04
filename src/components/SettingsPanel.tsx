@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Save, Check, ExternalLink, RefreshCw, Clock, Repeat, Globe, Key, ShieldCheck, Sparkles, UserCheck, Target, Link2, RotateCcw } from 'lucide-react';
 import { BotSettings } from '../types.js';
 import { extractTweetId } from './TargetTweetEditor.js';
+import { previewTemplate } from '../api/endpoints.js';
 
 interface SettingsPanelProps {
   settings: BotSettings;
@@ -58,12 +59,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSaveSe
     setTestingAi(true);
     setAiPreviewResult(null);
     try {
-      const res = await fetch('/api/template/preview', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ template }),
-      });
-      const data = await res.json();
+      const data = await previewTemplate({ template });
       if (data.previewText) {
         setAiPreviewResult(data.previewText);
       } else {
