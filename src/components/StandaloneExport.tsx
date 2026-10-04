@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Copy, Check, Terminal, ExternalLink, Globe, Key, ShieldCheck, Zap } from 'lucide-react';
 import { BotSettings } from '../types.js';
+import { getExportScript } from '../api/endpoints.js';
 
 interface StandaloneExportProps {
   settings: BotSettings;
@@ -12,8 +13,7 @@ export const StandaloneExport: React.FC<StandaloneExportProps> = ({ settings }) 
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch('/api/export-script')
-      .then((res) => res.json())
+    getExportScript()
       .then((json) => setData(json))
       .catch((err) => console.error('Error fetching export script:', err));
   }, [settings.targetTweetId]);
