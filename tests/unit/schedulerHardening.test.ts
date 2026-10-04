@@ -161,3 +161,14 @@ describe('circuit breaker', () => {
     expect(svc.contexts.getContext(ctx.id)!.autoPausedReason).toContain('401');
   });
 });
+
+describe('queue top-up', () => {
+  it('refills a drained queue during the tick, even while paused', async () => {
+    services.settings.updateSettings({ globalPaused: true });
+    const state = (services.queue as unknown as { sm: { state: { queue: unknown[] } } }).sm.state;
+    state.queue.length = 0;
+    expect(services.queue.getQueue()).toHaveLength(0);
+    await scheduler.tick();
+    expect(services.queue.getQueue().length).toBeGreaterThan(0);
+  });
+});
