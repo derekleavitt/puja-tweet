@@ -6,7 +6,11 @@
 import { z } from 'zod';
 import { HttpError } from '../middleware/error.js';
 import { extractTweetId } from '../../shared/tweetId.js';
-import type { HashtagEvolutionConfig, TweetContext } from '../../shared/types.js';
+import type {
+  ConversationConfig,
+  HashtagEvolutionConfig,
+  TweetContext,
+} from '../../shared/types.js';
 
 const scheduleSchema = z.object({
   mode: z.enum(['interval', 'fixed_times']).optional(),
@@ -21,6 +25,20 @@ const hashtagEvolutionSchema = z.object({
   enabled: z.boolean().optional(),
   maxTags: z.number().int().min(1).max(5).optional(),
   keepSeedTags: z.boolean().optional(),
+});
+
+const conversationSchema = z.object({
+  participants: z
+    .array(z.object({ accountId: z.string().max(100), persona: z.string().max(1500) }))
+    .min(2, 'A conversation needs 2 to 5 participants')
+    .max(5, 'A conversation needs 2 to 5 participants'),
+  sharedPrompt: z.string().max(3000),
+  openingPost: z.string().max(1000),
+  openerHandle: z
+    .union([z.literal(''), z.string().regex(/^[A-Za-z0-9_]{1,15}$/, 'Invalid X handle')])
+    .nullish(),
+  firstSpeakerAccountId: z.string().max(100).nullish(),
+  maxTurns: z.number().int().min(1).max(500).nullish(),
 });
 
 export const contextUpdateSchema = z.object({
@@ -50,6 +68,9 @@ export const contextUpdateSchema = z.object({
   hashtags: z.array(z.string().max(100)).max(50).optional(),
   // Config only: `hashtagState` is server-owned and stripped from client bodies.
   hashtagEvolution: hashtagEvolutionSchema.optional(),
+  // 'single' (default) or 'conversation'. `conversationState` is server-owned and stripped.
+  mode: z.enum(['single', 'conversation']).optional(),
+  conversation: conversationSchema.optional(),
 });
 
 export type ContextUpdateInput = Partial<
@@ -68,8 +89,10 @@ export type ContextUpdateInput = Partial<
     | 'themePreference'
     | 'lastPostedTweetId'
     | 'hashtags'
+    | 'mode'
   >
 > & {
+  conversation?: ConversationConfig;
   schedule?: Partial<TweetContext['schedule']>;
   hashtagEvolution?: Partial<HashtagEvolutionConfig>;
 };
@@ -85,8 +108,21 @@ export const parseContextUpdate = (body: unknown): ContextUpdateInput => {
     const where = issue.path.length ? `${issue.path.join('.')}: ` : '';
     throw new HttpError(400, `${where}${issue.message}`);
   }
-  const { lastPostedTweetId, accountId, ...rest } = result.data;
+  const { lastPostedTweetId, accountId, conversation, ...rest } = result.data;
   const parsed: ContextUpdateInput = { ...rest };
+  if (conversation) {
+    // null / '' mean "unset" (random first speaker, no opener, unlimited turns).
+    parsed.conversation = {
+      participants: conversation.participants,
+      sharedPrompt: conversation.sharedPrompt,
+      openingPost: conversation.openingPost,
+      ...(conversation.openerHandle ? { openerHandle: conversation.openerHandle } : {}),
+      ...(conversation.firstSpeakerAccountId
+        ? { firstSpeakerAccountId: conversation.firstSpeakerAccountId }
+        : {}),
+      ...(conversation.maxTurns ? { maxTurns: conversation.maxTurns } : {}),
+    };
+  }
   if (accountId !== undefined) parsed.accountId = accountId ?? '';
   // Keep "key present" semantics: an explicit null/'' clears the chain anchor.
   if (lastPostedTweetId !== undefined) parsed.lastPostedTweetId = lastPostedTweetId ?? undefined;
