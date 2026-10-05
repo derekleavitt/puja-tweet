@@ -179,6 +179,8 @@ export const QueueViewer: React.FC<QueueViewerProps> = ({
             index={idx}
             timezone={slotContext(slot)?.schedule?.timezone}
             canReroll={templateUsesColor(slotContext(slot)?.template)}
+            evolvesHashtags={!!slotContext(slot)?.hashtagEvolution?.enabled}
+            lastHashtags={slotContext(slot)?.hashtagState?.current}
             isPosting={isPosting}
             onReroll={() => onRerollSlot(slot.slotId)}
             onSend={() => onPostNow(slot.color, slot.slotType, slot)}

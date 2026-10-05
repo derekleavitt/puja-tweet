@@ -21,9 +21,9 @@ export function stripHistoryTags(text: string): string {
 }
 
 /** Replace each <agent> block with a bracketed placeholder (used for non-AI slot previews). */
-export function stripAgentTags(text: string, label: string): string {
-  return stripHistoryTags(text).replace(
-    PREVIEW_AGENT_REGEX,
-    (_, inner: string) => `[AI Poetry (${label}): ${inner.trim()}]`,
-  );
+/** Placeholder shown wherever an `<agent>` block will be written by AI at post time. */
+export const AI_TEXT_PLACEHOLDER = '✨ [AI-written text — generated when it posts]';
+
+export function stripAgentTags(text: string): string {
+  return stripHistoryTags(text).replace(PREVIEW_AGENT_REGEX, () => AI_TEXT_PLACEHOLDER);
 }

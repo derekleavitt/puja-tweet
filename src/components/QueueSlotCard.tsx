@@ -14,6 +14,10 @@ interface QueueSlotCardProps {
   timezone?: string;
   /** The slot's campaign template uses a color token, so re-rolling changes its text. */
   canReroll: boolean;
+  /** The slot's campaign evolves its hashtags; the tags are chosen when the post goes out. */
+  evolvesHashtags?: boolean;
+  /** The campaign's most recently posted evolved tags (without '#'). */
+  lastHashtags?: string[];
   isPosting: boolean;
   onReroll: () => void;
   onSend: () => void;
@@ -24,6 +28,8 @@ export const QueueSlotCard: React.FC<QueueSlotCardProps> = ({
   index,
   timezone,
   canReroll,
+  evolvesHashtags,
+  lastHashtags,
   isPosting,
   onReroll,
   onSend,
@@ -60,13 +66,24 @@ export const QueueSlotCard: React.FC<QueueSlotCardProps> = ({
           </div>
           {slot.previewText ? (
             <p
-              className="text-neutral-800 dark:text-neutral-200 text-[11px] font-mono leading-snug line-clamp-4 break-words"
-              title={slot.previewText}
+              data-testid="queue-slot-text"
+              className="text-neutral-800 dark:text-neutral-200 text-[11px] font-mono leading-snug whitespace-pre-wrap break-words"
             >
               {slot.previewText}
             </p>
           ) : (
             <p className="text-neutral-400 text-[11px] italic">Text is composed when it posts.</p>
+          )}
+          {evolvesHashtags && (
+            <p
+              data-testid="queue-slot-hashtag-note"
+              className="mt-1 text-[10px] text-indigo-600 dark:text-indigo-400"
+            >
+              Hashtags evolve when this posts
+              {lastHashtags && lastHashtags.length > 0
+                ? ` (last: ${lastHashtags.map((t) => `#${t}`).join(' ')})`
+                : ''}
+            </p>
           )}
         </div>
       </div>

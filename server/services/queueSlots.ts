@@ -22,7 +22,8 @@ export const formatSlotPreviewText = (
     slotLabel,
     fallbackWeatherDesc: 'warming crisp morning air',
   });
-  const resolved = stripAgentTags(substituted, `${colorPick} ${color.hex}`);
+  // AI text is only written when the post goes out; never show color/hex or the raw prompt here.
+  const resolved = stripAgentTags(substituted);
   return resolved.trim() || weatherTweet;
 };
 
