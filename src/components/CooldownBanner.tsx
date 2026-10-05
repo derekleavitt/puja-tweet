@@ -8,11 +8,14 @@ import { CooldownState } from '../types.js';
 
 interface CooldownBannerProps {
   cooldownState: CooldownState;
+  /** "@handle" of the throttled X account (cooldowns are per account). */
+  accountName?: string;
   onClearCooldown: () => void;
 }
 
 export const CooldownBanner: React.FC<CooldownBannerProps> = ({
   cooldownState,
+  accountName,
   onClearCooldown,
 }) => {
   return (
@@ -24,7 +27,7 @@ export const CooldownBanner: React.FC<CooldownBannerProps> = ({
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h4 className="font-semibold text-amber-700 dark:text-amber-300 text-sm">
-              X Anti-Spam Cooldown Active
+              X Anti-Spam Cooldown Active{accountName ? ` for ${accountName}` : ''}
             </h4>
             <span className="px-2 py-0.5 text-xs font-mono font-medium rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300">
               {Math.floor(cooldownState.secondsRemaining / 60)}m{' '}

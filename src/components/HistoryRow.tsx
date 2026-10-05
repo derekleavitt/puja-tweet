@@ -34,6 +34,11 @@ export const HistoryRow: React.FC<HistoryRowProps> = ({ log, copied, onCopy }) =
               {log.contextName}
             </span>
           )}
+          {log.accountHandle && (
+            <span data-testid="history-account" className="text-neutral-500">
+              @{log.accountHandle}
+            </span>
+          )}
           <span>
             {log.slotType === 'morning'
               ? 'Morning Drop'

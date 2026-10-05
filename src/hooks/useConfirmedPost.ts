@@ -12,6 +12,8 @@ import { PostNowOptions } from './usePosting.js';
 export interface PendingPost {
   campaign: string;
   targetTweetId: string;
+  /** Account the campaign posts as (undefined = default). */
+  accountId?: string;
 }
 
 interface Deps {
@@ -40,6 +42,7 @@ export function useConfirmedPost({ settings, contexts, post }: Deps) {
       setPending({
         campaign: ctx?.name || contextId,
         targetTweetId: ctx?.targetTweetId || '',
+        accountId: ctx?.accountId,
       });
     });
     return go ? post(contextId, opts) : undefined;

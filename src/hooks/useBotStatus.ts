@@ -36,6 +36,7 @@ export function useBotStatus() {
   const [credentialsStatus, setCredentialsStatus] = useState<CredentialsStatus | null>(null);
   const [cooldownState, setCooldownState] = useState<CooldownState | null>(null);
   const [rateLimitTelemetry, setRateLimitTelemetry] = useState<RateLimitTelemetry | null>(null);
+  const [accountCooldowns, setAccountCooldowns] = useState<Record<string, CooldownState>>({});
 
   // Fetch status & state from backend
   const fetchStatus = useCallback(async () => {
@@ -46,7 +47,9 @@ export function useBotStatus() {
         setServerInfo({
           defaultTargetTweetId: data.defaultTargetTweetId ?? '',
           geminiConfigured: data.geminiConfigured,
+          accounts: data.accounts ?? [],
         });
+        setAccountCooldowns(data.accountCooldowns ?? {});
         if (data.contexts && data.contexts.length > 0) {
           setContexts(data.contexts);
         }
@@ -72,6 +75,9 @@ export function useBotStatus() {
       if (data) {
         if (data.telemetry) setRateLimitTelemetry(data.telemetry);
         if (data.cooldownState) setCooldownState(data.cooldownState);
+        if (data.accountCooldowns) {
+          setAccountCooldowns(data.accountCooldowns as Record<string, CooldownState>);
+        }
       }
     } catch (e) {
       console.error('Failed to refresh rate limits:', e);
@@ -83,6 +89,9 @@ export function useBotStatus() {
       const data = await clearCooldown();
       if (data) {
         setCooldownState(data.cooldownState ?? null);
+        if (data.accountCooldowns) {
+          setAccountCooldowns(data.accountCooldowns as Record<string, CooldownState>);
+        }
         await handleRefreshRateLimits();
       }
     } catch (e) {
@@ -99,6 +108,7 @@ export function useBotStatus() {
     credentialsStatus,
     setCredentialsStatus,
     cooldownState,
+    accountCooldowns,
     rateLimitTelemetry,
     fetchStatus,
     handleRefreshRateLimits,

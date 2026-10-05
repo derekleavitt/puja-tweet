@@ -32,6 +32,8 @@ import { useConfirmedPost } from './hooks/useConfirmedPost.js';
 import { ConfirmDialog } from './components/ui/ConfirmDialog.js';
 import { PostLog } from './types.js';
 import { ToastViewport } from './components/ui/Toast.js';
+import { useOAuthCallback } from './features/settings/useOAuthCallback.js';
+import { accountName, findAccount } from './lib/accounts.js';
 
 function ChromaBotDashboard() {
   const [activeTab, setActiveTab] = useState<Tab>('contexts');
@@ -49,6 +51,8 @@ function ChromaBotDashboard() {
     await fetchQueue();
   }, [fetchStatus, fetchQueue]);
   const addLog = (log: PostLog) => setLogs((prev) => [log, ...prev]);
+  // Back from X's authorize page: finish connecting the account, then show Settings.
+  useOAuthCallback(() => setActiveTab('settings'), refresh);
 
   const { isPosting, handlePostNow: postNowDirect } = usePosting({ addLog, refresh });
   const campaignActions = useContexts({ setLogs, refresh, fetchHistory });
@@ -97,6 +101,13 @@ function ChromaBotDashboard() {
     handleRefreshRateLimits,
     handleClearCooldown,
   } = status;
+  // Cooldowns are per X account: the banner shows the first throttled one.
+  const [throttledId, throttled] = Object.entries(status.accountCooldowns).find(
+    ([, c]) => c.isThrottled,
+  ) ?? ['', cooldownState];
+  const throttledName = throttledId
+    ? accountName(findAccount(status.serverInfo.accounts, throttledId), throttledId)
+    : undefined;
 
   return (
     <ServerInfoContext.Provider value={status.serverInfo}>
@@ -124,8 +135,12 @@ function ChromaBotDashboard() {
 
         <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 md:p-8">
           {/* Anti-Spam Rate Limit / Reply Cooldown Alert Banner */}
-          {cooldownState?.isThrottled && (
-            <CooldownBanner cooldownState={cooldownState} onClearCooldown={handleClearCooldown} />
+          {throttled?.isThrottled && (
+            <CooldownBanner
+              cooldownState={throttled}
+              accountName={throttledName}
+              onClearCooldown={handleClearCooldown}
+            />
           )}
 
           {isLoading ? (
@@ -178,6 +193,9 @@ function ChromaBotDashboard() {
               {activeTab === 'settings' && (
                 <SettingsPanel
                   settings={settings}
+                  contexts={contexts}
+                  refresh={refresh}
+                  accountCooldowns={status.accountCooldowns}
                   onToggleGlobalDryRun={handleToggleDryRun}
                   onToggleGlobalPause={handleToggleGlobalPause}
                   cooldownState={cooldownState}
@@ -204,7 +222,7 @@ function ChromaBotDashboard() {
         {confirmedPost.pending && (
           <ConfirmDialog
             title="Post live to X?"
-            message={`Campaign "${confirmedPost.pending.campaign}" will post a real tweet targeting #${confirmedPost.pending.targetTweetId}.`}
+            message={`Campaign "${confirmedPost.pending.campaign}" will post a real tweet as ${accountName(findAccount(status.serverInfo.accounts, confirmedPost.pending.accountId), confirmedPost.pending.accountId)} targeting #${confirmedPost.pending.targetTweetId}.`}
             confirmLabel="Post live"
             onConfirm={confirmedPost.confirm}
             onCancel={confirmedPost.cancel}

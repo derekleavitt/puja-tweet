@@ -16,6 +16,8 @@ import { AutoPausedBadge } from './AutoPausedBadge.js';
 import { CardHashtags } from './CardHashtags.js';
 import { CardHistory } from './CardHistory.js';
 import { CampaignPreview } from './CampaignPreview.js';
+import { useServerInfo } from '../../context/serverInfo.js';
+import { accountName, findAccount } from '../../lib/accounts.js';
 
 interface ContextCardProps {
   context: TweetContext;
@@ -59,6 +61,8 @@ export const ContextCard: React.FC<ContextCardProps> = (props) => {
   const [previewOpen, setPreviewOpen] = useState(false);
   const badge = MODE_BADGES[ctx.engagementMode || 'reply'];
   const campaignDryRun = ctx.dryRun === true;
+  const { accounts } = useServerInfo();
+  const account = findAccount(accounts, ctx.accountId);
 
   return (
     <div
@@ -139,6 +143,19 @@ export const ContextCard: React.FC<ContextCardProps> = (props) => {
             Auto-paused: {ctx.autoPausedReason} Press “Resume” to restart this campaign.
           </p>
         )}
+
+        <p data-testid="posts-as" className="text-xs text-neutral-600 dark:text-neutral-400">
+          Posts as{' '}
+          <span className="font-semibold text-neutral-900 dark:text-neutral-100">
+            {accountName(account, ctx.accountId)}
+          </span>
+          {account?.status === 'revoked' && (
+            <span className="ml-1.5 text-red-600 dark:text-red-400">(disconnected)</span>
+          )}
+          {ctx.accountId && !account && (
+            <span className="ml-1.5 text-red-600 dark:text-red-400">(pick another account)</span>
+          )}
+        </p>
 
         <CardTarget targetTweetId={ctx.targetTweetId} />
 
