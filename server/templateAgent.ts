@@ -186,6 +186,15 @@ export interface GenerateAgentTextOptions {
  * too-long draft once and finishes on a complete sentence. Throws `AgentUnavailableError` when AI is
  * not configured or every model fails (callers decide on any fallback text).
  */
+/** One line from a Gemini error for the log: no API keys, at most 160 chars. */
+export function shortReason(err: unknown): string {
+  const raw = (errorMessage(err) || String(err)).replace(/\s+/g, ' ').trim();
+  // The Gemini SDK can echo a JSON body; keep its "message" when present.
+  const inner = /"message"\s*:\s*"([^"]+)"/.exec(raw)?.[1];
+  const text = (inner ?? raw).replace(/(key=|AIza)[\w-]+/g, '$1…');
+  return text.length > 160 ? `${text.slice(0, 157)}…` : text || 'unknown error';
+}
+
 export async function generateAgentText(
   contents: string,
   opts: GenerateAgentTextOptions,
@@ -210,6 +219,8 @@ export async function generateAgentText(
     return opts.clean ? opts.clean(cleaned) : cleaned;
   };
 
+  // Why each model failed: shown in the drop's log entry, not only in the server log.
+  const reasons: string[] = [];
   for (const model of getGeminiModels()) {
     try {
       const draft = await draftWithRetry((p) => callModel(model, p), contents, shape, max);
@@ -218,15 +229,19 @@ export async function generateAgentText(
         opts.onText?.({ text: done.text, shaped: draft, droppedTail: done.droppedTail });
         return done.text;
       }
+      reasons.push(`${model}: empty response`);
     } catch (err) {
       console.warn(
         `[TemplateAgent] Model ${model} encountered an issue:`,
         errorMessage(err) || err,
       );
+      reasons.push(`${model}: ${shortReason(err)}`);
       // continue to next model in loop
     }
   }
-  throw new AgentUnavailableError('AI generation failed for every configured model.');
+  throw new AgentUnavailableError(
+    `AI generation failed for every configured model${reasons.length ? ` (${reasons.join('; ')})` : ''}.`,
+  );
 }
 
 /**
