@@ -192,7 +192,7 @@ export const createDropService = (deps: DropDeps) => {
 
   /** The text must address the next speaker (X only lets an app reply when mentioned). */
   const mentions = (text: string, handle: string) =>
-    new RegExp(`(^|[^\\w])@${handle}\\b`, 'i').test(text);
+    new RegExp(`(^|[^\\w])[@\uFF20]${handle}\\b`, 'i').test(text);
 
   /** One conversation turn: the speaker's own account posts, then the shared state advances. */
   const executeConversationDrop = async (
@@ -203,6 +203,13 @@ export const createDropService = (deps: DropDeps) => {
     const state = context.conversationState;
     if (!context.conversation || !state) {
       throw new HttpError(400, `"${context.name}" has no conversation state.`);
+    }
+    const maxTurns = context.conversation.maxTurns;
+    if (maxTurns && state.turnCount >= maxTurns) {
+      throw new HttpError(
+        409,
+        `Conversation finished (${maxTurns} turns); restart it with a new opening reply.`,
+      );
     }
     const isDryRun =
       s.settings.isGlobalDryRun() ||
@@ -308,13 +315,12 @@ export const createDropService = (deps: DropDeps) => {
           : classify(res);
     const failure = errorClass ? { errorClass, message: res.error } : undefined;
     if (errorClass === 'auth' && !isDryRun) s.accounts.markRevoked(speakerAccountId, res.error);
-    const posted = s.contexts.recordContextPostResult(
-      context.id,
-      status,
-      res.tweetId,
-      'reply',
-      failure,
-    );
+    // Restarted (new run) while this turn was in flight: its tweet belongs to the old thread, so it
+    // must not become the new run's chain anchor (nor count toward its breaker).
+    const sameRun = s.contexts.getContext(context.id)?.conversationState?.runId === state.runId;
+    const posted = sameRun
+      ? s.contexts.recordContextPostResult(context.id, status, res.tweetId, 'reply', failure)
+      : { autoPausedReason: undefined };
     let autoPausedReason = posted.autoPausedReason;
     if (turn && status !== 'error') {
       autoPausedReason =

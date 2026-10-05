@@ -353,6 +353,111 @@ describe('conversation scheduling', () => {
   });
 });
 
+describe('finished conversations, edits and restarts', () => {
+  const finishOne = async () => {
+    const c = makeConversation({}, { maxTurns: 1 });
+    now += 61 * MIN;
+    makeDue(c.id);
+    await scheduler.tick();
+    expect(ctxOf(c.id).autoPausedReason).toBe('Conversation finished (1 turns)');
+    return c;
+  };
+
+  it('a finished conversation cannot be resumed, triggered or posted', async () => {
+    const c = await finishOne();
+    const resume = await request(app).put(`/api/contexts/${c.id}`).send({ enabled: true });
+    expect(resume.status).toBe(400);
+    expect(resume.body.error).toMatch(/finished/);
+    const trigger = await request(app).post(`/api/contexts/${c.id}/trigger`).send({});
+    expect(trigger.status).toBe(409);
+    expect(fake.tweets).toHaveLength(1);
+    expect(ctxOf(c.id).conversationState!.turnCount).toBe(1);
+  });
+
+  it('lowering maxTurns to an already reached count finishes the conversation', async () => {
+    const c = makeConversation({}, { maxTurns: 10 });
+    for (let i = 0; i < 2; i++) {
+      now += 61 * MIN;
+      makeDue(c.id);
+      await scheduler.tick();
+    }
+    const conv = { ...ctxOf(c.id).conversation!, maxTurns: 2 };
+    const res = await request(app).put(`/api/contexts/${c.id}`).send({ conversation: conv });
+    expect(res.status).toBe(200);
+    expect(res.body.context.enabled).toBe(false);
+    expect(res.body.context.autoPausedReason).toBe('Conversation finished (2 turns)');
+    now += 61 * MIN;
+    makeDue(c.id);
+    await scheduler.tick();
+    expect(fake.tweets).toHaveLength(2);
+  });
+
+  it('changing the first speaker before turn 1 takes effect', async () => {
+    const c = makeConversation();
+    expect(ctxOf(c.id).conversationState!.nextSpeakerAccountId).toBe(ids[1]);
+    const conv = { ...ctxOf(c.id).conversation!, firstSpeakerAccountId: ids[0] };
+    await request(app).put(`/api/contexts/${c.id}`).send({ conversation: conv }).expect(200);
+    expect(ctxOf(c.id).conversationState!.nextSpeakerAccountId).toBe(ids[0]);
+  });
+
+  it('dropping the next speaker from the cast never re-picks the account that spoke last', async () => {
+    for (let round = 0; round < 10; round++) {
+      const c = makeConversation();
+      now += 61 * MIN;
+      makeDue(c.id);
+      await scheduler.tick(); // @two spoke; next is @one or @three
+      expect(ctxOf(c.id).conversationState!.turnCount).toBe(1);
+      const next = ctxOf(c.id).conversationState!.nextSpeakerAccountId;
+      const conv = ctxOf(c.id).conversation!;
+      const cast = conv.participants.filter((p) => p.accountId !== next);
+      await request(app)
+        .put(`/api/contexts/${c.id}`)
+        .send({ conversation: { ...conv, participants: cast } })
+        .expect(200);
+      expect(ctxOf(c.id).conversationState!.nextSpeakerAccountId).not.toBe(ids[1]);
+      ctxOf(c.id).enabled = false; // the stored object (patches replace it)
+    }
+  });
+
+  it('restart validates the opener handle and the opening post length', async () => {
+    const c = makeConversation();
+    const base = { targetTweetId: '1700000000000000009', firstSpeakerAccountId: ids[0] };
+    const badHandle = await request(app)
+      .post(`/api/contexts/${c.id}/conversation/restart`)
+      .send({ ...base, openingPost: 'hi @one', openerHandle: 'not a handle!' });
+    expect(badHandle.status).toBe(400);
+    const tooLong = await request(app)
+      .post(`/api/contexts/${c.id}/conversation/restart`)
+      .send({ ...base, openingPost: `@one ${'x'.repeat(1001)}` });
+    expect(tooLong.status).toBe(400);
+  });
+
+  it("a turn that lands after a restart never becomes the new run's anchor", async () => {
+    const c = makeConversation();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const realFetch = globalThis.fetch;
+    vi.stubGlobal('fetch', async (...args: Parameters<typeof fetch>) => {
+      if (String(args[0]).includes('/2/tweets')) await gate;
+      return realFetch(...args);
+    });
+    const drop = dropService.executeDrop({ contextId: c.id, source: 'scheduler' } as never);
+    await new Promise((r) => setTimeout(r, 20));
+    services.contexts.restartConversation(c.id, {
+      targetTweetId: '1700000000000000009',
+      openingPost: 'Round two @one @two @three',
+      openerHandle: 'owner',
+      firstSpeakerAccountId: ids[0],
+    });
+    release();
+    await drop;
+    const after = ctxOf(c.id);
+    expect(after.chainAnchor).toBeUndefined();
+    expect(after.lastPostedTweetId).toBeUndefined();
+    expect(after.conversationState!.turnCount).toBe(0);
+  });
+});
+
 describe('conversation lifecycle', () => {
   it('queue slots: the first names the next speaker, later ones are random', async () => {
     const c = makeConversation();

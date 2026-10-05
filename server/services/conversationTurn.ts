@@ -41,7 +41,8 @@ export const ensureMention = (text: string, nextHandle: string, maxLength: numbe
 /** De-@s every handle that is not allowed (`@foo` becomes `foo`); allowed ones are kept. */
 export const deMentionStrangers = (text: string, allowedHandles: Iterable<string>): string => {
   const allowed = new Set([...allowedHandles].map((h) => h.toLowerCase()));
-  return text.replace(/(^|[^\w])@(\w+)/g, (all, pre: string, name: string) =>
+  // X also treats the fullwidth at-sign (U+FF20) as a mention.
+  return text.replace(/(^|[^\w])[@\uFF20](\w+)/g, (all, pre: string, name: string) =>
     allowed.has(name.toLowerCase()) ? all : `${pre}${name}`,
   );
 };

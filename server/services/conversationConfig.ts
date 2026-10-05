@@ -12,7 +12,7 @@ export const MAX_PARTICIPANTS = 5;
 
 /** True when `text` @mentions `handle` (case-insensitive, whole handle). */
 export const mentionsHandle = (text: string, handle: string): boolean =>
-  new RegExp(`(^|[^\\w])@${handle}\\b`, 'i').test(text);
+  new RegExp(`(^|[^\\w])[@\uFF20]${handle}\\b`, 'i').test(text);
 
 const sameHandle = (a?: string, b?: string): boolean =>
   !!a && !!b && a.toLowerCase() === b.toLowerCase();
@@ -130,5 +130,7 @@ export const initConversationState = (
 });
 
 /** Random participant of the (edited) cast; used when the planned next speaker left the cast. */
-export const repickNextSpeaker = (config: ConversationConfig): string =>
-  pickRandom(config.participants).accountId;
+export const repickNextSpeaker = (config: ConversationConfig, lastSpeaker?: string): string => {
+  const others = config.participants.filter((p) => p.accountId !== lastSpeaker);
+  return pickRandom(others.length > 0 ? others : config.participants).accountId;
+};

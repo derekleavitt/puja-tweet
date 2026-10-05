@@ -294,7 +294,8 @@ export class ContextService {
     let conversationState: ConversationState | undefined;
     if (isConversation && conversation) {
       const kept = current.conversationState;
-      if (validated && (!kept || targetChanged || modeChanged)) {
+      // Before turn 1 nothing has happened yet, so a new first speaker/opening post takes effect.
+      if (validated && (!kept || targetChanged || modeChanged || kept.turnCount === 0)) {
         conversationState = initConversationState(conversation, validated.handles);
       } else if (!kept) {
         conversationState = initConversationState(
@@ -304,7 +305,17 @@ export class ContextService {
       } else if (
         !conversation.participants.some((p) => p.accountId === kept.nextSpeakerAccountId)
       ) {
-        conversationState = { ...kept, nextSpeakerAccountId: repickNextSpeaker(conversation) };
+        // Never the account that spoke last (no one replies to themselves).
+        const lastSpeaker = s.logs.find(
+          (l) =>
+            l.contextId === id &&
+            l.conversationRunId === kept.runId &&
+            (l.status === 'success' || l.status === 'simulated'),
+        )?.accountId;
+        conversationState = {
+          ...kept,
+          nextSpeakerAccountId: repickNextSpeaker(conversation, lastSpeaker),
+        };
       } else {
         conversationState = kept;
       }
@@ -329,6 +340,15 @@ export class ContextService {
             .find(Boolean)
         : accountProblem(this.sm.state, accountId);
     if (blocked) throw new HttpError(400, `Cannot resume "${current.name}": ${blocked}.`);
+    const finishedAt = conversation?.maxTurns;
+    const finished =
+      isConversation && !!finishedAt && (conversationState?.turnCount ?? 0) >= finishedAt;
+    if (resumed && finished) {
+      throw new HttpError(
+        400,
+        `Cannot resume "${current.name}": the conversation finished (${finishedAt} turns). Restart it with a new opening reply.`,
+      );
+    }
 
     // The chain anchor is server-owned: only a target change, an account change (another account's
     // replies are a different thread) or an explicit reset moves it. A client-sent
@@ -356,6 +376,11 @@ export class ContextService {
     updated.conversation = isConversation ? conversation : current.conversation;
     updated.conversationState = conversationState;
     if (isConversation) forceConversationFields(updated);
+    // A lowered turn limit that is already reached finishes the conversation now.
+    if (finished && updated.enabled) {
+      updated.enabled = false;
+      updated.autoPausedReason = `${FINISHED_PREFIX} (${finishedAt} turns)`;
+    }
 
     sanitizeContextChain(updated, s.logs);
     if (scheduleChanged) generateJitterForContext(updated);
@@ -523,6 +548,14 @@ export class ContextService {
     }
     const targetTweetId = extractTweetId(input.targetTweetId ?? '');
     if (!targetTweetId) throw new HttpError(400, 'targetTweetId must be a tweet ID or a tweet URL');
+    // Same limits as the campaign schema (the restart route takes a plain body).
+    if ((input.openingPost ?? '').length > 1000) {
+      throw new HttpError(400, 'openingPost must be at most 1000 characters');
+    }
+    const opener = input.openerHandle?.trim().replace(/^@/, '');
+    if (opener && !/^[A-Za-z0-9_]{1,15}$/.test(opener)) {
+      throw new HttpError(400, 'openerHandle must be an X handle (letters, digits, _; up to 15)');
+    }
     const { participants, sharedPrompt, maxTurns } = ctx.conversation;
     const validated = this.validateConversation({
       participants,

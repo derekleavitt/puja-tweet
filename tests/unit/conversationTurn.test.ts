@@ -82,6 +82,12 @@ describe('ensureMention', () => {
 });
 
 describe('deMentionStrangers', () => {
+  it('also de-mentions the fullwidth at-sign X treats as a mention', () => {
+    expect(deMentionStrangers('hello \uFF20victim and \uFF20alice', ['alice'])).toBe(
+      'hello victim and \uFF20alice',
+    );
+  });
+
   it('removes @ from strangers but keeps participants and the opener', () => {
     const out = deMentionStrangers('@Alice hi @foo and @opener, ask @BOB. mail a@b.c', [
       'alice',
