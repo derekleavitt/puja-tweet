@@ -53,9 +53,10 @@ export const AccountsPanel: React.FC<AccountsPanelProps> = ({ contexts, refresh 
       </div>
 
       <p className="text-xs text-neutral-500 leading-relaxed">
-        Each campaign posts as one of these accounts. Sign into the X account you want to add when X
-        asks. One-time setup in the X developer portal: app permissions <b>Read and Write</b>, User
-        authentication settings on, callback URL{' '}
+        Each campaign posts as one of these accounts. X authorizes the account you are signed in to
+        on x.com in this browser: switch to the account you want to add on x.com first (account
+        menu, bottom left), then press Connect account. One-time setup in the X developer portal:
+        app permissions <b>Read and Write</b>, User authentication settings on, callback URL{' '}
         <code className="font-mono text-[11px] px-1 rounded bg-neutral-100 dark:bg-neutral-800">
           {callbackUrl}
         </code>

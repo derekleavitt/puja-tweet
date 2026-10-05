@@ -127,7 +127,7 @@ describe('connect flow', () => {
     expect(redirect.body).toMatchObject({
       success: true,
       mode: 'redirect',
-      authorizeUrl: 'https://api.x.com/oauth/authorize?oauth_token=tok&force_login=true',
+      authorizeUrl: 'https://api.x.com/oauth/authorize?oauth_token=tok',
     });
     expect(requestToken.mock.calls[0][1]).toBe(CALLBACK);
     expect(JSON.stringify(redirect.body)).not.toContain('"s"');
