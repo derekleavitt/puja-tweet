@@ -320,6 +320,21 @@ describe('generateAgentText', () => {
     await expect(generateAgentText('hi', opts)).rejects.toBeInstanceOf(AgentUnavailableError);
   });
 
+  it('names each model and its reason (without API keys) when every model fails', async () => {
+    generateContent
+      .mockRejectedValueOnce(
+        new Error(
+          '{"error":{"code":404,"message":"models/x is not found for API version v1beta"}}',
+        ),
+      )
+      .mockRejectedValue(new Error('API key not valid. key=AIzaSECRET123 please pass a valid key'));
+    const err = await generateAgentText('hi', opts).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(AgentUnavailableError);
+    expect((err as Error).message).toMatch(/is not found for API version/);
+    expect((err as Error).message).toMatch(/API key not valid/);
+    expect((err as Error).message).not.toContain('SECRET123');
+  });
+
   it('buildTurn surfaces Gemini being down as a 503', async () => {
     delete process.env.GEMINI_API_KEY;
     const ctx = {
