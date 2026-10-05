@@ -435,14 +435,22 @@ export class ContextService {
     return { autoPausedReason };
   }
 
-  /** Circuit breaker: immediate on X 401/402, otherwise after MAX_CONSECUTIVE_ERRORS in a row. */
+  /**
+   * Circuit breaker: immediate on X 401/402 and on an unusable account, otherwise after
+   * MAX_CONSECUTIVE_ERRORS in a row.
+   */
   private breakerReason(
     context: TweetContext,
     failure?: { errorClass: XErrorClass; message?: string },
   ): string | undefined {
     if (!context.enabled) return undefined;
     if (failure?.errorClass === 'auth') {
-      return 'X rejected the credentials (HTTP 401). Fix them, then resume.';
+      return 'X rejected the credentials (HTTP 401). Verify or reconnect the account, then resume.';
+    }
+    if (failure?.errorClass === 'account') {
+      return (
+        failure.message || 'The X account is removed or disconnected — pick an account and resume'
+      );
     }
     if (failure?.errorClass === 'payment') {
       return 'X reports no credits / payment required (HTTP 402). Add credits, then resume.';

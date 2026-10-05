@@ -34,6 +34,7 @@ export const createStatusRouter = ({ services, scheduler }: AppDeps) => {
       credentialsStatus: services.credentials.getMaskedCredentialsStatus(),
       stats,
       cooldownState: services.rateLimit.getCooldownState(),
+      accountCooldowns: services.rateLimit.getAllCooldownStates(),
       rateLimitTelemetry: services.rateLimit.getRateLimitTelemetry(),
       queue: services.queue.getQueue(),
       latestLog: logs[0] || null,
@@ -46,12 +47,19 @@ export const createStatusRouter = ({ services, scheduler }: AppDeps) => {
       success: true,
       telemetry: services.rateLimit.getRateLimitTelemetry(),
       cooldownState: services.rateLimit.getCooldownState(),
+      accountCooldowns: services.rateLimit.getAllCooldownStates(),
     });
   });
 
-  router.post('/cooldown/clear', (_req, res) => {
-    services.rateLimit.clearGlobalCooldown();
-    res.json({ success: true, cooldownState: services.rateLimit.getCooldownState() });
+  // Body `{ accountId }` clears one account's cooldown; without it every account's is cleared.
+  router.post('/cooldown/clear', (req, res) => {
+    const accountId = typeof req.body?.accountId === 'string' ? req.body.accountId : undefined;
+    services.rateLimit.clearCooldown(accountId);
+    res.json({
+      success: true,
+      cooldownState: services.rateLimit.getCooldownState(),
+      accountCooldowns: services.rateLimit.getAllCooldownStates(),
+    });
   });
 
   return router;

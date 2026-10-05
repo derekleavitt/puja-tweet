@@ -34,8 +34,6 @@ interface AccountTokens {
 const NO_KEY_MESSAGE =
   'X accounts cannot be connected because CREDENTIALS_ENCRYPTION_KEY is not set on the server (it encrypts the account tokens). Set it, restart, and try again.';
 
-const handleLabel = (handle?: string) => (handle ? `@${handle}` : 'the selected account');
-
 /** Treats '', undefined and 'acct_env' alike (the default account). */
 export const effectiveAccountId = (id?: string | null): string => id || DEFAULT_ACCOUNT_ID;
 
@@ -44,18 +42,13 @@ export const accountProblem = (state: BotState, id?: string | null): string | un
   const accountId = effectiveAccountId(id);
   if (accountId === DEFAULT_ACCOUNT_ID) return undefined;
   const account = state.accounts.find((a) => a.id === accountId);
-  if (!account) {
-    return 'Account is removed or disconnected — pick an account and resume';
-  }
-  if (account.status === 'revoked') {
-    return `Account @${account.handle} is removed or disconnected — pick an account and resume`;
-  }
+  if (!account || account.status === 'revoked') return accountPauseReason(account?.handle);
   return undefined;
 };
 
 /** Reason used when a campaign is paused because its account went away. */
 export const accountPauseReason = (handle?: string) =>
-  `Account ${handleLabel(handle)} is removed or disconnected — pick an account and resume`;
+  `${handle ? `Account @${handle}` : "This campaign's X account"} is removed or disconnected — pick an account and resume`;
 
 const toInfo = (a: XAccount): XAccountInfo => ({
   id: a.id,
@@ -115,6 +108,11 @@ export class AccountService {
 
   exists(id?: string | null): boolean {
     return !!this.get(id);
+  }
+
+  /** Why campaigns cannot post as this account right now; undefined when usable. */
+  problem(id?: string | null): string | undefined {
+    return accountProblem(this.state, id);
   }
 
   handleOf(id?: string | null): string | undefined {
