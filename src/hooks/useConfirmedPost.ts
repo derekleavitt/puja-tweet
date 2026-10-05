@@ -1,55 +1,55 @@
 /**
  * X ChromaBot - useConfirmedPost
  * Wraps the manual "post now" flow: a live (non dry-run) post first asks for confirmation,
- * naming the campaign and its target; simulated posts go straight through.
+ * naming the campaign and its target; simulated posts go straight through. The returned promise
+ * resolves with the post result, or `undefined` when the owner cancels.
  */
 
-import { useState } from 'react';
-import { BotSettings, TweetContext } from '../types.js';
+import { useRef, useState } from 'react';
+import { BotSettings, DropResponse, TweetContext } from '../types.js';
+import { PostNowOptions } from './usePosting.js';
 
-export interface PendingPost<Args extends unknown[]> {
-  args: Args;
+export interface PendingPost {
   campaign: string;
   targetTweetId: string;
 }
 
-interface Deps<Args extends unknown[], R> {
+interface Deps {
   settings: BotSettings;
   contexts: TweetContext[];
-  activeContextId: string;
-  post: (...args: Args) => Promise<R>;
-  /** Position of the optional `contextId` argument inside `Args`. */
-  contextArgIndex: number;
+  post: (contextId: string, opts?: PostNowOptions) => Promise<DropResponse>;
 }
 
-export function useConfirmedPost<Args extends unknown[], R>({
-  settings,
-  contexts,
-  activeContextId,
-  post,
-  contextArgIndex,
-}: Deps<Args, R>) {
-  const [pending, setPending] = useState<PendingPost<Args> | null>(null);
+/** True when a post for this campaign can only be simulated (global or campaign dry run). */
+export const isSimulatedFor = (settings: BotSettings, ctx?: TweetContext): boolean =>
+  settings.globalDryRun !== false || ctx?.dryRun === true;
 
-  const request = async (...args: Args): Promise<R | undefined> => {
-    const id = (args[contextArgIndex] as string | undefined) || activeContextId;
-    const ctx = contexts.find((c) => c.id === id);
-    const isSimulated = settings.globalDryRun !== false || ctx?.dryRun === true;
-    if (isSimulated) return post(...args);
-    setPending({
-      args,
-      campaign: ctx?.name || 'Active campaign',
-      targetTweetId: ctx?.targetTweetId || settings.targetTweetId,
+export function useConfirmedPost({ settings, contexts, post }: Deps) {
+  const [pending, setPending] = useState<PendingPost | null>(null);
+  const resolver = useRef<((go: boolean) => void) | null>(null);
+
+  const request = async (
+    contextId: string,
+    opts?: PostNowOptions,
+  ): Promise<DropResponse | undefined> => {
+    const ctx = contexts.find((c) => c.id === contextId);
+    if (isSimulatedFor(settings, ctx)) return post(contextId, opts);
+    const go = await new Promise<boolean>((resolve) => {
+      resolver.current?.(false);
+      resolver.current = resolve;
+      setPending({
+        campaign: ctx?.name || contextId,
+        targetTweetId: ctx?.targetTweetId || '',
+      });
     });
-    return undefined;
+    return go ? post(contextId, opts) : undefined;
   };
 
-  const confirm = () => {
-    if (!pending) return;
-    const { args } = pending;
+  const settle = (go: boolean) => {
     setPending(null);
-    void post(...args);
+    resolver.current?.(go);
+    resolver.current = null;
   };
 
-  return { pending, request, confirm, cancel: () => setPending(null) };
+  return { pending, request, confirm: () => settle(true), cancel: () => settle(false) };
 }

@@ -1,74 +1,56 @@
 /**
  * X ChromaBot - usePosting
- * Current color preview and the manual "post now" flow.
+ * The manual "post now" flow. Every call names the campaign it posts for.
  */
 
-import { useState, useCallback } from 'react';
-import { generateColor as apiGenerateColor, postNow } from '../api/endpoints.js';
+import { useState } from 'react';
+import { postNow } from '../api/endpoints.js';
 import { ColorData, DropResponse, PostLog } from '../types.js';
 import { errorMessage } from '../lib/errors.js';
 
+export interface PostNowOptions {
+  color?: ColorData | null;
+  slotType?: 'morning' | 'evening' | 'manual';
+  /** Exact previewed text to post verbatim (BUG-3: send it with the preview's `hashtags`). */
+  text?: string;
+  hashtags?: string[];
+  slotId?: string;
+}
+
 interface UsePostingDeps {
-  activeContextId: string;
   addLog: (log: PostLog) => void;
   refresh: () => Promise<void>;
 }
 
-export function usePosting({ activeContextId, addLog, refresh }: UsePostingDeps) {
-  const [color, setColor] = useState<ColorData | null>(null);
+export function usePosting({ addLog, refresh }: UsePostingDeps) {
   const [isPosting, setIsPosting] = useState<boolean>(false);
-  const [lastPostedResult, setLastPostedResult] = useState<DropResponse | null>(null);
 
-  const generateColor = useCallback(
-    async (slotType: 'morning' | 'evening' | 'random' = 'morning') => {
-      try {
-        const data = await apiGenerateColor(slotType, activeContextId);
-        if (data) {
-          setColor(data.color);
-        }
-      } catch (err) {
-        console.error('Error generating color:', err);
-      }
-    },
-    [activeContextId],
-  );
-
-  // Handle post now (manual trigger)
   const handlePostNow = async (
-    customColor?: ColorData,
-    slotType: 'morning' | 'evening' | 'manual' = 'manual',
-    contextId?: string,
-    opts?: { text?: string; hashtags?: string[]; slotId?: string },
-  ) => {
+    contextId: string,
+    opts: PostNowOptions = {},
+  ): Promise<DropResponse> => {
     setIsPosting(true);
-    setLastPostedResult(null);
-
     try {
       const data = await postNow({
-        slotType,
-        color: customColor || color,
-        contextId: contextId || activeContextId,
-        ...(opts?.text ? { text: opts.text } : {}),
-        ...(opts?.text && opts.hashtags ? { hashtags: opts.hashtags } : {}),
-        ...(opts?.slotId ? { slotId: opts.slotId } : {}),
+        slotType: opts.slotType || 'manual',
+        color: opts.color ?? null,
+        contextId,
+        ...(opts.text ? { text: opts.text } : {}),
+        ...(opts.text && opts.hashtags ? { hashtags: opts.hashtags } : {}),
+        ...(opts.slotId ? { slotId: opts.slotId } : {}),
       });
-      setLastPostedResult(data);
-
       if (data.log) {
         addLog(data.log);
       }
-
       await refresh();
       return data;
     } catch (err) {
       console.error('Error posting now:', err);
-      const errObj: DropResponse = { success: false, error: errorMessage(err) };
-      setLastPostedResult(errObj);
-      return errObj;
+      return { success: false, error: errorMessage(err) };
     } finally {
       setIsPosting(false);
     }
   };
 
-  return { color, isPosting, lastPostedResult, generateColor, handlePostNow };
+  return { isPosting, handlePostNow };
 }

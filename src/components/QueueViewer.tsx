@@ -1,11 +1,11 @@
 /**
  * X ChromaBot - QueueViewer
- * Upcoming posts for the active campaign: when each goes out and the text it will post.
+ * Upcoming posts of one campaign (picked here, a filter only): when each goes out and its text.
  */
 
 import React, { useState } from 'react';
 import { RefreshCw, Layers, MessageSquare, Clock, Target, Sparkles } from 'lucide-react';
-import { QueueSlot, ColorData, TweetContext } from '../types.js';
+import { QueueSlot, TweetContext } from '../types.js';
 import { formatHHmm12h, tzAbbreviation } from '../../shared/time.js';
 import { templateUsesColor } from '../lib/templateTokens.js';
 import { QueueSlotCard } from './QueueSlotCard.js';
@@ -13,16 +13,13 @@ import { QueueSlotCard } from './QueueSlotCard.js';
 interface QueueViewerProps {
   queue: QueueSlot[];
   onRerollSlot: (slotId: string) => void;
-  onPostNow: (
-    color: ColorData,
-    slotType: 'morning' | 'evening' | 'manual',
-    slot: QueueSlot,
-  ) => void;
+  onPostNow: (slot: QueueSlot) => void;
   isPosting: boolean;
   contexts?: TweetContext[];
-  activeContextId?: string;
-  onSelectContext?: (id: string) => Promise<void>;
-  onRegenerateQueue?: (contextId?: string) => Promise<void>;
+  /** The campaign whose queue is shown. */
+  contextId: string;
+  onPickContext: (id: string) => void;
+  onRegenerateQueue?: () => Promise<void>;
 }
 
 export const QueueViewer: React.FC<QueueViewerProps> = ({
@@ -31,13 +28,13 @@ export const QueueViewer: React.FC<QueueViewerProps> = ({
   onPostNow,
   isPosting,
   contexts = [],
-  activeContextId = '',
-  onSelectContext,
+  contextId,
+  onPickContext,
   onRegenerateQueue,
 }) => {
   const [isRegenerating, setIsRegenerating] = useState(false);
 
-  const activeContext = contexts.find((c) => c.id === activeContextId) || contexts[0];
+  const activeContext = contexts.find((c) => c.id === contextId);
 
   const slotContext = (slot: QueueSlot) =>
     contexts.find((c) => c.id === slot.contextId) || activeContext;
@@ -46,7 +43,7 @@ export const QueueViewer: React.FC<QueueViewerProps> = ({
     if (!onRegenerateQueue) return;
     setIsRegenerating(true);
     try {
-      await onRegenerateQueue(activeContext?.id);
+      await onRegenerateQueue();
     } finally {
       setIsRegenerating(false);
     }
@@ -76,13 +73,14 @@ export const QueueViewer: React.FC<QueueViewerProps> = ({
             <h2 className="text-xl font-bold tracking-tight text-neutral-900 dark:text-neutral-100">
               Scheduled Drop Queue (14 Slots)
             </h2>
-            {contexts.length > 0 && onSelectContext && (
+            {contexts.length > 0 && (
               <div className="flex items-center gap-1.5 bg-neutral-100 dark:bg-neutral-800 px-2.5 py-1 rounded-lg border border-neutral-200 dark:border-neutral-700 text-xs">
                 <Layers className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
                 <span className="font-semibold text-neutral-500">Campaign:</span>
                 <select
-                  value={activeContext?.id || activeContextId}
-                  onChange={(e) => onSelectContext(e.target.value)}
+                  aria-label="Queue campaign"
+                  value={contextId}
+                  onChange={(e) => onPickContext(e.target.value)}
                   className="bg-transparent font-medium text-neutral-900 dark:text-neutral-100 focus:outline-none cursor-pointer pr-1 text-xs"
                 >
                   {contexts.map((c) => (
@@ -126,7 +124,7 @@ export const QueueViewer: React.FC<QueueViewerProps> = ({
         </div>
       </div>
 
-      {/* Active Campaign Template & Schedule Context Banner */}
+      {/* Shown campaign: template & schedule banner */}
       {activeContext && (
         <div className="p-4 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 shadow-2xs flex flex-col lg:flex-row lg:items-center justify-between gap-3 text-xs">
           <div className="flex flex-wrap items-center gap-3">
@@ -159,7 +157,7 @@ export const QueueViewer: React.FC<QueueViewerProps> = ({
 
           <div className="flex items-center gap-2 min-w-0 bg-neutral-50 dark:bg-neutral-800/70 px-3 py-1.5 rounded-lg border border-neutral-200/70 dark:border-neutral-700/70">
             <Sparkles className="w-3.5 h-3.5 text-purple-500 shrink-0" />
-            <span className="text-neutral-500 shrink-0">Active Template:</span>
+            <span className="text-neutral-500 shrink-0">Template:</span>
             <span
               className="font-mono text-neutral-800 dark:text-neutral-200 truncate max-w-md"
               title={activeContext.template}
@@ -183,7 +181,7 @@ export const QueueViewer: React.FC<QueueViewerProps> = ({
             lastHashtags={slotContext(slot)?.hashtagState?.current}
             isPosting={isPosting}
             onReroll={() => onRerollSlot(slot.slotId)}
-            onSend={() => onPostNow(slot.color, slot.slotType, slot)}
+            onSend={() => onPostNow(slot)}
           />
         ))}
       </div>

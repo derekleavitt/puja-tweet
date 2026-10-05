@@ -1,14 +1,14 @@
 /**
  * X ChromaBot - ScheduleEditor
- * Form section: repetition mode, interval / fixed clock times, timezone, jitter.
+ * Campaign form section: repetition mode, interval / fixed clock times, timezone, jitter window.
  */
 
 import React, { useState } from 'react';
-import { Flame } from 'lucide-react';
 import { TweetContext } from '../../types.js';
 import { DEFAULT_TIMEZONE, timezoneOptions } from '../../../shared/time.js';
 import { FIELD_CLASS, INTERVAL_PRESETS, LABEL_CLASS } from './constants.js';
 import { invalidTimes, normalizeHHmm, parseTimesList } from './schedule.js';
+import { JitterEditor } from './JitterEditor.js';
 
 type Schedule = TweetContext['schedule'];
 
@@ -85,61 +85,48 @@ export const ScheduleEditor: React.FC<ScheduleEditorProps> = ({ schedule, onChan
       )}
 
       {schedule?.mode === 'fixed_times' && (
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1.5">
-            <label className={LABEL_CLASS}>Times (comma separated, HH:mm)</label>
-            <input
-              type="text"
-              value={timesText}
-              onChange={(e) => handleTimes(e.target.value)}
-              onBlur={handleTimesBlur}
-              placeholder="06:00, 18:00"
-              className={`${FIELD_CLASS} font-mono`}
-            />
-            {bad.length > 0 && (
-              <p className="text-[11px] text-red-600 dark:text-red-400">
-                Invalid: {bad.join(', ')} (use 24-hour HH:mm)
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-1.5">
-            <label className={LABEL_CLASS}>Timezone</label>
-            <select
-              value={schedule.timezone || 'America/Denver'}
-              onChange={(e) => onChange({ timezone: e.target.value })}
-              className={FIELD_CLASS}
-            >
-              {timezoneOptions(schedule.timezone || DEFAULT_TIMEZONE).map((tz) => (
-                <option key={tz} value={tz}>
-                  {tz}
-                </option>
-              ))}
-            </select>
-          </div>
+        <div className="space-y-1.5">
+          <label className={LABEL_CLASS}>Times (comma separated, HH:mm)</label>
+          <input
+            type="text"
+            value={timesText}
+            onChange={(e) => handleTimes(e.target.value)}
+            onBlur={handleTimesBlur}
+            placeholder="06:00, 18:00"
+            className={`${FIELD_CLASS} font-mono`}
+          />
+          {bad.length > 0 && (
+            <p className="text-[11px] text-red-600 dark:text-red-400">
+              Invalid: {bad.join(', ')} (use 24-hour HH:mm)
+            </p>
+          )}
         </div>
       )}
 
-      <div className="p-3 rounded-lg bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200/80 dark:border-neutral-700 space-y-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Flame className="w-3.5 h-3.5 text-amber-500" />
-            <span className="font-semibold text-neutral-800 dark:text-neutral-200">
-              Anti-Bot Humanized Timing Delay
-            </span>
-          </div>
-          <input
-            type="checkbox"
-            checked={schedule?.humanizeJitterEnabled ?? true}
-            onChange={(e) => onChange({ humanizeJitterEnabled: e.target.checked })}
-            className="rounded text-indigo-600 focus:ring-indigo-500"
-          />
-        </div>
+      <div className="space-y-1.5">
+        <label className={LABEL_CLASS}>Timezone</label>
+        <select
+          aria-label="Timezone"
+          value={schedule?.timezone || DEFAULT_TIMEZONE}
+          onChange={(e) => onChange({ timezone: e.target.value })}
+          className={FIELD_CLASS}
+        >
+          {timezoneOptions(schedule?.timezone || DEFAULT_TIMEZONE).map((tz) => (
+            <option key={tz} value={tz}>
+              {tz}
+            </option>
+          ))}
+        </select>
         <p className="text-[11px] text-neutral-500">
-          Adds a random delay (0 to {schedule?.jitterPercentage ?? 25}%) so replies don't post at
-          exact mathematical minute marks.
+          Fixed clock times and the {'{time_tag}'} token use this zone.
         </p>
       </div>
+
+      <JitterEditor
+        humanizeJitterEnabled={schedule?.humanizeJitterEnabled ?? true}
+        jitterPercentage={schedule?.jitterPercentage ?? 25}
+        onChange={onChange}
+      />
     </>
   );
 };

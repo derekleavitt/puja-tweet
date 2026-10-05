@@ -1,6 +1,7 @@
 /**
  * X ChromaBot - WebhookSettings
- * Autonomous webhook URL display, copy and secret rotation.
+ * Global webhook secret: the legacy (unpinned) trigger URL, copy and secret rotation. Each
+ * campaign's own pinned URL is shown in its edit form.
  */
 
 import React, { useState, useEffect } from 'react';
@@ -64,7 +65,9 @@ export const WebhookSettings: React.FC<WebhookSettingsProps> = ({ onCopied }) =>
         >
           UptimeRobot
         </a>
-        ) at your desired frequency. Each ping wakes the app and immediately publishes a live reply.
+        ) at your desired frequency. Each ping wakes the app and immediately publishes a reply. This
+        URL is not pinned to a campaign (it posts the server's default campaign); copy a campaign's
+        own URL from its edit form instead. All URLs share the secret rotated here.
       </p>
 
       <div className="space-y-1.5">

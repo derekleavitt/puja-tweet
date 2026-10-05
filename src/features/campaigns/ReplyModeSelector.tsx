@@ -88,7 +88,7 @@ export const ReplyModeSelector: React.FC<ReplyModeSelectorProps> = ({ context, o
               type="button"
               onClick={() => onChange({ lastPostedTweetId: undefined })}
               className="px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/60 rounded border border-amber-300 dark:border-amber-800 hover:bg-amber-200 cursor-pointer flex items-center gap-1 shrink-0"
-              title="Reset chain anchor back to original post"
+              title="Reset chain anchor back to original post (applies on Save)"
             >
               <RotateCcw className="w-3 h-3" />
               <span>Reset to Root</span>
