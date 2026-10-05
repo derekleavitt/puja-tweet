@@ -23,7 +23,7 @@ Errors: `{ "success": false, "error": "<message>" }` with a real HTTP status (40
 | DELETE | `/api/credentials/:method` | Remove stored credentials for `oauth1`, `oauth2` or `bearer` |
 | POST | `/api/twitter/verify` | Verify credentials; failure is `{ valid:false, message }` |
 | POST | `/api/generate-color` | Body `{ slotType?, color?, contextId?, template? }` |
-| POST | `/api/template/preview` | Body `{ template?, color?, slotType?, contextId? }`; returns `previewText` and, when the campaign evolves hashtags, `hashtags` (the tags used, without `#`) |
+| POST | `/api/template/preview` | Body `{ template?, hashtags?, color?, slotType?, contextId? }` (`template`/`hashtags` preview unsaved edits; 400 when `hashtags` is not a string array); returns `previewText`, `breakdown` (see [Evolving hashtags](#evolving-hashtags)) and, when the campaign evolves hashtags, `hashtags` (the tags used, without `#`) |
 | POST | `/api/post-now` | Body `{ contextId?, slotType?, color?, forceLive?, text?, hashtags?, slotId? }`; 404 unknown `contextId`. `text` is posted verbatim; send the preview's `hashtags` with it so the post does not re-roll them. The response carries `hashtags` when evolution is on |
 | ALL | `/api/cron/trigger`, `/api/webhook/trigger` | Secret via `?secret=`, `x-cron-secret` or body; `contextId`/`slot`/`forceLive`; 404 unknown `contextId`; without `contextId` the active campaign is posted |
 | GET | `/api/webhook/url` | The trigger URL; `?contextId=` pins it to one campaign (404 unknown) |
@@ -39,17 +39,32 @@ Per campaign, default off. Config (client-editable) and state (server-owned) on 
 
 | Field | Type | Notes |
 | --- | --- | --- |
+| `hashtags` | string[] | The campaign's own tags (no `#`; normalised, max 10), appended after the template body. On create without `hashtags`, the template's literal tags are moved here (also done once at boot for older campaigns) |
 | `hashtagEvolution.enabled` | boolean | Default `false` |
 | `hashtagEvolution.maxTags` | integer 1-5 | Default `3`; 400 outside the range |
 | `hashtagEvolution.keepSeedTags` | boolean | Default `false`; kept tags count toward `maxTags`, one slot always evolves |
 | `hashtagState.current` | string[] | Tags (no `#`) of the latest successful post. Read-only: stripped from any client body |
 | `hashtagState.recent` | string[] | Last 40 tags used, never repeated |
 
-Seed tags are the `#tags` in the campaign template (`{weather_tweet}` counts as `#eternal #colors`;
-`<agent>` prompts are ignored), or `#colors` when there are none. Each drop swaps them for fresh related tags
-(Gemini when configured and under `GEMINI_MAX_CALLS_PER_DAY`, otherwise the built-in offline generator),
-trimming trailing tags to stay within 280 weighted chars. `hashtagState` only advances after a successful
-post (live or simulated). Scheduler, webhook and CLI drops compute fresh tags themselves.
+Full rules: [docs/hashtags.md](hashtags.md). Evolution off posts `hashtags` as-is; on, it posts evolved
+tags seeded from `hashtags` (else the previous tags, the AI's own tags, or a prompt theme). The block is
+appended after the body; trailing tags are dropped only if the tweet would exceed 280.
+
+Preview `breakdown` (`DropTextBreakdown` in `shared/types.ts`):
+
+| Field | Notes |
+| --- | --- |
+| `body` | Text before the tag block (static + AI text) |
+| `staticText` | Template text with variables filled, AI parts left out |
+| `aiText?` | The AI-written part(s) as posted |
+| `tagBlock`, `hashtags` | The appended block (`'#a #b'`, `''` when none) and its tags |
+| `tagSource` | `'campaign'`, `'evolved'` or `'none'` |
+| `seedSource?` | Evolution only: `'campaign'`, `'previous'`, `'ai'` or `'theme'` |
+| `foldedAiTags?` | AI's own tags that made it into the evolved block |
+| `removedAiHashtags?` | Tags taken out of the AI text (trailing cluster, duplicates, length) |
+| `dehashedAiHashtags?` | Inline AI tags turned into words |
+| `removedDuplicateTags?` | Body tags removed/de-hashed because the block already has them |
+| `droppedTags?` | Block tags dropped to fit 280 |
 
 ## Serverless mode
 
