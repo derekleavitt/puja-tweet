@@ -155,6 +155,18 @@ describe('services over MemoryStore', () => {
         isFirstInChain: true,
       });
       svc.contexts.recordContextPostResult(ctx.id, 'success', '5555555555555555555');
+      // dropService always writes the matching log; the anchor is only trusted when it exists.
+      svc.logs.addLog({
+        id: 'log_chain',
+        timestamp: new Date().toISOString(),
+        slotType: 'manual',
+        targetTweetId: TWEET,
+        engagementMode: 'reply',
+        tweetId: '5555555555555555555',
+        status: 'success',
+        contextId: ctx.id,
+        contextName: ctx.name,
+      } as Parameters<typeof svc.logs.addLog>[0]);
       const next = svc.contexts.getEffectiveReplyTargetId(svc.contexts.getContext(ctx.id)!);
       expect(next.targetTweetId).toBe('5555555555555555555');
       expect(next.isFirstInChain).toBe(false);

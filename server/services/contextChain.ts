@@ -66,12 +66,16 @@ export const resolveLastPostedTweetId = (
   const candidateId = context.lastPostedTweetId;
   if (!candidateId || !/^\d+$/.test(candidateId)) return undefined;
 
+  // Only trust an anchor we can prove is this campaign's own in-thread reply on its own target.
+  // An anchor with no matching log (imported, aged out of history, or written by another
+  // campaign) must never be followed: that is how one campaign ended up replying to another's thread.
   const matchingLog = logs.find((l) => l.tweetId === candidateId);
   if (
-    matchingLog &&
-    (isQuoteLike(matchingLog) ||
-      (matchingLog.contextId && matchingLog.contextId !== context.id) ||
-      (matchingLog.targetTweetId && matchingLog.targetTweetId !== context.targetTweetId))
+    !matchingLog ||
+    matchingLog.contextId !== context.id ||
+    matchingLog.targetTweetId !== context.targetTweetId ||
+    matchingLog.status !== 'success' ||
+    isQuoteLike(matchingLog)
   ) {
     return undefined;
   }
