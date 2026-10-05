@@ -1,5 +1,10 @@
 # Campaign isolation audit
 
+> Since this audit, the Studio screen and the active-campaign picker were removed. Each campaign
+> card now configures, previews and posts only itself. `activeContextId` survives only as a server
+> default for legacy routes called without a `contextId`. Sections 1–6 record the audit as it
+> was; §7 (recovery and history) is current.
+
 Audited: branch `claude/inspiring-bardeen-fhi8x3` at `ab3358c` (after PR #9 chain fix and PR #10
 evolving hashtags). `file:line` references below are to that commit; the fixes landed on top of it.
 
