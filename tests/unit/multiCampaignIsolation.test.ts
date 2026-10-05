@@ -10,7 +10,6 @@ import { postColorTweet } from '../../server/twitterClient.js';
 import { scheduler } from '../../server/scheduler.js';
 import { createServices, services } from '../../server/services/index.js';
 import { MemoryStore } from '../../server/store/MemoryStore.js';
-import type { TweetContext } from '../../shared/types.js';
 
 vi.mock('../../server/twitterClient.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../server/twitterClient.js')>();
@@ -50,7 +49,9 @@ const failWith =
     rawResponse: { status: httpStatus, detail: error },
   });
 
-const campaign = (over: Partial<TweetContext> & { name: string }) => {
+const campaign = (
+  over: Parameters<typeof services.contexts.createContext>[0] & { name: string },
+) => {
   const ctx = services.contexts.createContext({
     engagementMode: 'reply',
     replyTargetMode: 'original_post',
@@ -283,7 +284,9 @@ describe('history, hashtags, queue', () => {
     services.queue.clearAndRegenerateQueue(A);
     expect(services.queue.getQueue(B).map((s) => s.slotId)).toEqual(bSlots);
     expect(services.queue.getQueue(A).every((s) => s.contextId === A)).toBe(true);
-    expect(services.queue.getQueue(A).every((s) => s.previewText.startsWith('A '))).toBe(true);
+    expect(services.queue.getQueue(A).every((s) => (s.previewText ?? '').startsWith('A '))).toBe(
+      true,
+    );
   });
 });
 

@@ -35,7 +35,7 @@ const ctx = (id: string) => services.contexts.getContext(id)!;
 const snapshot = (id: string): TweetContext => JSON.parse(JSON.stringify(ctx(id)));
 const anchor = (id: string, tweetId: string) =>
   services.contexts.recordContextPostResult(id, 'success', tweetId, 'reply');
-const put = (id: string, body: unknown) => request(app).put(`/api/contexts/${id}`).send(body);
+const put = (id: string, body: object) => request(app).put(`/api/contexts/${id}`).send(body);
 
 beforeAll(() => {
   app = makeApp();
