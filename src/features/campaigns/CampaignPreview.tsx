@@ -15,6 +15,7 @@ import { AiUnavailableBadge } from '../../components/AiUnavailableBadge.js';
 import { useCampaignPreview } from './useCampaignPreview.js';
 import { PreviewColorSlots } from './PreviewColorSlots.js';
 import { PostResultToast } from './PostResultToast.js';
+import { PreviewBreakdown } from './PreviewBreakdown.js';
 
 interface CampaignPreviewProps {
   context: TweetContext;
@@ -135,6 +136,8 @@ export const CampaignPreview: React.FC<CampaignPreviewProps> = ({
           ))}
         </div>
       )}
+
+      <PreviewBreakdown breakdown={preview?.breakdown} />
 
       <button
         type="button"

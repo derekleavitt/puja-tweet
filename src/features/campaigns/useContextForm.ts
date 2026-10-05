@@ -54,7 +54,8 @@ export function useContextForm(opts: UseContextFormOptions) {
         humanizeJitterEnabled: true,
         jitterPercentage: 25,
       },
-      template: '{color_pick} {weather_desc} #eternal #colors',
+      template: '{color_pick} {weather_desc}',
+      hashtags: ['eternal', 'colors'],
       themePreference: 'dynamic',
       hashtagEvolution: { ...DEFAULT_HASHTAG_EVOLUTION },
     });

@@ -25,12 +25,19 @@ test('evolving hashtags: preview shows new tags, the post matches, the card show
   await openApp(app);
   const card = campaignCard(app, PRIMARY);
   await expect(app.getByTestId('current-hashtags')).toHaveCount(0); // off by default
+  // The template's hashtags were moved into the campaign's own Hashtags field.
+  await expect(card.getByTestId('campaign-tags')).toContainText('#eternal');
 
-  // Enable evolution in the campaign form; it shows the seed tags found in the template.
+  // The form has a Hashtags field outside the template; add one, then enable evolution.
   await card.getByTitle('Edit context & schedule').click();
+  const field = app.getByTestId('campaign-hashtags');
+  await expect(field).toContainText('#eternal');
+  await expect(field).toContainText('#colors');
+  await app.getByLabel('Hashtags', { exact: true }).fill('#devotion');
+  await app.getByLabel('Hashtags', { exact: true }).press('Enter');
+  await expect(field).toContainText('#devotion');
   await app.getByLabel(/Evolve hashtags each tweet/).check();
-  await expect(app.getByText('Seed tags detected in your template:')).toBeVisible();
-  await expect(app.locator('form').getByText('#eternal', { exact: true })).toBeVisible();
+  await expect(app.getByText('Evolves from your Hashtags:')).toBeVisible();
   await app.getByLabel('Max tags', { exact: true }).selectOption('2');
   await app.getByRole('button', { name: 'Save & Regenerate Queue' }).click();
   await expect(app.getByRole('button', { name: 'Save & Regenerate Queue' })).toHaveCount(0);
@@ -46,7 +53,8 @@ test('evolving hashtags: preview shows new tags, the post matches, the card show
   const shown = () => previews.at(-1)!;
   await expect(panel.getByTestId('tweet-preview-text')).toHaveText(shown().previewText);
   expect(shown().hashtags!.length).toBeGreaterThan(0);
-  expect(shown().previewText).not.toMatch(/#eternal|#colors/i);
+  expect(shown().previewText).not.toMatch(/#(eternal|colors|devotion)(?![\p{L}\p{N}_])/iu);
+  await expect(panel.getByTestId('preview-breakdown')).toContainText('Evolved:');
   for (const tag of shown().hashtags!) {
     await expect(panel.getByTestId('preview-hashtags')).toContainText(`#${tag}`);
   }
@@ -74,7 +82,39 @@ test('evolving hashtags: preview shows new tags, the post matches, the card show
   // Clean up so other specs see the default campaign.
   const { contexts } = await (await app.request.get('/api/status')).json();
   await app.request.put(`/api/contexts/${contexts[0].id}`, {
-    data: { hashtagEvolution: { enabled: false } },
+    data: { hashtagEvolution: { enabled: false }, hashtags: ['eternal', 'colors'] },
   });
   await app.request.delete('/api/history');
+});
+
+test('hashtags typed into the template can be moved to the Hashtags field; preview appends them', async ({
+  app,
+}) => {
+  const { contexts } = await (await app.request.get('/api/status')).json();
+  const id: string = contexts[0].id;
+  const original = contexts[0].template as string;
+  // An edit (not a create) keeps template hashtags as typed, so the form offers to move them.
+  await app.request.put(`/api/contexts/${id}`, {
+    data: { template: '{color_pick} glows #sunrise', hashtags: [] },
+  });
+
+  await openApp(app);
+  const card = campaignCard(app, PRIMARY);
+  await card.getByTitle('Edit context & schedule').click();
+  const hint = app.getByTestId('template-hashtags-hint');
+  await expect(hint).toContainText('#sunrise');
+  await hint.getByRole('button', { name: 'Move to Hashtags' }).click();
+  await expect(hint).toHaveCount(0);
+  await expect(app.getByTestId('campaign-hashtags')).toContainText('#sunrise');
+  await app.getByRole('button', { name: 'Save & Regenerate Queue' }).click();
+  await expect(app.getByRole('button', { name: 'Save & Regenerate Queue' })).toHaveCount(0);
+
+  await card.getByRole('button', { name: 'Preview & post' }).click();
+  const panel = card.getByTestId('campaign-preview');
+  await expect(panel.getByTestId('tweet-preview-text')).toContainText(/glows #sunrise$/);
+  await expect(panel.getByTestId('preview-breakdown')).toContainText('Your Hashtags: #sunrise');
+
+  await app.request.put(`/api/contexts/${id}`, {
+    data: { template: original, hashtags: ['eternal', 'colors'] },
+  });
 });

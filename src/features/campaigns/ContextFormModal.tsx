@@ -15,6 +15,8 @@ import { EngagementModeSelector } from './EngagementModeSelector.js';
 import { ScheduleEditor } from './ScheduleEditor.js';
 import { TemplateEditor } from '../../components/TemplateEditor.js';
 import { HashtagEvolutionEditor } from './HashtagEvolutionEditor.js';
+import { CampaignHashtagsInput } from './CampaignHashtagsInput.js';
+import { TemplateHashtagsHint } from './TemplateHashtagsHint.js';
 import { TargetField } from './TargetField.js';
 import { CampaignWebhookUrl } from './CampaignWebhookUrl.js';
 
@@ -100,8 +102,17 @@ export const ContextFormModal: React.FC<ContextFormModalProps> = ({ form }) => {
             contextId={ctx.id}
             rows={3}
           />
-          <HashtagEvolutionEditor
+          <TemplateHashtagsHint
             template={ctx.template || ''}
+            hashtags={ctx.hashtags ?? []}
+            onMove={(template, hashtags) => patch({ template, hashtags })}
+          />
+          <CampaignHashtagsInput
+            value={ctx.hashtags}
+            onChange={(hashtags) => patch({ hashtags })}
+          />
+          <HashtagEvolutionEditor
+            hashtags={ctx.hashtags ?? []}
             value={ctx.hashtagEvolution}
             onChange={(hashtagEvolution) => patch({ hashtagEvolution })}
           />

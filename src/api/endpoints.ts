@@ -9,6 +9,7 @@ import {
   ColorData,
   BotSettings,
   DropResponse,
+  DropTextBreakdown,
   HealthInfo,
   PostLog,
   QueueSlot,
@@ -76,13 +77,15 @@ export const previewTemplate = (body: {
   contextId?: string;
 }) =>
   orBody(
-    apiFetch<{ previewText?: string; hashtags?: string[]; color?: ColorData }>(
-      '/api/template/preview',
-      {
-        method: 'POST',
-        body,
-      },
-    ),
+    apiFetch<{
+      previewText?: string;
+      hashtags?: string[];
+      color?: ColorData;
+      breakdown?: DropTextBreakdown;
+    }>('/api/template/preview', {
+      method: 'POST',
+      body,
+    }),
   );
 
 // Contexts (campaigns)

@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { previewTemplate } from '../../api/endpoints.js';
-import { ColorData, TweetContext } from '../../types.js';
+import { ColorData, DropTextBreakdown, TweetContext } from '../../types.js';
 import { errorMessage } from '../../lib/errors.js';
 
 /** Color palette the preview draws from (only offered when the template uses a color token). */
@@ -18,6 +18,8 @@ export interface CampaignPreviewData {
   /** Evolved hashtags the text used (only when the campaign evolves its hashtags). */
   hashtags?: string[];
   color?: ColorData;
+  /** How the text was put together (tag block, AI hashtag clean-up). */
+  breakdown?: DropTextBreakdown;
 }
 
 export function useCampaignPreview(context: TweetContext, open: boolean) {
@@ -30,6 +32,7 @@ export function useCampaignPreview(context: TweetContext, open: boolean) {
   // Anything that changes the next tweet's text re-renders the preview.
   const textKey = [
     context.template,
+    (context.hashtags ?? []).join(','),
     context.schedule?.timezone,
     JSON.stringify(context.hashtagEvolution ?? null),
     (context.hashtagState?.current ?? []).join(','),
@@ -46,7 +49,12 @@ export function useCampaignPreview(context: TweetContext, open: boolean) {
       });
       if (id !== requestId.current) return;
       if (data.previewText) {
-        setPreview({ text: data.previewText, hashtags: data.hashtags, color: data.color });
+        setPreview({
+          text: data.previewText,
+          hashtags: data.hashtags,
+          color: data.color,
+          breakdown: data.breakdown,
+        });
       } else {
         setPreview(null);
         setError((data as { error?: string }).error || 'Could not render the preview.');
