@@ -20,7 +20,7 @@ test('dashboard loads as the owner with dry-run and pause on', async ({ app }) =
 test('every header tab renders its screen', async ({ app }) => {
   await openApp(app);
   const headings: Record<Tab, RegExp> = {
-    Studio: /Chromatic Post Studio/,
+    Studio: /^Post Studio$/,
     Campaigns: /Tweet Contexts/,
     Queue: /Scheduled Drop Queue/,
     Logs: /Post Logs & History/,

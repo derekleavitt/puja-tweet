@@ -21,7 +21,7 @@ test('campaign lifecycle: create, edit schedule + template, pause/resume, delete
   // Create
   await app.getByRole('button', { name: /Add Tweet Context/ }).click();
   const form = app.locator('form');
-  await form.getByPlaceholder(/Primary Eternal Colors, Morning/).fill(NAME);
+  await form.getByPlaceholder(/Morning Thread, Daily Quotes/).fill(NAME);
   await form.getByPlaceholder(/Tweet ID or https/).fill(TWEET_ID);
   await form.getByRole('button', { name: 'Create Context' }).click();
   await expect(shownName(app)).toBeVisible();

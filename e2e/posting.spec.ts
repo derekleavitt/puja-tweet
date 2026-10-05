@@ -8,6 +8,7 @@ import { test, expect, openApp, openTab } from './fixtures.js';
 
 interface Log {
   status?: string;
+  tweetText?: string;
 }
 const logs = async (page: import('@playwright/test').Page): Promise<Log[]> =>
   (await (await page.request.get('/api/history')).json()).logs;
@@ -17,35 +18,39 @@ test('studio, queue and history: posts are simulated and the log can be cleared'
 }) => {
   await openApp(app);
 
-  // Studio: generate colors for each slot and see the preview update
+  // Studio: the default (color) template offers the color re-roll; each one updates the preview
   await expect(app.getByText('X Live Reply Preview')).toBeVisible();
-  const hex = app.locator('button', { hasText: /^#[0-9A-F]{6}$/i }).first();
-  await expect(hex).toBeVisible();
-  const before = await hex.innerText();
-  for (const slot of ['Evening Dusk', 'Random Pick', 'Morning Dawn']) {
-    await app.getByRole('button', { name: slot }).click();
-    await expect(app.getByText('Simulate Post to X')).toBeVisible();
+  const preview = app.getByTestId('tweet-preview-text');
+  await expect(preview).not.toBeEmpty();
+  for (const slot of ['Evening', 'Random', 'Morning']) {
+    const before = await preview.innerText();
+    await app.getByRole('button', { name: slot, exact: true }).click();
+    await expect(preview).not.toHaveText(before);
   }
-  void before;
   await expect(app.getByText('Mode: Dry Run Simulation')).toBeVisible();
 
-  // Studio: post -> simulated
+  // Studio: post -> simulated, with exactly the previewed text
+  const previewed = await preview.innerText();
   await app.getByRole('button', { name: 'Simulate Post to X' }).click();
   await expect(app.getByText('Reply Simulated Successfully')).toBeVisible();
+  expect((await logs(app))[0].tweetText).toBe(previewed);
 
   // Queue: send one slot -> simulated
   await openTab(app, 'Queue');
   await expect(app.getByText('Scheduled Drop Queue (14 Slots)')).toBeVisible();
-  await expect(app.getByTitle('Send this color reply immediately')).toHaveCount(14);
-  await app.getByTitle('Send this color reply immediately').first().click();
+  await expect(app.getByTitle('Send this post now')).toHaveCount(14);
+  const firstSlotText = await app.getByTestId('queue-slot').first().locator('p').innerText();
+  await app.getByTitle('Send this post now').first().click();
   await expect.poll(async () => (await logs(app)).length).toBe(2);
+  expect((await logs(app))[0].tweetText).toBe(firstSlotText);
   await app.getByRole('button', { name: 'Re-roll' }).first().click();
   await app.getByRole('button', { name: /Clear & Regenerate Queue/ }).click();
-  await expect(app.getByTitle('Send this color reply immediately')).toHaveCount(14);
+  await expect(app.getByTitle('Send this post now')).toHaveCount(14);
 
   // History: both posts are listed as simulated, none went live
   await openTab(app, 'Logs');
   await expect(app.getByText('Simulated', { exact: true })).toHaveCount(2);
+  await expect(app.getByTestId('history-tweet-text').filter({ hasText: previewed })).toHaveCount(1);
   for (const log of await logs(app)) {
     expect(log.status).toBe('simulated');
   }
