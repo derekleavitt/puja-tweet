@@ -128,4 +128,40 @@ describe('hashtagService.next', () => {
     await service.next(context(), color, { template: 'x #Poetry' });
     expect((generate.mock.calls[0] as unknown as [string])[0]).toContain('#Poetry');
   });
+
+  it('seeds from the campaign hashtags (outside the template), keeping some when asked', async () => {
+    const { service, generate } = makeService();
+    const ctx = context({
+      template: '{color_pick}',
+      hashtags: ['Vows', 'Ink'],
+      hashtagEvolution: { enabled: true, maxTags: 3, keepSeedTags: true },
+    });
+    const out = await service.next(ctx, color);
+    expect((generate.mock.calls[0] as unknown as [string])[0]).toContain('#Vows #Ink');
+    expect(out.tags.slice(0, 2)).toEqual(['Vows', 'Ink']);
+    const override = await service.next(ctx, color, { hashtags: ['Other'] });
+    expect(override.tags[0]).toBe('Other');
+  });
+
+  it('non-color templates never get the color name or a color seed', async () => {
+    const { service, generate } = makeService();
+    const ctx = context({ template: '<agent>a poem of love</agent>', hashtags: [] });
+    await service.next(ctx, color);
+    const prompt = (generate.mock.calls[0] as unknown as [string])[0];
+    expect(prompt).not.toContain('Sunset Topaz');
+    expect(prompt).toContain('Given these hashtags: #poetry #love');
+
+    const offline = makeService({ isConfigured: () => false }).service;
+    const out = await offline.next(
+      context({
+        template: '<agent>a poem of love</agent>',
+        hashtags: [],
+        hashtagEvolution: { enabled: true, maxTags: 3, keepSeedTags: true },
+      }),
+      color,
+    );
+    expect(out.tags.map((t) => t.toLowerCase())).not.toContain('sunsettopaz');
+    // "keep" applies to the campaign's own tags only, never to the theme seed.
+    expect(out.tags.map((t) => t.toLowerCase())).not.toContain('poetry');
+  });
 });
