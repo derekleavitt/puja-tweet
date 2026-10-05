@@ -131,7 +131,8 @@ Read-only on `TweetContext` (stripped from client bodies). Details:
 | Field | Notes |
 | --- | --- |
 | `retry` | `{ at, reason, transient, attempt, slotKey?, since? }`: next attempt after a failure (`reason` e.g. `AI busy`, `X server error`, `network error`, `last post failed`). Cleared by a success or a resume. The countdown (`secondsUntil`) and `blockedReason` ("Retrying in 2m (AI busy, attempt 3)") use it |
-| `inFlight` | `{ startedAt, bootId, runId?, turn?, replyToTweetId?, text? }` while a post is sent to X; `blockedReason` "Posting now…" |
+| `inFlight` | `{ startedAt, bootId, sentAt?, runId?, turn?, replyToTweetId?, text? }` while a drop runs (`sentAt` once it is sent to X); `blockedReason` "Posting now…" while another process's sent post is pending |
+| `scheduleStartedAt` | When the schedule (re)started (create, resume, schedule change, clear-history); fixed times are never caught up from before it |
 | `recentPosts` | Last 10 successful live posts `{ text, tweetId?, at, slotType?, colorName?, colorHex? }` (single mode `<history>` memory) |
 | `conversationState.turns` | Turns after `summaryThroughTurn` `{ turn, accountId, handle, text, tweetId?, at }` (at most 40) |
 | `consecutiveErrors` | Persistent failures in a row only (transient ones never count) |

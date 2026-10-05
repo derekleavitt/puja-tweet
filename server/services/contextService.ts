@@ -33,6 +33,7 @@ import {
   type EffectiveReplyTarget,
 } from './contextChain.js';
 import { isTransientFailure, transientReason, type XErrorClass } from '../xErrors.js';
+import { getXTimeoutMs } from '../timeouts.js';
 import { appendTurnRecord, clipStoredText, turnBufferOf } from './conversationTurn.js';
 import { accountProblem, effectiveAccountId } from './accountService.js';
 import { DEFAULT_ACCOUNT_ID } from '../../shared/types.js';
@@ -71,8 +72,11 @@ const MAX_RETRY_DELAY_MS = 15 * 60 * 1000;
 const MIN_RETRY_DELAY_MS = 60 * 1000;
 /** Successful live posts kept per single-mode campaign for `<history>` prompts. */
 export const RECENT_POSTS_MAX = 10;
-/** An in-flight marker older than this belongs to a crashed/killed process and is cleared. */
-export const STALE_IN_FLIGHT_MS = 5 * 60 * 1000;
+/**
+ * A sent-to-X marker older than this belongs to a crashed/killed process and is cleared:
+ * 3 X timeouts (a drop makes at most 3 X requests: post, chain recovery, quote fallback), >= 90 s.
+ */
+export const staleInFlightMs = (): number => Math.max(3 * getXTimeoutMs(), 90_000);
 /** Identifies this process in in-flight markers. */
 export const BOOT_ID = `boot_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
@@ -240,6 +244,7 @@ export class ContextService {
       hashtagEvolution: normaliseEvolution(data.hashtagEvolution),
       // `chainAnchor` is never taken from input: a legacy anchor is only kept if a log proves it.
       lastPostedTimestamp: data.lastPostedTimestamp || Date.now(), // never fire on create
+      scheduleStartedAt: Date.now(),
       currentJitterMs: data.currentJitterMs || 0,
       createdAt: data.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -367,6 +372,20 @@ export class ContextService {
       (updates.schedule?.mode !== undefined && updates.schedule.mode !== current.schedule.mode);
 
     const resumed = updates.enabled === true && !current.enabled;
+    // A change of what or where the campaign posts makes an old failure meaningless: drop the
+    // retry back-off and the breaker streak so the next due tick posts with the new setup.
+    const setupChanged =
+      targetChanged ||
+      accountChanged ||
+      modeChanged ||
+      (updates.template !== undefined && updates.template !== current.template) ||
+      (updates.conversation !== undefined &&
+        JSON.stringify([updates.conversation.participants, updates.conversation.sharedPrompt]) !==
+          JSON.stringify([
+            current.conversation?.participants,
+            current.conversation?.sharedPrompt,
+          ])) ||
+      !!resetChain;
     // A conversation can resume only when every participant is usable.
     const blocked = !resumed
       ? undefined
@@ -398,8 +417,11 @@ export class ContextService {
             consecutiveErrors: 0,
             autoPausedReason: undefined,
             retry: undefined,
+            scheduleStartedAt: Date.now(),
           }
         : {}),
+      ...(setupChanged && !resumed ? { consecutiveErrors: 0, retry: undefined } : {}),
+      ...(scheduleChanged && !resumed ? { scheduleStartedAt: Date.now() } : {}),
       id: current.id, // Never allow id to be overwritten
       accountId,
       targetTweetId,
@@ -631,6 +653,9 @@ export class ContextService {
     ctx.conversationState = initConversationState(validated.config, validated.handles);
     ctx.lastPostedTweetId = undefined;
     ctx.chainAnchor = undefined;
+    // A new run starts clean: no back-off or breaker streak from the old thread.
+    ctx.retry = undefined;
+    ctx.consecutiveErrors = 0;
     if (ctx.autoPausedReason?.startsWith(FINISHED_PREFIX)) ctx.autoPausedReason = undefined;
     ctx.updatedAt = new Date().toISOString();
     this.queue.clearAndRegenerateQueue(id);
@@ -793,34 +818,60 @@ export class ContextService {
     this.sm.persist();
   }
 
-  /** Persists the "sent to X, result pending" marker (cleared by `recordContextPostResult`). */
-  markInFlight(contextId: string, marker: Omit<InFlightPost, 'bootId' | 'startedAt'>) {
+  /**
+   * Persists the "drop in progress" marker at the start of a drop (cleared by
+   * `recordContextPostResult`); `markSent` stamps it right before the request to X.
+   */
+  markInFlight(contextId: string, startedAt = Date.now()) {
     const ctx = this.sm.getContext(contextId);
     if (!ctx) return;
-    ctx.inFlight = { ...marker, startedAt: Date.now(), bootId: BOOT_ID };
+    ctx.inFlight = { startedAt, bootId: BOOT_ID };
     this.sm.persist();
   }
 
-  /** Drops the marker without recording a result (the drop failed before X answered). */
-  clearInFlight(contextId: string) {
+  /** Stamps the marker with what is about to be sent to X, and when. */
+  markSent(
+    contextId: string,
+    sent: Pick<InFlightPost, 'runId' | 'turn' | 'replyToTweetId' | 'text'>,
+  ) {
+    const ctx = this.sm.getContext(contextId);
+    if (!ctx) return;
+    ctx.inFlight = {
+      ...(ctx.inFlight ?? { startedAt: Date.now(), bootId: BOOT_ID }),
+      ...sent,
+      sentAt: Date.now(),
+    };
+    this.sm.persist();
+  }
+
+  /** Drops this drop's marker without recording a result (it ended before a result was recorded). */
+  clearInFlight(contextId: string, startedAt?: number) {
     const ctx = this.sm.getContext(contextId);
     if (!ctx?.inFlight) return;
+    if (startedAt !== undefined && ctx.inFlight.startedAt !== startedAt) return;
     ctx.inFlight = undefined;
     this.sm.persist();
   }
 
   /**
-   * True while another process may still be posting this campaign (a fresh marker it wrote). A
-   * stale marker, or one left by this process, means the drop died between sending the post and
-   * recording it: it is cleared, an "interrupted" log entry keeps the history honest, and the
-   * campaign continues (the same turn/post is attempted again; see docs/campaign-isolation.md).
+   * True while another process may still be posting this campaign (a fresh sent-to-X marker it
+   * wrote). Otherwise a leftover marker is cleared and the campaign continues:
+   *  - never sent to X (no `sentAt`: the drop died while the AI was writing): cleared silently;
+   *  - sent, but the result was never recorded (stale, or left by this process): an "interrupted"
+   *    log entry keeps the history honest and the same turn/post is attempted again
+   *    (see docs/campaign-isolation.md §7).
    */
   checkInFlight(contextId: string, isOwnDropRunning: boolean, now = Date.now()): boolean {
     const ctx = this.sm.getContext(contextId);
     const marker = ctx?.inFlight;
     if (!ctx || !marker) return false;
     if (isOwnDropRunning) return true;
-    if (marker.bootId !== BOOT_ID && now - marker.startedAt < STALE_IN_FLIGHT_MS) return true;
+    if (marker.sentAt === undefined) {
+      ctx.inFlight = undefined;
+      this.sm.persist();
+      return false;
+    }
+    if (marker.bootId !== BOOT_ID && now - marker.sentAt < staleInFlightMs()) return true;
     ctx.inFlight = undefined;
     const log: PostLog = {
       id: `log_${now}_${Math.random().toString(36).substring(2, 6)}`,
@@ -840,9 +891,7 @@ export class ContextService {
     };
     const logs = this.sm.state.logs;
     logs.push(log);
-    console.warn(
-      `[Context] Cleared an interrupted post of "${ctx.name}" (started ${marker.startedAt}).`,
-    );
+    console.warn(`[Context] Cleared an interrupted post of "${ctx.name}" (sent ${marker.sentAt}).`);
     this.sm.persist();
     return false;
   }

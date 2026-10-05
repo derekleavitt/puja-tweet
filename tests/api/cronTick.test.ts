@@ -103,7 +103,11 @@ describe('POST /api/cron/tick behaviour', () => {
     expect(res.status).toBe(200);
     expect(finished).toBe(true);
     expect(exec).toHaveBeenCalledTimes(1);
-    expect(exec).toHaveBeenCalledWith({ contextId: due.id, source: 'scheduler' });
+    expect(exec).toHaveBeenCalledWith({
+      contextId: due.id,
+      source: 'scheduler',
+      scheduledAt: expect.any(Number),
+    });
     expect(res.body).toEqual({
       success: true,
       fired: 1,

@@ -49,6 +49,7 @@ export class LogService {
     if (ctx) {
       ctx.stats = { totalPosts: 0, successfulPosts: 0, simulatedPosts: 0, failedPosts: 0 };
       ctx.lastPostedTimestamp = Date.now(); // restart the interval, never fire at once
+      ctx.scheduleStartedAt = Date.now(); // and never catch up a fixed time from before
       ctx.lastPostedSlot = undefined;
       // The `<history>` memory of a single campaign goes with its logs. A conversation keeps its
       // transcript buffer: its turn count goes on, and Restart is the way to start over.

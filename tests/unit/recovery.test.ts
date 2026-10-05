@@ -8,7 +8,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetGeminiCallCounter } from '../../server/geminiConfig.js';
 import { scheduler } from '../../server/scheduler.js';
-import { BOOT_ID, transientRetryDelayMs } from '../../server/services/contextService.js';
+import {
+  BOOT_ID,
+  staleInFlightMs,
+  transientRetryDelayMs,
+} from '../../server/services/contextService.js';
+import { HttpError } from '../../server/middleware/error.js';
 import { createDropService, dropService } from '../../server/services/dropService.js';
 import { createServices, services, type Services } from '../../server/services/index.js';
 import { MemoryStore } from '../../server/store/MemoryStore.js';
@@ -474,7 +479,7 @@ describe('crash safety, restarts and downtime', () => {
     await expect(
       drops2.executeDrop({ contextId: c.id, source: 'scheduler' }),
     ).rejects.toMatchObject({ status: 409 });
-    now += 6 * MIN; // stale: cleared, logged as interrupted, the campaign continues
+    now += 91_000; // stale after max(3 x X timeout, 90 s): cleared, logged as interrupted, continues
     const out = await drops2.executeDrop({ contextId: c.id, source: 'scheduler' });
     expect(out.success).toBe(true);
     const turn4Posts = post.mock.calls.filter((call) =>
@@ -661,3 +666,163 @@ async function makeConversationIn(svc: Services) {
   expect(await connect('9102', 'ben', svc)).toBe(ben);
   return makeConversation(svc);
 }
+
+describe('review regressions', () => {
+  const single = (over: Parameters<typeof services.contexts.createContext>[0] = {}) =>
+    services.contexts.createContext({
+      name: 'Single',
+      targetTweetId: TARGET,
+      enabled: true,
+      dryRun: false,
+      hashtags: [],
+      template: 'plain {hex}',
+      schedule: { mode: 'interval', intervalMinutes: 1, humanizeJitterEnabled: false },
+      ...over,
+    }).id;
+  const http = (status: number) =>
+    ({
+      success: false,
+      error: `http ${status}`,
+      httpStatus: status,
+      rawResponse: { status, detail: 'x' },
+    }) as never;
+
+  it('1. a newer fixed slot fires while an older slot is in transient retry', async () => {
+    now = Date.UTC(2027, 0, 4, 5, 0);
+    const id = single({
+      schedule: {
+        mode: 'fixed_times',
+        scheduleTimes: ['06:00', '06:05'],
+        timezone: 'UTC',
+        humanizeJitterEnabled: false,
+      },
+    });
+    post
+      .mockResolvedValueOnce(http(503))
+      .mockResolvedValueOnce(http(503))
+      .mockResolvedValueOnce(http(503));
+    const attempts: string[] = [];
+    for (let m = 0; m <= 12; m++) {
+      now = Date.UTC(2027, 0, 4, 6, m, 1);
+      const before = post.mock.calls.length;
+      await scheduler.tick();
+      if (post.mock.calls.length > before) attempts.push(`06:${String(m).padStart(2, '0')}`);
+    }
+    // 06:00 fails at 06:00, 06:01, 06:03; the 06:05 slot wins at 06:05 (no further 06:00 retry).
+    expect(attempts).toEqual(['06:00', '06:01', '06:03', '06:05']);
+    expect(ctxOf(id).lastPostedSlot).toBe('2027-01-04-06:05');
+    expect(ctxOf(id).retry).toBeUndefined();
+    expect(ctxOf(id).stats).toMatchObject({ successfulPosts: 1, failedPosts: 3 });
+  });
+
+  it('2. the external tolerance never lets a campaign post twice within one interval', async () => {
+    vi.stubEnv('SCHEDULER_MODE', 'external');
+    const c = makeConversation();
+    services.contexts.setContextLastPostedTimestamp(c.id, now - MIN);
+    await scheduler.tick();
+    now += 35_000; // another speaker: per-account spacing does not stop it
+    await scheduler.tick();
+    expect(post).toHaveBeenCalledTimes(1);
+    now += 25_000;
+    await scheduler.tick();
+    expect(post).toHaveBeenCalledTimes(2);
+
+    ctxOf(c.id).enabled = false;
+    const dry = single({ dryRun: true });
+    services.contexts.setContextLastPostedTimestamp(dry, now - MIN);
+    const logsOf = () => services.logs.getLogs().filter((l) => l.contextId === dry).length;
+    await scheduler.tick();
+    now += 31_000;
+    await scheduler.tick();
+    expect(logsOf()).toBe(1);
+  });
+
+  it('3. editing what/where a campaign posts, or restarting, drops the retry and breaker streak', async () => {
+    const id = single({
+      schedule: { mode: 'interval', intervalMinutes: 60, humanizeJitterEnabled: false },
+    });
+    services.contexts.setContextLastPostedTimestamp(id, now - HOUR);
+    post.mockResolvedValue(http(400));
+    for (let i = 0; i < 2; i++) {
+      await scheduler.tick();
+      now = ctxOf(id).retry!.at;
+    }
+    expect(ctxOf(id)).toMatchObject({ consecutiveErrors: 2, retry: { transient: false } });
+    services.contexts.patchContext(id, { name: 'renamed' }); // cosmetic: kept
+    expect(ctxOf(id).retry).toBeDefined();
+    services.contexts.patchContext(id, { template: 'other {hex}' });
+    expect(ctxOf(id).retry).toBeUndefined();
+    expect(ctxOf(id).consecutiveErrors).toBe(0);
+
+    const c = makeConversation();
+    services.contexts.recordContextPostResult(c.id, 'error', undefined, 'reply', {
+      errorClass: 'unknown',
+    });
+    expect(ctxOf(c.id).retry).toBeDefined();
+    services.contexts.restartConversation(c.id, {
+      targetTweetId: '1700000000000000777',
+      openingPost: 'Again @ann @ben',
+      firstSpeakerAccountId: ann,
+    });
+    expect(ctxOf(c.id)).toMatchObject({ consecutiveErrors: 0, retry: undefined });
+  });
+
+  it('4. a slow AI call does not make a 1-minute <agent> campaign skip the next tick', async () => {
+    vi.stubEnv('SCHEDULER_MODE', 'external');
+    generateContent.mockImplementation(async (req) => {
+      now += 20_000; // Gemini takes 20 s
+      return gemini(req);
+    });
+    const id = single({ template: '<agent>Write a line</agent>' });
+    services.contexts.setContextLastPostedTimestamp(id, now - MIN);
+    const tick = now;
+    await scheduler.tick();
+    now = tick + MIN + 500;
+    await scheduler.tick();
+    expect(post).toHaveBeenCalledTimes(2);
+  });
+
+  it('(a) an AI turn that is not a valid tweet is transient', async () => {
+    const svc = await createServices(new MemoryStore());
+    const c = await makeConversationIn(svc);
+    const drops = createDropService({
+      services: svc,
+      postColorTweet,
+      resolveTemplateText,
+      buildTurn: async () => {
+        throw new HttpError(500, 'The generated conversation turn is not a valid tweet.');
+      },
+    });
+    await drops.executeDrop({ contextId: c.id, source: 'scheduler' });
+    expect(ctxOf(c.id, svc).retry).toMatchObject({ transient: true, reason: 'AI busy' });
+    expect(ctxOf(c.id, svc).consecutiveErrors ?? 0).toBe(0);
+    expect(ctxOf(c.id, svc).inFlight).toBeUndefined();
+  });
+
+  it('(b) a marker never sent to X (crash while the AI wrote) is cleared at once, silently', async () => {
+    const id = single();
+    services.contexts.setContextLastPostedTimestamp(id, now - MIN);
+    ctxOf(id).inFlight = { startedAt: now - 1000, bootId: 'boot_dead' }; // no sentAt
+    await scheduler.tick();
+    expect(post).toHaveBeenCalledTimes(1);
+    const interrupted = services.logs
+      .getLogs()
+      .some((l) => /Interrupted/.test(l.errorMessage ?? ''));
+    expect(interrupted).toBe(false);
+  });
+
+  it('(c) a sent marker of another process blocks for max(3 x X timeout, 90 s) only', async () => {
+    const id = single();
+    services.contexts.setContextLastPostedTimestamp(id, now - MIN);
+    ctxOf(id).inFlight = { startedAt: now, sentAt: now, bootId: 'boot_dead', text: 't' };
+    now += 89_000;
+    await scheduler.tick();
+    expect(post).not.toHaveBeenCalled();
+    expect(scheduler.getBlockedReason(ctxOf(id))).toBe('Posting now…');
+    now += 2_000;
+    await scheduler.tick();
+    expect(post).toHaveBeenCalledTimes(1);
+    vi.stubEnv('X_TIMEOUT_MS', '60000');
+    expect(staleInFlightMs()).toBe(180_000);
+  });
+});

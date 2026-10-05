@@ -53,6 +53,8 @@ export interface ExecuteDropOptions {
   source?: 'scheduler' | 'webhook' | 'manual' | 'cli';
   /** Fixed-time slot this scheduled drop belongs to (lets a transient failure retry that slot). */
   slotKey?: string;
+  /** The scheduler tick that started this drop (anchors the campaign clock and live spacing). */
+  scheduledAt?: number;
 }
 
 export interface DropDeps {
@@ -96,10 +98,16 @@ const classify = (r: TweetResult) =>
  * Why the AI could not write a post: busy / timed out / daily cap is transient (retried with
  * back-off, never auto-paused); anything else (not configured, invalid output) is persistent.
  */
-const aiFailureClass = (err: unknown): XErrorClass =>
-  err instanceof AgentUnavailableError && !/not configured/i.test(err.message)
-    ? 'ai_unavailable'
-    : 'unknown';
+const aiFailureClass = (err: unknown): XErrorClass => {
+  if (err instanceof AgentUnavailableError) {
+    return /not configured/i.test(err.message) ? 'unknown' : 'ai_unavailable';
+  }
+  // The AI answered, but with nothing usable (empty / not a valid tweet): another try may work.
+  if (err instanceof HttpError && err.status === 500 && /not a valid tweet/i.test(err.message)) {
+    return 'ai_unavailable';
+  }
+  return 'unknown';
+};
 
 export const createDropService = (deps: DropDeps) => {
   const s = deps.services;
@@ -194,7 +202,7 @@ export const createDropService = (deps: DropDeps) => {
     res: TweetResult,
     isDryRun: boolean,
     accountId?: string,
-    sentAt?: number,
+    startedAt?: number,
   ) => {
     if (res.rateLimitHeaders) s.rateLimit.updateRateLimitTelemetry(res.rateLimitHeaders, accountId);
     if (!isDryRun && isCooldown(res)) {
@@ -204,34 +212,29 @@ export const createDropService = (deps: DropDeps) => {
         accountId,
       );
     }
-    // Spacing is measured between X requests (not answers), so a slow AI call before one post does
-    // not delay the next tick's post of a 1-minute campaign.
-    if (!isDryRun && res.success) s.rateLimit.recordLivePostTimestamp(accountId, sentAt);
+    // Spacing is measured from the start of the drop (its tick), like the campaign clock, so a slow
+    // AI call or post does not make the next tick of a 1-minute campaign skip.
+    if (!isDryRun && res.success) s.rateLimit.recordLivePostTimestamp(accountId, startedAt);
   };
 
   /** Campaigns with a drop in progress: one drop per campaign at a time (tick vs. post-now race). */
   const inFlight = new Set<string>();
 
   /**
-   * Crash safety around the one irreversible step: the "sent to X" marker is persisted before the
-   * request, and the result (log, anchor, turn, transcript, clock) right after it, in one save.
-   * A restart in between leaves the marker, which the next tick turns into an "interrupted" log
-   * entry (see ContextService.checkInFlight); at worst the same post is sent once more.
+   * Crash safety around the one irreversible step. The drop's marker (persisted when it started)
+   * is stamped with `sentAt` and flushed right before the request to X; the result (log, anchor,
+   * turn, transcript, clock) is saved right after it, in one save. A restart in between leaves a
+   * stamped marker, which a later tick turns into an "interrupted" log entry (see
+   * ContextService.checkInFlight): at worst the same post is sent once more.
    */
   const sendGuarded = async (
     contextId: string,
-    marker: Parameters<Services['contexts']['markInFlight']>[1],
+    sent: Parameters<Services['contexts']['markSent']>[1],
     send: () => Promise<TweetResult>,
-  ): Promise<{ res: TweetResult; sentAt: number }> => {
-    s.contexts.markInFlight(contextId, marker);
+  ): Promise<TweetResult> => {
+    s.contexts.markSent(contextId, sent);
     await s.flush();
-    const sentAt = Date.now();
-    try {
-      return { res: await send(), sentAt };
-    } catch (err) {
-      s.contexts.clearInFlight(contextId);
-      throw err;
-    }
+    return send();
   };
 
   /** The text must address the next speaker (X only lets an app reply when mentioned). */
@@ -333,7 +336,6 @@ export const createDropService = (deps: DropDeps) => {
 
     const replyToTweetId = turn?.replyToTweetId;
     let res: TweetResult;
-    let sentAt: number | undefined;
     if (turnError) {
       res = {
         success: false,
@@ -360,11 +362,11 @@ export const createDropService = (deps: DropDeps) => {
         res = await send();
       } else {
         const marker = { runId: state.runId, turn: turn?.turnNumber, replyToTweetId, text };
-        ({ res, sentAt } = await sendGuarded(context.id, marker, send));
+        res = await sendGuarded(context.id, marker, send);
       }
     }
     // A failed AI turn never reached X, so it must not touch the speaker's X telemetry.
-    if (!turnError) recordTelemetry(res, isDryRun, speakerAccountId, sentAt);
+    if (!turnError) recordTelemetry(res, isDryRun, speakerAccountId, startedAt);
 
     const status = res.success ? (res.simulated ? 'simulated' : 'success') : 'error';
     const errorClass: XErrorClass | undefined = res.success
@@ -442,15 +444,22 @@ export const createDropService = (deps: DropDeps) => {
     if (s.contexts.checkInFlight(context.id, false)) {
       throw new HttpError(409, 'A post for this campaign is still being sent');
     }
-    const startedAt = Date.now();
+    // The campaign clock and the live spacing are anchored to the tick that started the drop.
+    const markedAt = Date.now();
+    const startedAt = Math.min(options.scheduledAt ?? markedAt, markedAt);
     inFlight.add(context.id);
     try {
+      // "Drop in progress" (not yet sent to X): a crash while the AI writes leaves nothing to undo.
+      s.contexts.markInFlight(context.id, markedAt);
+      await s.flush();
       if (context.mode === 'conversation') {
         return await executeConversationDrop(options, context, source, startedAt);
       }
       return await executeSingleDrop(options, context, source, startedAt);
     } finally {
       inFlight.delete(context.id);
+      // Only when the drop ended without recording a result (an exception).
+      s.contexts.clearInFlight(context.id, markedAt);
     }
   };
 
@@ -537,7 +546,6 @@ export const createDropService = (deps: DropDeps) => {
     };
     // An unusable account fails the drop without calling X (and pauses the campaign at once).
     let res: TweetResult;
-    let sentAt: number | undefined;
     if (composeError) {
       res = { success: false, error: composeError.message };
     } else if (accountFailure) {
@@ -545,9 +553,9 @@ export const createDropService = (deps: DropDeps) => {
     } else if (isDryRun) {
       res = await send();
     } else {
-      ({ res, sentAt } = await sendGuarded(context.id, { replyToTweetId, text }, send));
+      res = await sendGuarded(context.id, { replyToTweetId, text }, send);
     }
-    if (!composeError) recordTelemetry(res, isDryRun, accountId, sentAt);
+    if (!composeError) recordTelemetry(res, isDryRun, accountId, startedAt);
     const finalMode = fallbackTriggered ? 'quote' : engagementMode;
 
     const status = res.success ? (res.simulated ? 'simulated' : 'success') : 'error';

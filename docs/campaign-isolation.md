@@ -195,7 +195,7 @@ intervals a campaign's older entries are trimmed within hours, so no AI memory m
 
 | Class | Examples (`XErrorClass`) | Back-off (`retry.at`) | Breaker |
 | --- | --- | --- | --- |
-| Transient | `ai_unavailable` (Gemini busy / timeout / daily cap), `server_error` (X 5xx), `network` (no answer, timeout) | 1×, 2×, 4×… the interval, at least 1 min, at most 15 min (`transientRetryDelayMs`) | Never: does not touch `consecutiveErrors`, never auto-pauses |
+| Transient | `ai_unavailable` (Gemini busy / timeout / daily cap / empty or invalid output), `server_error` (X 5xx), `network` (no answer, timeout) | 1×, 2×, 4×… the interval, at least 1 min, at most 15 min (`transientRetryDelayMs`) | Never: does not touch `consecutiveErrors`, never auto-pauses |
 | Throttled | `rate_limit` (429), `cooldown` | 15 min (plus the account cooldown) | Not counted |
 | Persistent | `auth`, `payment`, `account` (immediate pause); `target_missing` after recovery, `reply_restricted`, `text_invalid`, `unknown`, AI not configured | max(15 min, interval) | Pauses after `MAX_CONSECUTIVE_ERRORS` (5) |
 
@@ -203,22 +203,29 @@ A success (live or simulated) clears `retry` and `consecutiveErrors`. Decision: 
 never pause a campaign, however long they last (a Gemini or X outage ends by itself; the card keeps
 saying "Retrying in 15m (AI busy, attempt 7)"). An AI-only single template whose AI fails is now
 recorded like any failed post (error log, back-off) instead of throwing on every tick. A fixed-time
-campaign retries a transiently failed slot with the same back-off for up to an hour.
+campaign retries a transiently failed slot with the same back-off for up to an hour, unless a
+newer slot is reached meanwhile: the newest missed slot always wins.
+
+Changing what or where a campaign posts (target, account, mode, template, conversation cast or
+shared prompt, reset of the chain) or restarting a conversation clears `retry` and
+`consecutiveErrors`, so the next due tick posts with the new setup. Cosmetic edits keep them.
 
 ### Crash safety (no duplicates, no gaps)
 
-Order of one live drop: compose (AI) → persist the in-flight marker
-(`inFlight { startedAt, bootId, runId?, turn?, replyToTweetId, text }`, awaited flush) → X → in
-one synchronous step `recordContextPostResult` (clock, anchor, retry, clears the marker) +
+Order of one drop: persist the marker `inFlight { startedAt, bootId }` (awaited flush) → compose
+(AI) → stamp it with `sentAt, runId?, turn?, replyToTweetId, text` (awaited flush) → X → in one
+synchronous step `recordContextPostResult` (clock, anchor, retry, clears the marker) +
 `recordConversationTurn` (turn count, next speaker, transcript) + `rememberPost` + log append →
 awaited flush. A Firestore save writes the whole state document after the log documents, so a save
 carries all of it or none.
 
-- Crash **before** X: the marker (if written) is cleared on a later tick, nothing was posted, the
-  same turn/post is attempted again.
-- Crash **after X accepted, before the result was saved**: the next instance sees the marker. If it
-  is younger than 5 minutes and from another process it waits (an overlapping instance may still be
-  posting, e.g. during a deploy); otherwise it clears it and writes an "Interrupted" error log entry.
+- Crash **before** X (e.g. while the AI writes): the marker has no `sentAt`; the next tick clears
+  it at once, silently, and the same turn/post is attempted again. (An instance overlapping during
+  a deploy that is still composing is not waited for; Cloud Run runs one instance.)
+- Crash **after X accepted, before the result was saved**: the next instance sees a stamped marker.
+  If it was sent less than max(3 × `X_TIMEOUT_MS`, 90 s) ago by another process it waits (an
+  overlapping instance may still be posting, e.g. during a deploy; the card says "Posting now…");
+  otherwise it clears it and writes an "Interrupted" error log entry.
   The campaign continues from its last recorded post: the turn count, speaker and anchor were not
   advanced, so the same turn is written again and replies to the same tweet. **Bound: at most one
   duplicate post per crash**, which X shows as a second reply to the same tweet; the transcript and
@@ -234,12 +241,16 @@ carries all of it or none.
   resumes its cadence. Fixed times never post more than the most recent missed slot.
 - **Missed fixed slots:** a slot whose minute was missed by a late, skipped or busy tick still fires
   within 10 minutes (`FIXED_CATCH_UP_MS`), once, and never a slot from before the campaign was
-  created or resumed. A pending (jittered) fire survives restarts and is dropped after an hour.
-- **1-minute campaigns on a 1-minute tick:** the clock is anchored to when the drop **started**,
-  not when X answered, and live spacing is measured between X requests, so a 20-second AI call no
-  longer pushes the next post a whole tick later. In `SCHEDULER_MODE=external` a campaign counts as
-  due 30 s early (half a tick; 5 s for the in-process 10 s loop; override
-  `SCHEDULER_DUE_TOLERANCE_MS`).
+  created, resumed or rescheduled (`scheduleStartedAt`; failed attempts do not move it). A pending
+  (jittered) fire survives restarts and is dropped after an hour.
+- **1-minute campaigns on a 1-minute tick:** the campaign clock **and** the per-account live
+  spacing are anchored to the tick that started the drop (`scheduledAt`), not to when the AI or X
+  answered, so a 20-second AI call or an earlier slow campaign in the same tick no longer makes the
+  next tick skip. In `SCHEDULER_MODE=external` a campaign counts as due up to 30 s early (half a
+  tick; 5 s for the in-process 10 s loop; override `SCHEDULER_DUE_TOLERANCE_MS`), capped per
+  campaign at a quarter of its wait (15 s for a 1-minute campaign), with a hard floor of
+  interval − tolerance since the last attempt: one campaign never posts twice within ~¾ of its
+  interval, even when its speakers alternate between accounts or it is a dry run.
 - **Resume** restarts the interval from now (no immediate post after a long pause) and clears the
   retry and breaker state.
 - All times are epoch milliseconds; fixed times are evaluated in the campaign's IANA time zone

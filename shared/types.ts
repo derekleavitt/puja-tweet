@@ -145,7 +145,10 @@ export interface RetryState {
 
 /** Persisted before a post is sent to X and cleared with its result (crash detection). */
 export interface InFlightPost {
+  /** When the drop started (before the AI wrote the post). */
   startedAt: number;
+  /** Set (and persisted) right before the request to X; absent = X was never called. */
+  sentAt?: number;
   /** Process that sent it (a fresh marker from another process means "still posting"). */
   bootId: string;
   runId?: string;
@@ -184,6 +187,11 @@ export interface TweetContext {
   lastPostedSlot?: string;
   /** Armed fixed-time slot waiting out its jitter; persisted so a restart still fires it once. */
   pendingFire?: PendingFire;
+  /**
+   * Server-owned: when the schedule (re)started (create, resume, schedule change, clear-history).
+   * Fixed times are never caught up from before it.
+   */
+  scheduleStartedAt?: number;
   /** Server-owned: next retry after a failed post (see `RetryState`). */
   retry?: RetryState;
   /** Server-owned: a post that was sent to X and whose result is not recorded yet. */

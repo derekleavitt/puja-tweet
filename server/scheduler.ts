@@ -15,7 +15,7 @@ import {
   slotTypeForHour,
   zonedParts,
 } from '../shared/time.js';
-import { STALE_IN_FLIGHT_MS } from './services/contextService.js';
+import { staleInFlightMs } from './services/contextService.js';
 import { dropService } from './services/dropService.js';
 import { services } from './services/index.js';
 import type { PendingFire, TweetContext } from '../shared/types.js';
@@ -28,12 +28,16 @@ const MIN_LIVE_SPACING_MS = 50 * 1000;
  * A campaign this close to due counts as due, so tick timing drift (and jitter finer than the tick)
  * doesn't push it a whole tick later. Half a tick: 30 s for the external once-a-minute tick
  * (Cloud Scheduler), 5 s for the in-process 10 s loop. Override: SCHEDULER_DUE_TOLERANCE_MS.
+ * Per campaign it is capped at a quarter of the wait (`campaignTolerance`), so two posts of one
+ * campaign are never less than 3/4 of its interval apart.
  */
 const dueToleranceMs = (): number => {
   const n = Number(process.env.SCHEDULER_DUE_TOLERANCE_MS);
   if (process.env.SCHEDULER_DUE_TOLERANCE_MS && Number.isFinite(n) && n >= 0) return n;
   return process.env.SCHEDULER_MODE?.trim().toLowerCase() === 'external' ? 30_000 : 5_000;
 };
+
+const campaignTolerance = (waitMs: number): number => Math.min(dueToleranceMs(), waitMs / 4);
 
 /** A persisted pending fire (or a fixed-slot retry) older than this is dropped rather than fired late. */
 const STALE_PENDING_MS = 60 * 60 * 1000;
@@ -59,14 +63,17 @@ const dueAt = (c: TweetContext): number => {
 /** The most recent fixed time reached in the catch-up window that has not been handled yet. */
 const dueFixedSlot = (c: TweetContext, now: number) => {
   const { scheduleTimes, timezone } = c.schedule;
-  const startedMinute = Math.floor((c.lastPostedTimestamp || 0) / MINUTE_MS) * MINUTE_MS;
+  // When the schedule (re)started, not the last attempt: a failed or retried slot must not hide a
+  // later one (legacy campaigns without the field fall back to the last attempt).
+  const started = c.scheduleStartedAt ?? c.lastPostedTimestamp ?? 0;
+  const startedMinute = Math.floor(started / MINUTE_MS) * MINUTE_MS;
   for (let back = 0; back <= FIXED_CATCH_UP_MS; back += MINUTE_MS) {
     const at = now - back;
     const match = matchFixedTime(scheduleTimes, new Date(at), timezone);
     if (!match) continue;
     // The newest reached slot was handled already: older ones in the window are, too.
     if (match.slotKey === c.lastPostedSlot) return null;
-    // Never catch up a slot from before the campaign was created, resumed or last posted.
+    // Never catch up a slot from before the campaign was created, resumed or rescheduled.
     if (back > 0 && Math.floor(at / MINUTE_MS) * MINUTE_MS < startedMinute) return null;
     return match;
   }
@@ -97,6 +104,8 @@ export interface TickResult {
 
 class SchedulerService {
   private dropsLeft = Infinity;
+  /** `now` of the campaign being evaluated (the tick time its drop is anchored to). */
+  private evalNow: number | undefined;
   private firedCount = 0;
   private enabledCount = 0;
   private timer: NodeJS.Timeout | null = null;
@@ -145,7 +154,8 @@ class SchedulerService {
   private async runDrop(args: Parameters<typeof dropService.executeDrop>[0]) {
     this.dropsLeft--;
     this.firedCount++;
-    await dropService.executeDrop(args);
+    // Anchored to the tick, not to when an earlier drop of the same tick finished.
+    await dropService.executeDrop({ ...args, scheduledAt: this.evalNow });
   }
 
   /**
@@ -227,7 +237,7 @@ class SchedulerService {
 
   private async evaluateContextSchedule(context: TweetContext, now: number) {
     const { schedule } = context;
-    const tolerance = dueToleranceMs();
+    this.evalNow = now;
 
     // A post of this campaign was sent to X and its result is not recorded: wait while it may still
     // be running, otherwise clear the marker (logged as interrupted) and continue normally.
@@ -248,9 +258,14 @@ class SchedulerService {
       }
       // After a failure the retry time replaces the interval (back-off); otherwise one interval
       // after the last attempt. Either way at most ONE post fires, however long the downtime was.
-      const due = context.retry
-        ? now >= context.retry.at - tolerance
-        : now - lastPosted >= effectiveRequiredMs - tolerance;
+      const tolerance = campaignTolerance(context.retry ? MINUTE_MS : intervalMs);
+      // Hard floor: never two attempts closer than the interval (a retry: a minute) - tolerance.
+      const minGapMs = (context.retry ? Math.min(MINUTE_MS, intervalMs) : intervalMs) - tolerance;
+      const due =
+        now - lastPosted >= minGapMs &&
+        (context.retry
+          ? now >= context.retry.at - tolerance
+          : now - lastPosted >= effectiveRequiredMs - tolerance);
       if (due) {
         if (!this.canFireNow(context)) return; // anti-burst: wait for the next tick
         console.log(
@@ -282,16 +297,20 @@ class SchedulerService {
     }
 
     // A fixed slot whose post failed transiently is retried (back-off) for up to an hour.
+    // A newer reached slot always wins over retrying an older one (newest missed slot fires).
     const retry = context.retry;
     if (retry?.slotKey) {
-      // Too old, or a newer slot fired since: the retry is obsolete.
+      const newer = dueFixedSlot(context, now);
+      // Too old, superseded by a newer slot, or a newer slot fired since: the retry is obsolete.
       if (
         now - (retry.since ?? retry.at) > STALE_PENDING_MS ||
-        retry.slotKey !== context.lastPostedSlot
+        retry.slotKey !== context.lastPostedSlot ||
+        (newer && newer.slotKey !== retry.slotKey)
       ) {
         services.contexts.clearRetry(context.id);
+        context.retry = undefined;
       } else {
-        if (now < retry.at - tolerance || !this.canFireNow(context)) return;
+        if (now < retry.at - campaignTolerance(MINUTE_MS) || !this.canFireNow(context)) return;
         const matchedTime = retry.slotKey.slice(-5);
         const slotType = slotTypeForHour(Number(matchedTime.slice(0, 2)));
         await this.fireFixedSlot(context, retry.slotKey, slotType, matchedTime);
@@ -376,7 +395,7 @@ class SchedulerService {
     }
     const now = Date.now();
     const marker = context.inFlight;
-    if (marker && now - marker.startedAt < STALE_IN_FLIGHT_MS) return `${who}Posting now…`;
+    if (marker?.sentAt && now - marker.sentAt < staleInFlightMs()) return `${who}Posting now…`;
     const retry = context.retry;
     if (retry && retry.at > now) {
       const attempts = retry.transient && retry.attempt > 1 ? `, attempt ${retry.attempt + 1}` : '';
