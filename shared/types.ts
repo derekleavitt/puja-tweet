@@ -155,6 +155,8 @@ export interface NextPostInfo {
   targetTimezone: string;
   jitterSeconds?: number;
   jitterFormatted?: string;
+  /** Why the scheduler will not post this campaign right now (paused, cooldown, …); absent when free to post. */
+  blockedReason?: string;
 }
 
 export interface PostLog {
