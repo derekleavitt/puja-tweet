@@ -1,8 +1,8 @@
 # Handoff: where things stand
 
 > **Archived 2026-10-05.** Development moved from a Claude cloud session to local-only work, and every
-> step below has been done. The branches listed at the end no longer exist on GitHub. The current
-> production facts, logs command and known limits now live in [`docs/deploy.md`](../deploy.md).
+> step below has been done. The current production facts, logs command and known limits now live
+> in [`docs/deploy.md`](../deploy.md).
 
 A snapshot for picking the project back up locally (Claude Code CLI on your own machine).
 
