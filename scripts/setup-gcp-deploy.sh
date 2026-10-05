@@ -48,7 +48,7 @@ if [ "${1:-}" = "--rotate" ]; then
   NAME="${2:?usage: --rotate NAME}"
   say "Rotating $NAME (adds a new version)"
   if is_generated "$NAME"; then
-    openssl rand -hex 32 | put_secret "$NAME"
+    openssl rand -hex 32 | tr -d '\n' | put_secret "$NAME"
   else
     read -rsp "New value for $NAME: " v
     echo
@@ -152,7 +152,7 @@ for s in "${USER_SECRETS[@]}" "${GEN_SECRETS[@]}"; do
     if G secrets describe "$s" >/dev/null 2>&1; then
       echo "  $s: exists, kept"
     else
-      openssl rand -hex 32 | put_secret "$s"
+      openssl rand -hex 32 | tr -d '\n' | put_secret "$s"
       echo "  $s: generated"
     fi
   else
