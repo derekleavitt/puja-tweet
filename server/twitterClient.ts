@@ -44,6 +44,8 @@ export interface PostTweetOptions {
   quoteTweetId?: string;
   engagementMode?: 'reply' | 'quote' | 'standalone';
   autoFallbackToQuote?: boolean;
+  /** X handle of the posting account (without '@'), used in error explanations. */
+  accountHandle?: string;
 }
 
 export interface RateLimitHeaders {
@@ -108,8 +110,9 @@ export function generateOAuth1Header(
   creds: {
     apiKey: string;
     apiSecret: string;
-    accessToken: string;
-    accessTokenSecret: string;
+    /** Omitted for the request-token step of the 3-legged flow (no user token yet). */
+    accessToken?: string;
+    accessTokenSecret?: string;
   },
   extraParams: Record<string, string> = {},
 ): string {
@@ -118,7 +121,7 @@ export function generateOAuth1Header(
     oauth_nonce: crypto.randomBytes(16).toString('hex'),
     oauth_signature_method: 'HMAC-SHA1',
     oauth_timestamp: Math.floor(Date.now() / 1000).toString(),
-    oauth_token: creds.accessToken,
+    ...(creds.accessToken ? { oauth_token: creds.accessToken } : {}),
     oauth_version: '1.0',
     ...extraParams,
   };
@@ -132,7 +135,7 @@ export function generateOAuth1Header(
     '&',
   );
 
-  const signingKey = `${percentEncode(creds.apiSecret)}&${percentEncode(creds.accessTokenSecret)}`;
+  const signingKey = `${percentEncode(creds.apiSecret)}&${percentEncode(creds.accessTokenSecret ?? '')}`;
 
   const signature = crypto.createHmac('sha1', signingKey).update(baseString).digest('base64');
 
@@ -406,7 +409,7 @@ export async function postColorTweet(
     }
 
     const data = await response.json();
-    const xHandle = (process.env.X_HANDLE || '').trim().replace(/^@/, '');
+    const xHandle = (options.accountHandle || '').trim().replace(/^@/, '');
     const handleLabel = xHandle ? `@${xHandle}` : '';
 
     if (!response.ok) {
@@ -483,4 +486,118 @@ export async function postColorTweet(
       error: errorMessage(err) || 'Failed to communicate with X API endpoint',
     };
   }
+}
+
+// --- OAuth 1.0a 3-legged flow (connect another X account to this app) ---
+
+export interface OAuthConsumer {
+  apiKey: string;
+  apiSecret: string;
+}
+
+export interface RequestTokenResult {
+  oauthToken: string;
+  oauthTokenSecret: string;
+  callbackConfirmed: boolean;
+}
+
+export interface AccessTokenResult {
+  accessToken: string;
+  accessTokenSecret: string;
+  userId: string;
+  screenName: string;
+}
+
+export const OAUTH_REQUEST_TOKEN_URL = 'https://api.x.com/oauth/request_token';
+export const OAUTH_ACCESS_TOKEN_URL = 'https://api.x.com/oauth/access_token';
+const OAUTH_AUTHORIZE_URL = 'https://api.x.com/oauth/authorize';
+
+/**
+ * X's sign-in page for a request token. `force_login=true` makes X ask which account to
+ * authorize instead of silently using whoever is signed in to x.com in this browser.
+ */
+export const oauth1AuthorizeUrl = (requestToken: string): string =>
+  `${OAUTH_AUTHORIZE_URL}?oauth_token=${encodeURIComponent(requestToken)}&force_login=true`;
+
+/** POSTs a signed, body-less OAuth 1.0a request and parses the form-encoded answer. */
+const oauthPost = async (url: string, authHeader: string, step: string) => {
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      signal: AbortSignal.timeout(getXTimeoutMs()),
+      method: 'POST',
+      headers: { Authorization: authHeader, 'User-Agent': 'X-ChromaBot/1.0' },
+    });
+  } catch (err) {
+    throw new Error(`Could not reach X for the ${step} step: ${errorMessage(err)}`);
+  }
+  const text = await res.text();
+  if (!res.ok) {
+    // X answers OAuth errors as JSON ({ errors: [{ message }] }) or as plain text.
+    let detail = text.slice(0, 200);
+    try {
+      const body = JSON.parse(text);
+      detail = body?.errors?.[0]?.message || body?.detail || detail;
+    } catch {
+      // not JSON
+    }
+    throw new Error(`X refused the ${step} step (HTTP ${res.status}): ${detail}`);
+  }
+  return new URLSearchParams(text);
+};
+
+/**
+ * Step 1: a temporary request token, signed with the app's consumer key only (no oauth_token).
+ * `callback` is the absolute callback URL, or 'oob' for the PIN flow.
+ */
+export async function oauth1RequestToken(
+  consumer: OAuthConsumer,
+  callback: string,
+): Promise<RequestTokenResult> {
+  const header = generateOAuth1Header(
+    'POST',
+    OAUTH_REQUEST_TOKEN_URL,
+    { apiKey: consumer.apiKey, apiSecret: consumer.apiSecret },
+    { oauth_callback: callback },
+  );
+  const params = await oauthPost(OAUTH_REQUEST_TOKEN_URL, header, 'request-token');
+  const oauthToken = params.get('oauth_token');
+  const oauthTokenSecret = params.get('oauth_token_secret');
+  if (!oauthToken || !oauthTokenSecret) throw new Error('X returned no request token.');
+  return {
+    oauthToken,
+    oauthTokenSecret,
+    callbackConfirmed: params.get('oauth_callback_confirmed') === 'true',
+  };
+}
+
+/** Step 3: trades the authorized request token + verifier (or PIN) for the user's access token. */
+export async function oauth1AccessToken(
+  consumer: OAuthConsumer,
+  requestToken: string,
+  requestTokenSecret: string,
+  verifier: string,
+): Promise<AccessTokenResult> {
+  const header = generateOAuth1Header(
+    'POST',
+    OAUTH_ACCESS_TOKEN_URL,
+    {
+      apiKey: consumer.apiKey,
+      apiSecret: consumer.apiSecret,
+      accessToken: requestToken,
+      accessTokenSecret: requestTokenSecret,
+    },
+    { oauth_verifier: verifier },
+  );
+  const params = await oauthPost(OAUTH_ACCESS_TOKEN_URL, header, 'access-token');
+  const result: AccessTokenResult = {
+    accessToken: params.get('oauth_token') || '',
+    accessTokenSecret: params.get('oauth_token_secret') || '',
+    userId: params.get('user_id') || '',
+    screenName: params.get('screen_name') || '',
+  };
+  if (!result.accessToken || !result.accessTokenSecret || !result.userId) {
+    throw new Error('X returned an incomplete access token.');
+  }
+  return result;
 }
