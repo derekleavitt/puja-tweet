@@ -16,7 +16,7 @@ import { RunToggles } from './RunToggles.js';
 
 interface SettingsPanelProps {
   settings: BotSettings;
-  onSaveSettings: (newSettings: Partial<BotSettings>) => Promise<void>;
+  onSaveSettings: (newSettings: Partial<BotSettings> & { contextId?: string }) => Promise<void>;
   campaignName?: string;
   onToggleGlobalDryRun: () => void;
   onToggleGlobalPause: () => void;
@@ -105,7 +105,8 @@ const SettingsForm: React.FC<SettingsPanelProps> = ({
       if (anchorReset) changed.lastPostedTweetId = null;
 
       if (Object.keys(changed).length > 0) {
-        await onSaveSettings(changed as Partial<BotSettings>);
+        // Always the campaign this form was opened for, even if the active one changed meanwhile.
+        await onSaveSettings({ ...changed, contextId: settings.activeContextId });
       }
       setAnchorReset(false);
       flashSaved(2500);

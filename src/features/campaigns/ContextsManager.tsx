@@ -45,8 +45,7 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
   const [triggerResult, setTriggerResult] = useState<(TriggerNotice & { id: string }) | null>(null);
   const [pending, setPending] = useState<PendingConfirm>(null);
 
-  const activeContext = contexts.find((c) => c.id === activeContextId) || contexts[0];
-  const form = useContextForm({ contexts, activeContext, onCreateContext, onUpdateContext });
+  const form = useContextForm({ contexts, onCreateContext, onUpdateContext });
 
   const handleTriggerDrop = async (id: string) => {
     setTriggeringId(id);
