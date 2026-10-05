@@ -11,6 +11,7 @@ import { CardFrequency } from './CardFrequency.js';
 import { CardModeControls } from './CardModeControls.js';
 import { CardActions } from './CardActions.js';
 import { AutoPausedBadge } from './AutoPausedBadge.js';
+import { CardHashtags } from './CardHashtags.js';
 
 export interface TriggerNotice {
   success: boolean;
@@ -117,6 +118,8 @@ export const ContextCard: React.FC<ContextCardProps> = (props) => {
             {ctx.template}
           </div>
         </div>
+
+        <CardHashtags context={ctx} />
 
         <div className="p-2.5 rounded-lg bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200/70 dark:border-neutral-700/60 flex items-center justify-between gap-2 text-xs">
           <div className="flex items-center gap-2 min-w-0">

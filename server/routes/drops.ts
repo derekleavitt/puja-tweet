@@ -7,7 +7,7 @@ import type { AppDeps } from '../app.js';
 import { generateColor } from '../colorEngine.js';
 import type { ColorData } from '../../shared/types.js';
 import { HttpError, toHttpError } from '../middleware/error.js';
-import { resolveTemplateText } from '../templateAgent.js';
+import { normaliseTags } from '../../shared/hashtags/index.js';
 import { formatTimeInZone } from '../../shared/time.js';
 
 export const createDropsRouter = ({ services, drops }: AppDeps) => {
@@ -33,10 +33,9 @@ export const createDropsRouter = ({ services, drops }: AppDeps) => {
     const timeTag = formatTimeInZone(new Date(), context.schedule?.timezone);
     const templateToUse = template || context.template;
 
-    const previewText = await resolveTemplateText(templateToUse, color, {
+    const { text: previewText, hashtags } = await drops.composeText(context, color, {
+      template: templateToUse,
       slotLabel: timeTag,
-      contextId: context.id,
-      targetTweetId: context.targetTweetId,
     });
     const replyInfo = services.contexts.getEffectiveReplyTargetId(context);
 
@@ -46,6 +45,8 @@ export const createDropsRouter = ({ services, drops }: AppDeps) => {
       fields: {
         color,
         previewText,
+        // Evolved tags the preview used; post-now takes them back so the post does not re-roll.
+        ...(hashtags ? { hashtags } : {}),
         charCount: previewText.length,
         targetTweetId: context.targetTweetId,
         replyToTweetId: replyInfo.targetTweetId,
@@ -86,7 +87,7 @@ export const createDropsRouter = ({ services, drops }: AppDeps) => {
 
   router.post('/post-now', async (req, res, next) => {
     try {
-      const { text, slotId } = req.body;
+      const { text, slotId, hashtags } = req.body;
       if (text !== undefined && typeof text !== 'string') {
         throw new HttpError(400, 'text must be a string');
       }
@@ -96,6 +97,8 @@ export const createDropsRouter = ({ services, drops }: AppDeps) => {
         color: req.body.color,
         forceLive: req.body.forceLive === true,
         text,
+        hashtags:
+          text !== undefined && Array.isArray(hashtags) ? normaliseTags(hashtags) : undefined,
         source: 'manual',
       });
       // A sent queue slot is consumed on success or simulation (never on failure).

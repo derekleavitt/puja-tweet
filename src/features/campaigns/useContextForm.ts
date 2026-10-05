@@ -5,6 +5,7 @@
 
 import React, { useState } from 'react';
 import { TweetContext } from '../../types.js';
+import { DEFAULT_HASHTAG_EVOLUTION } from '../../../shared/hashtags/index.js';
 import { extractTweetId } from '../../../shared/tweetId.js';
 import { useServerInfo } from '../../context/serverInfo.js';
 import { errorMessage } from '../../lib/errors.js';
@@ -55,6 +56,7 @@ export function useContextForm(opts: UseContextFormOptions) {
       },
       template: '{color_pick} {weather_desc} #eternal #colors',
       themePreference: 'dynamic',
+      hashtagEvolution: { ...DEFAULT_HASHTAG_EVOLUTION },
     });
   };
 
@@ -87,7 +89,10 @@ export function useContextForm(opts: UseContextFormOptions) {
     }
 
     try {
-      const payload: Partial<TweetContext> = { ...editingContext, targetTweetId: detectedId };
+      // hashtagState is server-owned: never send it back.
+      const { hashtagState: _state, ...editable } = editingContext;
+      void _state;
+      const payload: Partial<TweetContext> = { ...editable, targetTweetId: detectedId };
       if (isCreating) {
         await onCreateContext(payload);
       } else if (editingContext.id) {

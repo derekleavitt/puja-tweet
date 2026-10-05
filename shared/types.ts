@@ -30,6 +30,19 @@ export interface TweetContextSchedule {
   jitterPercentage: number; // Default 25 (0 to 25% of interval window)
 }
 
+/** Per-campaign "evolving hashtags" settings (client-editable). */
+export interface HashtagEvolutionConfig {
+  enabled: boolean;
+  maxTags: number; // 1-5, default 3 (kept seed tags count toward it)
+  keepSeedTags: boolean; // Default false. true = the template's own hashtags are never replaced
+}
+
+/** Server-owned evolving-hashtag state; only advanced after a successful (live or simulated) post. */
+export interface HashtagState {
+  current: string[]; // Tags used by the latest post (without '#')
+  recent: string[]; // Last ~40 tags used, so they are not repeated
+}
+
 export interface TweetContext {
   id: string; // Unique context ID e.g. 'ctx_default', 'ctx_1790623000'
   name: string; // Context title e.g. 'Primary Eternal Colors'
@@ -44,6 +57,8 @@ export interface TweetContext {
   schedule: TweetContextSchedule;
   template: string; // Tweet text template with variables
   themePreference: 'dynamic' | 'vibrant' | 'minimal' | 'poetic';
+  hashtagEvolution?: HashtagEvolutionConfig; // Default off
+  hashtagState?: HashtagState; // Server-owned (never accepted from clients)
   lastPostedTimestamp?: number;
   currentJitterMs?: number;
   lastPostedSlot?: string;
@@ -229,6 +244,8 @@ export interface DropResponse {
     error?: string;
   };
   log?: PostLog;
+  /** Evolved hashtags (without '#') used by this drop; absent when evolution is off. */
+  hashtags?: string[];
 }
 
 /** `POST /api/twitter/verify` payload. */

@@ -12,6 +12,7 @@ import { ReplyModeSelector } from './ReplyModeSelector.js';
 import { EngagementModeSelector } from './EngagementModeSelector.js';
 import { ScheduleEditor } from './ScheduleEditor.js';
 import { TemplateEditor } from '../../components/TemplateEditor.js';
+import { HashtagEvolutionEditor } from './HashtagEvolutionEditor.js';
 
 interface ContextFormModalProps {
   form: ContextForm;
@@ -104,6 +105,11 @@ export const ContextFormModal: React.FC<ContextFormModalProps> = ({ form }) => {
             onChange={(template) => patch({ template })}
             contextId={ctx.id}
             rows={3}
+          />
+          <HashtagEvolutionEditor
+            template={ctx.template || ''}
+            value={ctx.hashtagEvolution}
+            onChange={(hashtagEvolution) => patch({ hashtagEvolution })}
           />
 
           <div className="grid grid-cols-2 gap-3">
