@@ -139,7 +139,7 @@ export const TargetTweetEditor: React.FC<TargetTweetEditorProps> = ({
               Target Reply Post
             </h3>
             <p className="text-xs text-neutral-500">
-              The X post where ChromaBot posts automated chromatic color drops.
+              The X post where ChromaBot posts its automated drops.
             </p>
           </div>
         </div>
@@ -305,7 +305,7 @@ export const TargetTweetEditor: React.FC<TargetTweetEditorProps> = ({
             {engagementMode === 'quote'
               ? '💡 Quote Tweet mode embeds the target post directly into your timeline drop. 100% permitted on all X developer tiers.'
               : engagementMode === 'standalone'
-                ? "💡 Standalone mode publishes chromatic drops directly to your account's feed."
+                ? "💡 Standalone mode publishes drops directly to your account's feed."
                 : "💡 Direct Reply posts into the target post's comments. If X restricts replies, you can enable the Quote Tweet fallback in the campaign settings."}
           </p>
         </div>

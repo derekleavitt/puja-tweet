@@ -122,8 +122,8 @@ const SettingsForm: React.FC<SettingsPanelProps> = ({
             Timing & Autonomous Reply Settings
           </h2>
           <p className="text-sm text-neutral-500 mt-0.5">
-            Configure how often ChromaBot drops colors: by interval (1m, 15m, 1h, 3h, 6h, 12h) or at
-            fixed clock times.
+            Configure how often ChromaBot posts: by interval (1m, 15m, 1h, 3h, 6h, 12h) or at fixed
+            clock times.
           </p>
         </div>
 

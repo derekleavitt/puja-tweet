@@ -64,8 +64,7 @@ export const WebhookSettings: React.FC<WebhookSettingsProps> = ({ onCopied }) =>
         >
           UptimeRobot
         </a>
-        ) at your desired frequency. Each ping wakes the app and immediately publishes a live
-        chromatic reply.
+        ) at your desired frequency. Each ping wakes the app and immediately publishes a live reply.
       </p>
 
       <div className="space-y-1.5">
