@@ -15,6 +15,7 @@ interface CardFrequencyProps {
 }
 
 const QUICK_PRESETS = [
+  { label: '1m', minutes: 1 },
   { label: '15m', minutes: 15 },
   { label: '30m', minutes: 30 },
   { label: '1h', minutes: 60 },
