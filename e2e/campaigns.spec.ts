@@ -5,7 +5,7 @@
  */
 
 import type { Page } from '@playwright/test';
-import { test, expect, openApp, campaignCard } from './fixtures.js';
+import { test, expect, openApp, campaignCard, PRIMARY } from './fixtures.js';
 
 const NAME = 'E2E Campaign';
 const TWEET_ID = '1234567890123456789';
@@ -99,4 +99,20 @@ test('campaign lifecycle: create, edit schedule + template, pause/resume, delete
   await app.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click();
   await expect(shownName(app)).toHaveCount(0);
   await expect(app.getByText('1 campaign', { exact: true })).toBeVisible();
+});
+
+test('the card has a one-click 1-minute frequency', async ({ app }) => {
+  const { contexts } = await (await app.request.get('/api/status')).json();
+  const primary = contexts[0];
+  await openApp(app);
+  const card = campaignCard(app, PRIMARY);
+  await card.getByRole('button', { name: '1m', exact: true }).click();
+  await expect(card.getByText('Every 1m')).toBeVisible();
+  await expect
+    .poll(async () => {
+      const { contexts: now } = await (await app.request.get('/api/status')).json();
+      return now[0].schedule.intervalMinutes;
+    })
+    .toBe(1);
+  await app.request.put(`/api/contexts/${primary.id}`, { data: { schedule: primary.schedule } });
 });
