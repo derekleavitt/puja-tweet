@@ -10,22 +10,23 @@ Errors: `{ "success": false, "error": "<message>" }` with a real HTTP status (40
 | POST | `/api/cooldown/clear` | Clears the global cooldown |
 | GET | `/api/contexts` | Contexts, active id, next posts |
 | POST | `/api/contexts` | Create a context (400 on invalid body). Optional `hashtagEvolution` config, see [Evolving hashtags](#evolving-hashtags) |
-| PUT | `/api/contexts/:id` | Update (404 unknown id); `hashtagEvolution` merges over the stored config |
+| PUT | `/api/contexts/:id` | Update (404 unknown id); `hashtagEvolution` merges over the stored config. The chain anchor is server-owned: a `lastPostedTweetId` string is ignored, `null`/`''` resets the chain (as does a new `targetTweetId`) |
 | DELETE | `/api/contexts/:id` | Delete (404 unknown id, 400 if last context) |
 | POST | `/api/contexts/:id/activate` | 404 unknown id |
 | POST | `/api/contexts/:id/toggle` | 404 unknown id |
 | POST | `/api/contexts/:id/duplicate` | 404 unknown id |
-| POST | `/api/contexts/:id/reset-chain` | 404 unknown id |
-| POST | `/api/contexts/:id/clear-history` | 404 unknown id |
+| POST | `/api/contexts/:id/reset-chain` | Drops the chain anchor (next reply goes to the root); 404 unknown id |
+| POST | `/api/contexts/:id/clear-history` | Drops this campaign's logs, resets its stats and clock; keeps its chain anchor; 404 unknown id |
 | POST | `/api/contexts/:id/trigger` | Body `{ slotType?, forceLive? }`; 404 unknown id |
-| POST | `/api/settings` | Update global settings, including `globalDryRun` and `globalPaused` (both default `true`, also for stores missing them). Global dry-run forces simulation on every path (`forceLive` cannot override it); global pause makes scheduled sources (scheduler, webhook/cron, CLI) stop, webhook returns 409, manual posting still works |
+| POST | `/api/settings` | Legacy settings body: campaign fields go to `contextId` (404 unknown; default: the active campaign) and never to any other campaign; the response carries `context` (the campaign edited) and its `queue`. Global switches `globalDryRun` and `globalPaused` (both default `true`, also for stores missing them). Global dry-run forces simulation on every path (`forceLive` cannot override it); global pause makes scheduled sources (scheduler, webhook/cron, CLI) stop, webhook returns 409, manual posting still works |
 | POST | `/api/credentials` | Save X credentials (blank/missing fields keep stored values; 400 without `CREDENTIALS_ENCRYPTION_KEY`) |
 | DELETE | `/api/credentials/:method` | Remove stored credentials for `oauth1`, `oauth2` or `bearer` |
 | POST | `/api/twitter/verify` | Verify credentials; failure is `{ valid:false, message }` |
 | POST | `/api/generate-color` | Body `{ slotType?, color?, contextId?, template? }` |
 | POST | `/api/template/preview` | Body `{ template?, color?, slotType?, contextId? }`; returns `previewText` and, when the campaign evolves hashtags, `hashtags` (the tags used, without `#`) |
 | POST | `/api/post-now` | Body `{ contextId?, slotType?, color?, forceLive?, text?, hashtags?, slotId? }`; 404 unknown `contextId`. `text` is posted verbatim; send the preview's `hashtags` with it so the post does not re-roll them. The response carries `hashtags` when evolution is on |
-| ALL | `/api/cron/trigger`, `/api/webhook/trigger` | Secret via `?secret=`, `x-cron-secret` or body; `contextId`/`slot`/`forceLive`; 404 unknown `contextId` |
+| ALL | `/api/cron/trigger`, `/api/webhook/trigger` | Secret via `?secret=`, `x-cron-secret` or body; `contextId`/`slot`/`forceLive`; 404 unknown `contextId`; without `contextId` the active campaign is posted |
+| GET | `/api/webhook/url` | The trigger URL; `?contextId=` pins it to one campaign (404 unknown) |
 | GET | `/api/queue` | Optional `?contextId=` |
 | POST | `/api/queue/regenerate` | Body or query `contextId` |
 | POST | `/api/queue/reroll` | Body `{ slotId }`; 400 missing, 404 unknown slot |
@@ -77,3 +78,5 @@ Behaviour in `external` mode:
 ```bash
 curl -X POST -H "x-cron-secret: $CRON_SECRET" https://YOUR-SERVICE-URL/api/cron/tick
 ```
+
+See [campaign-isolation.md](./campaign-isolation.md) for which state is global and which is per campaign.
