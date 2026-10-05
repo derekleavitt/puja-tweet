@@ -95,7 +95,8 @@ describe('preview -> post-now', () => {
         .expect(200)
     ).body;
     expect(preview.hashtags.length).toBeGreaterThan(0);
-    expect(preview.previewText).not.toMatch(/#eternal|#colors/i);
+    // Whole-tag check: evolved tags may legitimately start with a seed word (e.g. #eternalLove).
+    expect(preview.previewText).not.toMatch(/#(eternal|colors)(?![\p{L}\p{N}_])/iu);
     for (const tag of preview.hashtags) expect(preview.previewText).toContain(`#${tag}`);
     // Previewing is read-only: it never advances the stored state.
     expect(services.contexts.getContext(ctx.id)?.hashtagState).toBeUndefined();
