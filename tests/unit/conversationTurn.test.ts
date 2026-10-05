@@ -19,6 +19,7 @@ vi.mock('../../server/services/index.js', () => ({ services: { logs: { getLogs: 
 const {
   pickNext,
   ensureMention,
+  appendCc,
   deMentionStrangers,
   buildTranscript,
   buildConversationPrompt,
@@ -81,6 +82,23 @@ describe('ensureMention', () => {
 
   it('does not treat a longer handle as the mention', () => {
     expect(ensureMention('hi @bobby', 'bob', 200)).toBe('hi @bobby @bob');
+  });
+});
+
+describe('appendCc / conversationBudget', () => {
+  it('tags the other participants who are not mentioned yet', () => {
+    expect(appendCc('Nice point. @bob', ['cy', 'dee'])).toBe('Nice point. @bob cc @cy @dee');
+    expect(appendCc('Ask @cy too. @bob', ['cy', 'dee'])).toBe('Ask @cy too. @bob cc @dee');
+    expect(appendCc('Just us. @bob', [])).toBe('Just us. @bob');
+  });
+
+  it('reserves room for the cc tail so the tweet still fits', () => {
+    const cc = ['aaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbb', 'ccccccccccccccc'];
+    const max = conversationBudget('ddddddddddddddd', cc);
+    const body = 'x'.repeat(max);
+    const text = appendCc(`${body} @ddddddddddddddd`, cc);
+    expect(checkTweetText(text).ok).toBe(true);
+    expect(conversationBudget('bob', [])).toBeGreaterThan(max);
   });
 });
 
@@ -262,7 +280,8 @@ describe('buildTurn', () => {
       summaryUsed: false,
       transcriptLength: 2,
     });
-    expect(turn.text).toBe('Hello @owner and stranger. @bob');
+    // The next speaker is addressed, and every other participant is tagged so anyone can reply.
+    expect(turn.text).toBe('Hello @owner and stranger. @bob cc @cy');
     expect(generate.mock.calls[0][0]).toContain('[Turn 2] @alice: "turn 2"');
   });
 

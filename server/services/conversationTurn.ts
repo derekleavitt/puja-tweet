@@ -36,9 +36,23 @@ export const pickNext = (
   return others[i];
 };
 
-/** Room for the model's text so that " @next" still fits in a tweet. */
-export const conversationBudget = (nextHandle: string): number =>
-  Math.min(TURN_MAX_LENGTH, TWEET_LIMIT - weightedTweetLength(` @${nextHandle}`));
+/** Room for the model's text so that " @next" and the " cc @…" tail still fit in a tweet. */
+export const conversationBudget = (nextHandle: string, ccHandles: readonly string[] = []): number =>
+  Math.min(
+    TURN_MAX_LENGTH,
+    TWEET_LIMIT - weightedTweetLength(` @${nextHandle}`) - weightedTweetLength(ccTail(ccHandles)),
+  );
+
+const ccTail = (handles: readonly string[]): string =>
+  handles.length ? ` cc ${handles.map((h) => `@${h}`).join(' ')}` : '';
+
+/**
+ * Tags the other participants (" cc @a @b") who are not mentioned yet, so ANY participant may
+ * reply to this turn (X lets an app reply only to posts its account wrote or is mentioned in):
+ * a re-picked next speaker (cast edit, removed account) can never hit a 403.
+ */
+export const appendCc = (text: string, ccHandles: readonly string[]): string =>
+  `${text}${ccTail(ccHandles.filter((h) => !mentionsHandle(text, h)))}`;
 
 /** Keeps the text when it already @mentions the next speaker, else ends it with the mention. */
 export const ensureMention = (text: string, nextHandle: string, maxLength: number): string => {

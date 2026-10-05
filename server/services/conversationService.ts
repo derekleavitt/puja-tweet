@@ -16,6 +16,7 @@ import {
   conversationBudget,
   deMentionStrangers,
   ensureMention,
+  appendCc,
   pickNext,
   shouldSummarize,
   turnBufferOf,
@@ -114,7 +115,9 @@ export const createConversationService = (deps: ConversationServiceDeps) => {
     // Every turn the summary does not cover (normally 15-20), so nothing falls in between.
     const recent = unsummarizedTurns(state, state.turns ?? []);
 
-    const max = conversationBudget(nextSpeakerHandle);
+    // Everyone else in the cast is tagged too, so any participant can reply to this turn.
+    const ccHandles = handles.filter((h) => h !== speakerHandle && h !== nextSpeakerHandle);
+    const max = conversationBudget(nextSpeakerHandle, ccHandles);
     const prompt = buildConversationPrompt({
       sharedPrompt: config.sharedPrompt,
       persona: speaker.persona,
@@ -134,7 +137,10 @@ export const createConversationService = (deps: ConversationServiceDeps) => {
       maxLength: max,
     });
     const allowed = config.openerHandle ? [...handles, config.openerHandle] : handles;
-    const text = ensureMention(deMentionStrangers(raw, allowed), nextSpeakerHandle, max);
+    const text = appendCc(
+      ensureMention(deMentionStrangers(raw, allowed), nextSpeakerHandle, max),
+      ccHandles,
+    );
     if (!checkTweetText(text).ok) {
       throw new HttpError(500, 'The generated conversation turn is not a valid tweet.');
     }
