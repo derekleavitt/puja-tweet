@@ -57,7 +57,7 @@ export const ContextFormModal: React.FC<ContextFormModalProps> = ({ form }) => {
               required
               value={ctx.name || ''}
               onChange={(e) => patch({ name: e.target.value })}
-              placeholder="e.g. Primary Eternal Colors, Morning Art Thread, Product Launch"
+              placeholder="e.g. Morning Thread, Daily Quotes, Product Launch"
               className={FIELD_CLASS}
             />
           </div>

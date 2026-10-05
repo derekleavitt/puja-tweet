@@ -5,13 +5,11 @@
 
 import React from 'react';
 import { Send, ExternalLink, ArrowUpRight, Sparkles, RefreshCw, Hash } from 'lucide-react';
-import { ColorData } from '../../types.js';
 import { AiUnavailableBadge } from '../../components/AiUnavailableBadge.js';
 import { AI_UNAVAILABLE_HINT, useAiUnavailable } from '../../context/serverInfo.js';
 import { TweetMockup } from './TweetMockup.js';
 
 interface TweetPreviewCardProps {
-  color: ColorData;
   tweetText: string;
   targetTweetId: string;
   dryRun: boolean;
@@ -28,7 +26,6 @@ interface TweetPreviewCardProps {
 }
 
 export const TweetPreviewCard: React.FC<TweetPreviewCardProps> = ({
-  color,
   tweetText,
   targetTweetId,
   dryRun,
@@ -45,7 +42,6 @@ export const TweetPreviewCard: React.FC<TweetPreviewCardProps> = ({
   const aiUnavailable = useAiUnavailable();
   const charCount = tweetText.length;
   const isOverLimit = charCount > 280;
-  const weatherWordsCount = (color.weatherDesc || '').split(/\s+/).filter(Boolean).length;
 
   return (
     <div className="border border-neutral-200 dark:border-neutral-800 rounded-xl p-5 bg-white dark:bg-neutral-900 shadow-xs space-y-4">
@@ -100,7 +96,7 @@ export const TweetPreviewCard: React.FC<TweetPreviewCardProps> = ({
         </div>
       </div>
 
-      {/* Target Post Context indicator & Weather Breakdown */}
+      {/* Target Post Context indicator */}
       <div className="bg-neutral-50 dark:bg-neutral-950/60 rounded-lg p-3 text-xs border border-neutral-200 dark:border-neutral-800 space-y-2">
         <div className="flex items-center justify-between text-neutral-500">
           <span className="flex items-center gap-1.5">
@@ -135,25 +131,9 @@ export const TweetPreviewCard: React.FC<TweetPreviewCardProps> = ({
             )}
           </div>
         </div>
-
-        {color.weatherDesc && (
-          <div className="pt-2 border-t border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
-            <div className="flex items-center gap-1.5 text-neutral-600 dark:text-neutral-400">
-              <span className="text-amber-500">🌤️</span>
-              <span>Weather ({weatherWordsCount} words):</span>
-              <strong className="text-neutral-900 dark:text-neutral-100 font-medium">
-                "{color.weatherDesc}"
-              </strong>
-            </div>
-            <span className="text-[10px] font-mono bg-neutral-200 dark:bg-neutral-800 px-1.5 py-0.5 rounded text-neutral-700 dark:text-neutral-300">
-              #eternal #colors
-            </span>
-          </div>
-        )}
       </div>
 
       <TweetMockup
-        color={color}
         tweetText={tweetText}
         targetTweetId={targetTweetId}
         replyTargetMode={replyTargetMode}

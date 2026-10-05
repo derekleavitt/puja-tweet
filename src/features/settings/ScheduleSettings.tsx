@@ -72,8 +72,8 @@ export const ScheduleSettings: React.FC<ScheduleSettingsProps> = ({ value, onCha
       {intervalMode === 'interval' ? (
         <div className="space-y-4">
           <p className="text-xs text-neutral-500">
-            Choose how often ChromaBot automatically drops a new color reply. The internal server
-            timer counts down and triggers a fresh post every time the interval elapses.
+            Choose how often ChromaBot automatically drops a new reply. The internal server timer
+            counts down and triggers a fresh post every time the interval elapses.
           </p>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">

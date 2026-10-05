@@ -106,7 +106,7 @@ export const Header: React.FC<HeaderProps> = ({
               }}
               className="text-base sm:text-lg font-bold tracking-tight text-neutral-900 dark:text-neutral-100 flex items-center gap-2 group"
             >
-              <span className="w-3.5 h-3.5 rounded-full bg-gradient-to-tr from-amber-500 via-rose-500 to-indigo-600 inline-block shadow-xs group-hover:scale-110 transition-transform shrink-0" />
+              <span className="w-3.5 h-3.5 rounded-full bg-neutral-900 dark:bg-neutral-100 inline-block shadow-xs group-hover:scale-110 transition-transform shrink-0" />
               <span className="truncate">ChromaBot</span>
             </a>
 

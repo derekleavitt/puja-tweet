@@ -80,7 +80,7 @@ export const HistoryTable: React.FC<HistoryTableProps> = ({ logs, onClearHistory
               <thead className="bg-neutral-50 dark:bg-neutral-950/60 border-b border-neutral-200 dark:border-neutral-800 text-neutral-500 uppercase tracking-wider font-semibold text-[10px]">
                 <tr>
                   <th className="py-3 px-4">Time & Slot</th>
-                  <th className="py-3 px-4">Color Swatch</th>
+                  <th className="py-3 px-4">Tweet</th>
                   <th className="py-3 px-4">Status</th>
                   <th className="py-3 px-4">Tweet Reference</th>
                   <th className="py-3 px-4">Actions</th>
@@ -123,22 +123,15 @@ export const HistoryTable: React.FC<HistoryTableProps> = ({ logs, onClearHistory
                         </div>
                       </td>
 
-                      {/* Color Swatch */}
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        <div className="flex items-center gap-2.5">
-                          <span
-                            className="w-5 h-5 rounded-md border border-neutral-200 dark:border-neutral-700 shadow-2xs shrink-0"
-                            style={{ backgroundColor: log.color?.hex || '#000000' }}
-                          />
-                          <div>
-                            <div className="font-semibold text-neutral-900 dark:text-neutral-100">
-                              {log.color?.name || 'Color'}
-                            </div>
-                            <div className="font-mono text-[11px] text-neutral-400 tabular-nums">
-                              {log.color?.hex}
-                            </div>
-                          </div>
-                        </div>
+                      {/* Tweet text */}
+                      <td className="py-3.5 px-4 min-w-48 max-w-sm">
+                        <p
+                          data-testid="history-tweet-text"
+                          className="text-neutral-800 dark:text-neutral-200 leading-snug line-clamp-2 break-words"
+                          title={log.tweetText}
+                        >
+                          {log.tweetText}
+                        </p>
                       </td>
 
                       {/* Status */}
