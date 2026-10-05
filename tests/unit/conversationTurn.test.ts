@@ -285,6 +285,16 @@ describe('buildTurn', () => {
     expect(generate.mock.calls[0][0]).toContain('[Turn 2] @alice: "turn 2"');
   });
 
+  it('previewing a turn leaves the campaign unchanged (no turn buffer is stored)', async () => {
+    const ctx = makeCtx(2);
+    const before = JSON.stringify(ctx);
+    const { svc, generate } = makeSvc(ctx, turnsLogs(2));
+    generate.mockResolvedValue('Hello.');
+    const turn = await svc.buildTurn(ctx);
+    expect(turn.transcriptLength).toBe(2);
+    expect(JSON.stringify(ctx)).toBe(before);
+  });
+
   it('rejects an unverified participant handle with 400', async () => {
     const ctx = makeCtx(0);
     delete handles.acct_c;
@@ -360,6 +370,28 @@ describe('generateAgentText', () => {
     const models = getGeminiModels().length;
     expect(generateContent).toHaveBeenCalledTimes(models * 2);
     expect((err as Error).message.match(/RESOURCE_EXHAUSTED/g)).toHaveLength(models);
+  });
+
+  it('retries every model once, without waiting, after a timeout', async () => {
+    process.env.GEMINI_BUSY_RETRY_MS = '60000'; // would time the test out if it waited
+    const aborted = Object.assign(new Error('This operation was aborted'), { name: 'AbortError' });
+    const models = getGeminiModels().length;
+    for (let i = 0; i < models; i++) generateContent.mockRejectedValueOnce(aborted);
+    generateContent.mockResolvedValueOnce({ text: 'Made it.' });
+    await expect(generateAgentText('hi', opts)).resolves.toBe('Made it.');
+    expect(generateContent).toHaveBeenCalledTimes(models + 1);
+  });
+
+  it('says how long it waited when a model keeps timing out', async () => {
+    vi.stubEnv('GEMINI_MODEL', 'model-a');
+    vi.stubEnv('GEMINI_TIMEOUT_MS', '12000');
+    const aborted = Object.assign(new Error('This operation was aborted'), { name: 'AbortError' });
+    generateContent.mockRejectedValue(aborted);
+    const err = await generateAgentText('hi', opts).catch((e: Error) => e);
+    expect(generateContent).toHaveBeenCalledTimes(2);
+    expect((err as Error).message).toBe(
+      'AI generation failed for every configured model (model-a: timed out after 12s).',
+    );
   });
 
   it('does not retry errors that are not "busy"', async () => {

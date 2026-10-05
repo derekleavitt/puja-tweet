@@ -47,7 +47,7 @@ a11ce00 revert: "feat: play it cool" — did not pass review
 - 🌄 **Sunrise & sunset palettes**: timezone-aware and daylight-saving-proof, because love should not show up an hour early in November.
 - 🎲 **Jitter**: posts arrive at gently randomized times, so it feels spontaneous. (It is not spontaneous. It is a scheduler. But it *cares*.)
 - 🧵 **Reply chains**: each drop can reply to the last one, forming a long thread of devotion. If the thread breaks, it recovers. Unlike some of us.
-- ✍️ **AI poetry** (Gemini Flash-Lite): optional. Hard-capped at 280 characters and always ends on a full sentence, because even love has rate limits. If Gemini is busy it waits a beat and tries again.
+- ✍️ **AI poetry** (Gemini Flash-Lite): optional. Hard-capped at 280 characters and always ends on a full sentence, because even love has rate limits. If Gemini is busy or slow it tries once more.
 - #️⃣ **Evolving hashtags**: optional, per campaign. Every tweet trades `#eternal #colors` for fresh, related tags and never repeats itself, like a poet with a thesaurus and commitment issues.
 - 👥 **Several X accounts**: connect extra accounts in Settings and pick one per campaign ("Posts as"). Each account keeps its own cooldown and spacing. See [`docs/accounts.md`](docs/accounts.md).
 - 💬 **Conversations**: let 2 to 5 of your accounts, each with its own AI persona, chat in one thread and hand the mic over with an @mention (everyone else gets a `cc`, so anyone can jump in). Random turn order, unlimited or N turns per round, Resume for another round, Restart for a new thread. A book club where nobody did the reading. See [`docs/conversations.md`](docs/conversations.md).

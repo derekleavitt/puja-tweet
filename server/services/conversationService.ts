@@ -110,10 +110,12 @@ export const createConversationService = (deps: ConversationServiceDeps) => {
     const handles = ids.map(handleOf);
 
     // The campaign's own buffer, never the shared capped log (legacy state is seeded from it once).
-    if (!state.turns) state.turns = turnBufferOf(state, () => deps.logs.getLogs(), ctx.id);
-    await refreshSummary(ctx, state.turns);
+    // Not stored here: a preview must not change the campaign (the card would re-render its
+    // preview and drop the one in flight); recording the posted turn seeds it.
+    const turns = turnBufferOf(state, () => deps.logs.getLogs(), ctx.id);
+    await refreshSummary(ctx, turns);
     // Every turn the summary does not cover (normally 15-20), so nothing falls in between.
-    const recent = unsummarizedTurns(state, state.turns ?? []);
+    const recent = unsummarizedTurns(state, state.turns ?? turns);
 
     // Everyone else in the cast is tagged too, so any participant can reply to this turn.
     const ccHandles = handles.filter((h) => h !== speakerHandle && h !== nextSpeakerHandle);
