@@ -13,13 +13,12 @@ import { invalidTimes } from './schedule.js';
 
 interface UseContextFormOptions {
   contexts: TweetContext[];
-  activeContext?: TweetContext;
   onCreateContext: (data: Partial<TweetContext>) => Promise<void>;
   onUpdateContext: (id: string, updates: Partial<TweetContext>) => Promise<void>;
 }
 
 export function useContextForm(opts: UseContextFormOptions) {
-  const { contexts, activeContext, onCreateContext, onUpdateContext } = opts;
+  const { contexts, onCreateContext, onUpdateContext } = opts;
   const { defaultTargetTweetId } = useServerInfo();
   const [editingContext, setEditingContext] = useState<Partial<TweetContext> | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -42,7 +41,8 @@ export function useContextForm(opts: UseContextFormOptions) {
     setEditingContext({
       name: `Context #${contexts.length + 1}`,
       description: '',
-      targetTweetId: activeContext?.targetTweetId || defaultTargetTweetId,
+      // Never prefill another campaign's target: two campaigns on one thread collide.
+      targetTweetId: defaultTargetTweetId,
       enabled: true,
       dryRun: false,
       autoFallbackToQuote: false,

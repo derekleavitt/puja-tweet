@@ -1,30 +1,13 @@
 /**
- * Mirrors the active context into the legacy global `BotSettings` shape.
+ * The legacy global `BotSettings` view, computed from ONE campaign on every read.
+ * Nothing is ever mirrored back into the stored `settings` object: the only global fields that live
+ * there are `globalDryRun` / `globalPaused` (and the first-run seed read by `primaryContext.ts`).
+ * Campaign fields are read from the campaign, so no campaign's values can leak into another's.
  */
 
 import type { BotSettings, TweetContext } from '../../shared/types.js';
 
-/** Copies the active context's fields onto the stored settings object (mutates `settings`). */
-export const syncActiveContextToSettings = (settings: BotSettings, ctx: TweetContext) => {
-  settings.targetTweetId = ctx.targetTweetId;
-  settings.replyTargetMode = ctx.replyTargetMode || 'original_post';
-  settings.engagementMode = ctx.engagementMode || 'reply';
-  settings.autoFallbackToQuote = ctx.autoFallbackToQuote ?? false;
-  settings.lastPostedTweetId = ctx.lastPostedTweetId;
-  settings.schedulerEnabled = ctx.enabled;
-  settings.dryRun = ctx.dryRun ?? false;
-  settings.template = ctx.template;
-  settings.themePreference = ctx.themePreference;
-  settings.intervalMode = ctx.schedule.mode;
-  settings.intervalMinutes = ctx.schedule.intervalMinutes;
-  settings.scheduleTimes = ctx.schedule.scheduleTimes;
-  settings.timezone = ctx.schedule.timezone;
-  settings.humanizeJitterEnabled = ctx.schedule.humanizeJitterEnabled;
-  settings.jitterPercentage = ctx.schedule.jitterPercentage;
-  settings.activeContextId = ctx.id;
-};
-
-/** The public settings view (never includes the webhook secret). */
+/** The public settings view of `active` (never includes the webhook secret). */
 export const buildSettingsView = (active: TweetContext, stored: BotSettings): BotSettings => ({
   targetTweetId: active.targetTweetId,
   replyTargetMode: active.replyTargetMode || 'original_post',

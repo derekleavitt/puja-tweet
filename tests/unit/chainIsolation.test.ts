@@ -1,8 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { resolveReplyTarget } from '../../server/services/contextChain.js';
+import { resolveReplyTarget, sanitizeContextChain } from '../../server/services/contextChain.js';
 import type { PostLog, TweetContext } from '../../shared/types.js';
 
-const campaign = (id: string, target: string, anchor?: string) =>
+/** A campaign whose anchor carries server-written provenance (as `recordContextPostResult` does). */
+const campaign = (id: string, target: string, anchor?: string, anchorTarget = target) =>
+  ({
+    id,
+    targetTweetId: target,
+    replyTargetMode: 'last_comment',
+    lastPostedTweetId: anchor,
+    chainAnchor: anchor
+      ? { tweetId: anchor, targetTweetId: anchorTarget, postedAt: new Date().toISOString() }
+      : undefined,
+  }) as unknown as TweetContext;
+
+/** A legacy anchor: `lastPostedTweetId` only, no provenance. */
+const legacy = (id: string, target: string, anchor: string) =>
   ({
     id,
     targetTweetId: target,
@@ -37,13 +50,31 @@ describe('reply chain isolation between campaigns', () => {
     });
   });
 
-  it('falls back to the root when the anchor is not in history (imported / aged out)', () => {
-    const a = campaign('ctx_a', '1000', '999');
-    expect(resolveReplyTarget(a, logs).targetTweetId).toBe('1000');
+  it('keeps following a provenance-backed anchor whose log was trimmed (MAX_LOGS)', () => {
+    const a = campaign('ctx_a', '1000', '999'); // no log for 999 any more
+    expect(resolveReplyTarget(a, logs).targetTweetId).toBe('999');
+  });
+
+  it('treats a legacy / imported anchor without provenance as unverified (root)', () => {
+    expect(resolveReplyTarget(legacy('ctx_a', '1000', '999'), logs).targetTweetId).toBe('1000');
+    // ...even when a log happens to mention it: provenance is set by sanitizeContextChain at boot
+    expect(resolveReplyTarget(legacy('ctx_a', '1000', '111'), logs).targetTweetId).toBe('1000');
+  });
+
+  it('upgrades a legacy anchor to provenance at boot only when a log proves it', () => {
+    const proven = legacy('ctx_a', '1000', '111');
+    expect(sanitizeContextChain(proven, logs)).toBe(true);
+    expect(proven.chainAnchor).toMatchObject({ tweetId: '111', targetTweetId: '1000' });
+    const unproven = legacy('ctx_a', '1000', '999');
+    expect(sanitizeContextChain(unproven, logs)).toBe(true);
+    expect(unproven.lastPostedTweetId).toBeUndefined();
+    const stolen = legacy('ctx_a', '1000', '222'); // B's tweet
+    sanitizeContextChain(stolen, logs);
+    expect(stolen.lastPostedTweetId).toBeUndefined();
   });
 
   it('ignores an anchor posted against a different target of the same campaign', () => {
-    const a = campaign('ctx_a', '3000', '111');
+    const a = campaign('ctx_a', '3000', '111', '1000'); // provenance says target 1000
     expect(resolveReplyTarget(a, logs).targetTweetId).toBe('3000');
   });
 

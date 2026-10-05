@@ -127,7 +127,7 @@ export const clearContextHistory = (id: string) =>
   });
 
 // Settings
-export const saveSettings = (settings: Partial<BotSettings>) =>
+export const saveSettings = (settings: Partial<BotSettings> & { contextId?: string }) =>
   orNull(apiFetch<Json>('/api/settings', { method: 'POST', body: settings }));
 
 // Credentials
