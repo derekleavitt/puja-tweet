@@ -7,8 +7,7 @@ import { DEV_AUTH_BYPASS } from '../lib/devAuth.js';
 import { HealthInfo } from '../types.js';
 
 interface FooterProps {
-  activeName: string;
-  targetTweetId: string;
+  campaignCount: number;
   /** From /api/health; null until loaded or when unreachable. */
   health?: HealthInfo | null;
 }
@@ -26,16 +25,14 @@ function environmentLabel(health?: HealthInfo | null): string {
   return store ? `${store} · Google sign-in` : 'Google sign-in';
 }
 
-export const Footer: React.FC<FooterProps> = ({ activeName, targetTweetId, health }) => {
+export const Footer: React.FC<FooterProps> = ({ campaignCount, health }) => {
   return (
     <footer className="border-t border-neutral-200 dark:border-neutral-800 py-6 px-6 text-xs text-neutral-500 bg-white dark:bg-neutral-950">
       <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <span className="font-semibold text-neutral-700 dark:text-neutral-300">X ChromaBot</span>
           <span>·</span>
-          <span>
-            Active: {activeName} (#{targetTweetId})
-          </span>
+          <span>Campaigns: {campaignCount}</span>
         </div>
         <div className="flex items-center gap-4 text-neutral-400 font-mono text-[11px]">
           <span data-testid="footer-env">{environmentLabel(health)}</span>
