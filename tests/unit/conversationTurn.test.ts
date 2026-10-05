@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { generateColor } from '../../server/colorEngine.js';
 import { getGeminiModels, resetGeminiCallCounter } from '../../server/geminiConfig.js';
 import { checkTweetText, weightedTweetLength } from '../../shared/tweetLength.js';
-import type { PostLog, TweetContext } from '../../shared/types.js';
+import type { ConversationState, PostLog, TweetContext } from '../../shared/types.js';
 
 const generateContent = vi.fn();
 vi.mock('@google/genai', () => ({
@@ -412,5 +412,39 @@ describe('poetry path is unchanged', () => {
     await expect(
       resolveTemplateText('<agent>a poem about love</agent>', color),
     ).rejects.toBeInstanceOf(AgentUnavailableError);
+  });
+});
+
+describe('appendTurnRecord (summary + buffer cover every turn)', () => {
+  const rec = (turn: number) => ({
+    turn,
+    accountId: 'a',
+    handle: 'alice',
+    text: `turn ${turn} ${'x'.repeat(400)}`,
+    at: '2026-01-01T00:00:00.000Z',
+  });
+
+  it('drops covered turns, clips text and folds the overflow past the cap without AI', async () => {
+    const { appendTurnRecord, TURN_BUFFER_MAX, STORED_TEXT_MAX, SUMMARY_MAX_LENGTH } =
+      await import('../../server/services/conversationTurn.js');
+    const state: ConversationState = { runId: 'r', turnCount: 0, nextSpeakerAccountId: 'a' };
+    for (let t = 1; t <= TURN_BUFFER_MAX + 5; t++) {
+      appendTurnRecord(state, rec(t));
+      state.turnCount = t;
+      const through = state.summaryThroughTurn ?? 0;
+      expect(state.turns!.map((x) => x.turn)).toEqual(
+        Array.from({ length: t - through }, (_, i) => through + 1 + i),
+      );
+    }
+    expect(state.turns).toHaveLength(TURN_BUFFER_MAX);
+    expect(state.summaryThroughTurn).toBe(5);
+    expect(state.summary).toContain('@alice: turn 5');
+    expect(state.summary!.length).toBeLessThanOrEqual(SUMMARY_MAX_LENGTH);
+    expect(state.turns![0].text.length).toBeLessThanOrEqual(STORED_TEXT_MAX);
+
+    // A summary that moved ahead drops the covered turns on the next append; duplicates replace.
+    state.summaryThroughTurn = 30;
+    appendTurnRecord(state, rec(45));
+    expect(state.turns!.map((x) => x.turn)).toEqual(Array.from({ length: 15 }, (_, i) => 31 + i));
   });
 });

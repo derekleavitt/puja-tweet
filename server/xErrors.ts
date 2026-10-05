@@ -14,8 +14,27 @@ export type XErrorClass =
   | 'payment'
   | 'target_missing'
   | 'text_invalid'
+  /** No HTTP answer at all (connection error or timeout). Transient. */
   | 'network'
+  /** X answered 5xx (overloaded / internal error). Transient. */
+  | 'server_error'
+  /** The AI (Gemini) could not write the post: busy, timed out or not reachable. Transient. */
+  | 'ai_unavailable'
   | 'unknown';
+
+/** Failures worth retrying soon and never a reason to auto-pause a campaign. */
+const TRANSIENT: ReadonlySet<XErrorClass> = new Set(['network', 'server_error', 'ai_unavailable']);
+
+export const isTransientFailure = (cls: XErrorClass | undefined): boolean =>
+  !!cls && TRANSIENT.has(cls);
+
+/** Short label for the UI ("Retrying in 2m (AI busy)"). */
+export const transientReason = (cls: XErrorClass): string =>
+  cls === 'ai_unavailable'
+    ? 'AI busy'
+    : cls === 'server_error'
+      ? 'X server error'
+      : 'network error';
 
 const detailOf = (body: unknown): string => {
   if (typeof body === 'string') return body.toLowerCase();
@@ -29,7 +48,8 @@ const detailOf = (body: unknown): string => {
 
 export const classifyXError = (status: number | undefined, body?: unknown): XErrorClass => {
   const detail = detailOf(body);
-  if (!status) return 'network';
+  // No status: a connection error / timeout, unless the client refused before sending anything.
+  if (!status) return detail.includes('invalid target tweet id') ? 'unknown' : 'network';
   if (status === 429) return 'rate_limit';
   if (status === 401) return 'auth';
   if (status === 402 || detail.includes('credits depleted')) return 'payment';
@@ -50,5 +70,6 @@ export const classifyXError = (status: number | undefined, body?: unknown): XErr
   if (status === 400 || status === 422) {
     return /too long|duplicate|invalid|character/.test(detail) ? 'text_invalid' : 'unknown';
   }
+  if (status >= 500) return 'server_error';
   return 'unknown';
 };

@@ -5,7 +5,7 @@
  */
 
 import { trimToCompleteSentence, weightedTweetLength } from '../../shared/tweetLength.js';
-import type { ConversationState, PostLog } from '../../shared/types.js';
+import type { ConversationState, ConversationTurnRecord, PostLog } from '../../shared/types.js';
 import { mentionsHandle } from './conversationConfig.js';
 
 /** Turns always sent word for word. */
@@ -13,6 +13,14 @@ export const RECENT_TURNS = 15;
 /** Un-summarised turns beyond this many trigger a summary refresh. */
 export const SUMMARY_TRIGGER_TURNS = 20;
 export const SUMMARY_MAX_LENGTH = 600;
+/**
+ * Hard cap of un-summarised turns kept on the campaign (bounds the Firestore state document). Only
+ * reached when the summary call keeps failing; the overflow is then folded into the summary
+ * without AI (see `appendTurnRecord`), so the summary still covers every dropped turn.
+ */
+export const TURN_BUFFER_MAX = 40;
+/** Stored text per turn/post (a tweet is at most 280 weighted characters). */
+export const STORED_TEXT_MAX = 300;
 const TURN_MAX_LENGTH = 240;
 const TWEET_LIMIT = 280;
 
@@ -59,6 +67,21 @@ export const buildTranscript = (
   contextId: string,
   runId: string,
 ): TranscriptTurn[] =>
+  turnRecordsFromLogs(logs, contextId, runId).map(({ turn, handle, text }) => ({
+    turn,
+    handle,
+    text,
+  }));
+
+export const clipStoredText = (text: string): string =>
+  text.length > STORED_TEXT_MAX ? `${text.slice(0, STORED_TEXT_MAX - 1)}…` : text;
+
+/** Legacy migration: the run's turns that the (capped) post log still has, oldest first. */
+export const turnRecordsFromLogs = (
+  logs: readonly PostLog[],
+  contextId: string,
+  runId: string,
+): ConversationTurnRecord[] =>
   logs
     .filter(
       (l) =>
@@ -75,9 +98,66 @@ export const buildTranscript = (
     )
     .map(({ log }, idx) => ({
       turn: log.turn ?? idx + 1,
+      accountId: log.accountId ?? '',
       handle: log.accountHandle ?? 'unknown',
-      text: log.tweetText,
+      text: clipStoredText(log.tweetText),
+      ...(log.tweetId ? { tweetId: log.tweetId } : {}),
+      at: log.timestamp,
     }));
+
+/**
+ * The buffer to use for `state`: its own `turns`, or (legacy state from before the buffer existed)
+ * whatever turns after the summary the post log still has.
+ */
+export const turnBufferOf = (
+  state: ConversationState,
+  legacyLogs: () => readonly PostLog[],
+  contextId: string,
+): ConversationTurnRecord[] => {
+  if (state.turns) return state.turns;
+  const through = state.summaryThroughTurn ?? 0;
+  return turnRecordsFromLogs(legacyLogs(), contextId, state.runId)
+    .filter((t) => t.turn > through && t.turn <= state.turnCount)
+    .slice(-TURN_BUFFER_MAX);
+};
+
+/** Turns the prompt shows word for word: every turn the summary does not cover, oldest first. */
+export const unsummarizedTurns = (
+  state: Pick<ConversationState, 'summaryThroughTurn'>,
+  turns: readonly ConversationTurnRecord[],
+): ConversationTurnRecord[] => turns.filter((t) => t.turn > (state.summaryThroughTurn ?? 0));
+
+/** Deterministic (no AI) fold used only when the buffer overflows: keeps the newest content. */
+export const fallbackSummary = (
+  previous: string | undefined,
+  turns: readonly ConversationTurnRecord[],
+): string => {
+  const lines = turns.map((t) => `@${t.handle}: ${t.text.replace(/\s+/g, ' ').slice(0, 80)}`);
+  const merged = [previous, ...lines].filter(Boolean).join(' / ');
+  return merged.length > SUMMARY_MAX_LENGTH
+    ? `…${merged.slice(merged.length - SUMMARY_MAX_LENGTH + 1)}`
+    : merged;
+};
+
+/**
+ * Appends a posted turn to the state's buffer (mutates `state`) and keeps the invariant
+ * "summary covers 1..summaryThroughTurn, `turns` holds every later turn":
+ *  - turns the summary already covers are dropped;
+ *  - past TURN_BUFFER_MAX the oldest turns are folded into the summary without AI before they go.
+ */
+export const appendTurnRecord = (state: ConversationState, record: ConversationTurnRecord) => {
+  const turns = (state.turns ?? []).filter((t) => t.turn !== record.turn);
+  turns.push({ ...record, text: clipStoredText(record.text) });
+  turns.sort((a, b) => a.turn - b.turn);
+  let kept = unsummarizedTurns(state, turns);
+  if (kept.length > TURN_BUFFER_MAX) {
+    const overflow = kept.slice(0, kept.length - TURN_BUFFER_MAX);
+    state.summary = fallbackSummary(state.summary, overflow);
+    state.summaryThroughTurn = overflow[overflow.length - 1].turn;
+    kept = kept.slice(overflow.length);
+  }
+  state.turns = kept;
+};
 
 /** True when more than 20 turns have not been folded into the summary yet. */
 export const shouldSummarize = (

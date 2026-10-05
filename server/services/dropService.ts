@@ -10,7 +10,7 @@ import { roundFinished } from '../../shared/conversationRound.js';
 import { formatTimeInZone, hourInZone, slotTypeForHour } from '../../shared/time.js';
 import { checkTweetText } from '../../shared/tweetLength.js';
 import { HttpError } from '../middleware/error.js';
-import { resolveTemplateText } from '../templateAgent.js';
+import { AgentUnavailableError, resolveTemplateText } from '../templateAgent.js';
 import { postColorTweet, type TwitterCredentials } from '../twitterClient.js';
 import { classifyXError, type XErrorClass } from '../xErrors.js';
 import { DEFAULT_ACCOUNT_ID } from '../../shared/types.js';
@@ -51,10 +51,15 @@ export interface ExecuteDropOptions {
     nextSpeakerAccountId: string;
   };
   source?: 'scheduler' | 'webhook' | 'manual' | 'cli';
+  /** Fixed-time slot this scheduled drop belongs to (lets a transient failure retry that slot). */
+  slotKey?: string;
 }
 
 export interface DropDeps {
-  services: Pick<Services, 'contexts' | 'queue' | 'logs' | 'accounts' | 'rateLimit' | 'settings'>;
+  services: Pick<
+    Services,
+    'contexts' | 'queue' | 'logs' | 'accounts' | 'rateLimit' | 'settings' | 'flush'
+  >;
   postColorTweet: typeof postColorTweet;
   resolveTemplateText: typeof resolveTemplateText;
   /** Evolving-hashtag generator; defaults to the Gemini-with-offline-fallback service. */
@@ -86,6 +91,15 @@ const isCooldown = (r: TweetResult) =>
 /** Classifies a failed post by HTTP status and X error body (network/timeouts have no status). */
 const classify = (r: TweetResult) =>
   classifyXError(r.httpStatus ?? r.rawResponse?.status, r.rawResponse ?? { detail: r.error });
+
+/**
+ * Why the AI could not write a post: busy / timed out / daily cap is transient (retried with
+ * back-off, never auto-paused); anything else (not configured, invalid output) is persistent.
+ */
+const aiFailureClass = (err: unknown): XErrorClass =>
+  err instanceof AgentUnavailableError && !/not configured/i.test(err.message)
+    ? 'ai_unavailable'
+    : 'unknown';
 
 export const createDropService = (deps: DropDeps) => {
   const s = deps.services;
@@ -176,7 +190,12 @@ export const createDropService = (deps: DropDeps) => {
   };
 
   /** Cooldown, live-post spacing and the rate window are per X account (headers are per user). */
-  const recordTelemetry = (res: TweetResult, isDryRun: boolean, accountId?: string) => {
+  const recordTelemetry = (
+    res: TweetResult,
+    isDryRun: boolean,
+    accountId?: string,
+    sentAt?: number,
+  ) => {
     if (res.rateLimitHeaders) s.rateLimit.updateRateLimitTelemetry(res.rateLimitHeaders, accountId);
     if (!isDryRun && isCooldown(res)) {
       s.rateLimit.setCooldown(
@@ -185,11 +204,35 @@ export const createDropService = (deps: DropDeps) => {
         accountId,
       );
     }
-    if (!isDryRun && res.success) s.rateLimit.recordLivePostTimestamp(accountId);
+    // Spacing is measured between X requests (not answers), so a slow AI call before one post does
+    // not delay the next tick's post of a 1-minute campaign.
+    if (!isDryRun && res.success) s.rateLimit.recordLivePostTimestamp(accountId, sentAt);
   };
 
   /** Campaigns with a drop in progress: one drop per campaign at a time (tick vs. post-now race). */
   const inFlight = new Set<string>();
+
+  /**
+   * Crash safety around the one irreversible step: the "sent to X" marker is persisted before the
+   * request, and the result (log, anchor, turn, transcript, clock) right after it, in one save.
+   * A restart in between leaves the marker, which the next tick turns into an "interrupted" log
+   * entry (see ContextService.checkInFlight); at worst the same post is sent once more.
+   */
+  const sendGuarded = async (
+    contextId: string,
+    marker: Parameters<Services['contexts']['markInFlight']>[1],
+    send: () => Promise<TweetResult>,
+  ): Promise<{ res: TweetResult; sentAt: number }> => {
+    s.contexts.markInFlight(contextId, marker);
+    await s.flush();
+    const sentAt = Date.now();
+    try {
+      return { res: await send(), sentAt };
+    } catch (err) {
+      s.contexts.clearInFlight(contextId);
+      throw err;
+    }
+  };
 
   /** The text must address the next speaker (X only lets an app reply when mentioned). */
   const mentions = (text: string, handle: string) =>
@@ -200,6 +243,7 @@ export const createDropService = (deps: DropDeps) => {
     options: ExecuteDropOptions,
     context: TweetContext,
     source: string,
+    startedAt: number,
   ): Promise<DropResult> => {
     const state = context.conversationState;
     if (!context.conversation || !state) {
@@ -288,29 +332,45 @@ export const createDropService = (deps: DropDeps) => {
     );
 
     const replyToTweetId = turn?.replyToTweetId;
-    let res: TweetResult = turnError
-      ? {
-          success: false,
-          error: turnError instanceof Error ? turnError.message : 'Conversation turn failed',
+    let res: TweetResult;
+    let sentAt: number | undefined;
+    if (turnError) {
+      res = {
+        success: false,
+        error: turnError instanceof Error ? turnError.message : 'Conversation turn failed',
+      };
+    } else if (accountFailure) {
+      res = {
+        success: false,
+        error: s.accounts.problem(speakerAccountId) ?? 'X account unavailable',
+      };
+    } else {
+      const send = async () => {
+        let r = await deps.postColorTweet(
+          creds,
+          { text, replyToTweetId, engagementMode: 'reply', accountHandle },
+          isDryRun,
+        );
+        if (!r.success && !chainInfo.isFirstInChain) {
+          r = await recoverChain(context, r, text, replyToTweetId, creds, isDryRun, accountHandle);
         }
-      : accountFailure
-        ? { success: false, error: s.accounts.problem(speakerAccountId) ?? 'X account unavailable' }
-        : await deps.postColorTweet(
-            creds,
-            { text, replyToTweetId, engagementMode: 'reply', accountHandle },
-            isDryRun,
-          );
-    if (!turnError && !accountFailure && !res.success && !chainInfo.isFirstInChain) {
-      res = await recoverChain(context, res, text, replyToTweetId, creds, isDryRun, accountHandle);
+        return r;
+      };
+      if (isDryRun) {
+        res = await send();
+      } else {
+        const marker = { runId: state.runId, turn: turn?.turnNumber, replyToTweetId, text };
+        ({ res, sentAt } = await sendGuarded(context.id, marker, send));
+      }
     }
     // A failed AI turn never reached X, so it must not touch the speaker's X telemetry.
-    if (!turnError) recordTelemetry(res, isDryRun, speakerAccountId);
+    if (!turnError) recordTelemetry(res, isDryRun, speakerAccountId, sentAt);
 
     const status = res.success ? (res.simulated ? 'simulated' : 'success') : 'error';
     const errorClass: XErrorClass | undefined = res.success
       ? undefined
       : turnError
-        ? 'unknown'
+        ? aiFailureClass(turnError)
         : accountFailure
           ? 'account'
           : classify(res);
@@ -319,13 +379,16 @@ export const createDropService = (deps: DropDeps) => {
     // Restarted (new run) while this turn was in flight: its tweet belongs to the old thread, so it
     // must not become the new run's chain anchor (nor count toward its breaker).
     const sameRun = s.contexts.getContext(context.id)?.conversationState?.runId === state.runId;
+    if (!sameRun) s.contexts.clearInFlight(context.id);
     const posted = sameRun
-      ? s.contexts.recordContextPostResult(context.id, status, res.tweetId, 'reply', failure)
+      ? s.contexts.recordContextPostResult(context.id, status, res.tweetId, 'reply', failure, {
+          startedAt,
+        })
       : { autoPausedReason: undefined };
     let autoPausedReason = posted.autoPausedReason;
     if (turn && status !== 'error') {
       autoPausedReason =
-        s.contexts.recordConversationTurn(context.id, turn, status).autoPausedReason ??
+        s.contexts.recordConversationTurn(context.id, turn, status, res.tweetId).autoPausedReason ??
         autoPausedReason;
     }
     const errorMessage =
@@ -354,6 +417,8 @@ export const createDropService = (deps: DropDeps) => {
       nextSpeakerAccountId: turn?.nextSpeakerAccountId,
     } as const;
     s.logs.addLog(logEntry);
+    // Result, turn, transcript and log reach the store together, right after X answered.
+    await s.flush();
 
     return { success: res.success, result: res, log: logEntry, context };
   };
@@ -373,12 +438,17 @@ export const createDropService = (deps: DropDeps) => {
     if (inFlight.has(context.id)) {
       throw new HttpError(409, 'A drop for this campaign is already running');
     }
+    // A fresh marker persisted by another process (e.g. an overlapping instance during a deploy).
+    if (s.contexts.checkInFlight(context.id, false)) {
+      throw new HttpError(409, 'A post for this campaign is still being sent');
+    }
+    const startedAt = Date.now();
     inFlight.add(context.id);
     try {
       if (context.mode === 'conversation') {
-        return await executeConversationDrop(options, context, source);
+        return await executeConversationDrop(options, context, source, startedAt);
       }
-      return await executeSingleDrop(options, context, source);
+      return await executeSingleDrop(options, context, source, startedAt);
     } finally {
       inFlight.delete(context.id);
     }
@@ -388,6 +458,7 @@ export const createDropService = (deps: DropDeps) => {
     options: ExecuteDropOptions,
     context: TweetContext,
     source: string,
+    startedAt: number,
   ): Promise<DropResult> => {
     const isMorning = options.slotType
       ? options.slotType === 'morning'
@@ -396,13 +467,23 @@ export const createDropService = (deps: DropDeps) => {
     const color: ColorData =
       options.color ||
       s.queue.popNextQueueSlot(slotType === 'morning' ? 'morning' : 'evening', context.id);
-    const composed =
-      options.text !== undefined
-        ? { text: options.text, hashtags: options.hashtags }
-        : await composeText(context, color);
+    let composed: { text: string; hashtags?: string[] };
+    let composeError: AgentUnavailableError | undefined;
+    try {
+      composed =
+        options.text !== undefined
+          ? { text: options.text, hashtags: options.hashtags }
+          : await composeText(context, color);
+    } catch (err) {
+      // An AI-only template whose AI failed: recorded like any failed post (log, back-off), so a
+      // scheduled campaign retries on a schedule instead of on every tick.
+      if (!(err instanceof AgentUnavailableError)) throw err;
+      composeError = err;
+      composed = { text: '' };
+    }
     const text = composed.text;
     const textCheck = checkTweetText(text);
-    if (!textCheck.ok) {
+    if (!composeError && !textCheck.ok) {
       throw new HttpError(400, `Tweet text invalid (${textCheck.length}/280 weighted chars)`);
     }
 
@@ -430,45 +511,53 @@ export const createDropService = (deps: DropDeps) => {
         `, account: ${accountHandle ? `@${accountHandle}` : (accountId ?? DEFAULT_ACCOUNT_ID)}`,
     );
 
-    // An unusable account fails the drop without calling X (and pauses the campaign at once).
-    let res: TweetResult = accountFailure
-      ? { success: false, error: s.accounts.problem(accountId) ?? 'X account unavailable' }
-      : await deps.postColorTweet(
-          creds,
-          { text, replyToTweetId, quoteTweetId, engagementMode, accountHandle },
-          isDryRun,
-        );
-    if (
-      !accountFailure &&
-      !res.success &&
-      engagementMode === 'reply' &&
-      context.replyTargetMode === 'last_comment' &&
-      !chainInfo.isFirstInChain
-    ) {
-      res = await recoverChain(context, res, text, replyToTweetId, creds, isDryRun, accountHandle);
-    }
     let fallbackTriggered = false;
-    if (
-      !accountFailure &&
-      !res.success &&
-      engagementMode === 'reply' &&
-      context.autoFallbackToQuote
-    ) {
-      const quoted = await quoteFallback(context, res, text, creds, isDryRun, accountHandle);
-      if (quoted) {
-        res = quoted;
-        fallbackTriggered = true;
+    const send = async (): Promise<TweetResult> => {
+      let r = await deps.postColorTweet(
+        creds,
+        { text, replyToTweetId, quoteTweetId, engagementMode, accountHandle },
+        isDryRun,
+      );
+      if (
+        !r.success &&
+        engagementMode === 'reply' &&
+        context.replyTargetMode === 'last_comment' &&
+        !chainInfo.isFirstInChain
+      ) {
+        r = await recoverChain(context, r, text, replyToTweetId, creds, isDryRun, accountHandle);
       }
+      if (!r.success && engagementMode === 'reply' && context.autoFallbackToQuote) {
+        const quoted = await quoteFallback(context, r, text, creds, isDryRun, accountHandle);
+        if (quoted) {
+          r = quoted;
+          fallbackTriggered = true;
+        }
+      }
+      return r;
+    };
+    // An unusable account fails the drop without calling X (and pauses the campaign at once).
+    let res: TweetResult;
+    let sentAt: number | undefined;
+    if (composeError) {
+      res = { success: false, error: composeError.message };
+    } else if (accountFailure) {
+      res = { success: false, error: s.accounts.problem(accountId) ?? 'X account unavailable' };
+    } else if (isDryRun) {
+      res = await send();
+    } else {
+      ({ res, sentAt } = await sendGuarded(context.id, { replyToTweetId, text }, send));
     }
-    recordTelemetry(res, isDryRun, accountId);
+    if (!composeError) recordTelemetry(res, isDryRun, accountId, sentAt);
     const finalMode = fallbackTriggered ? 'quote' : engagementMode;
 
     const status = res.success ? (res.simulated ? 'simulated' : 'success') : 'error';
     const errorClass: XErrorClass | undefined = res.success
       ? undefined
-      : accountFailure
-        ? 'account'
-        : classify(res);
+      : composeError
+        ? aiFailureClass(composeError)
+        : accountFailure
+          ? 'account'
+          : classify(res);
     const failure = errorClass ? { errorClass, message: res.error } : undefined;
     // X rejected this account's tokens: mark it revoked so the UI and other campaigns know.
     if (errorClass === 'auth' && !isDryRun) s.accounts.markRevoked(accountId, res.error);
@@ -478,7 +567,19 @@ export const createDropService = (deps: DropDeps) => {
       res.tweetId,
       res.engagementMode || finalMode,
       failure,
+      { startedAt, slotKey: options.slotKey },
     );
+    // The campaign's own series history for `<history>` prompts (never trimmed by other campaigns).
+    if (status === 'success') {
+      s.contexts.rememberPost(context.id, {
+        text,
+        ...(res.tweetId ? { tweetId: res.tweetId } : {}),
+        at: new Date().toISOString(),
+        slotType,
+        colorName: color.name,
+        colorHex: color.hex,
+      });
+    }
     const errorMessage =
       autoPausedReason && res.error
         ? `${res.error} [Campaign auto-paused: ${autoPausedReason}]`
@@ -512,6 +613,8 @@ export const createDropService = (deps: DropDeps) => {
       const next = res.success ? nextHashtagState(context, usedTags) : undefined;
       if (next) s.contexts.setHashtagState(context.id, next);
     }
+    // Result, anchor, history and log reach the store together, right after X answered.
+    await s.flush();
 
     return {
       success: res.success,
@@ -522,7 +625,10 @@ export const createDropService = (deps: DropDeps) => {
     };
   };
 
-  return { executeDrop, composeText, buildTurn };
+  /** True while this process is sending a drop for the campaign. */
+  const isRunning = (contextId: string) => inFlight.has(contextId);
+
+  return { executeDrop, composeText, buildTurn, isRunning };
 };
 
 export type DropService = ReturnType<typeof createDropService>;

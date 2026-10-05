@@ -7,19 +7,19 @@ import { HttpError } from '../middleware/error.js';
 import { generateAgentText } from '../templateAgent.js';
 import { services } from './index.js';
 import { checkTweetText } from '../../shared/tweetLength.js';
-import type { PostLog, TweetContext } from '../../shared/types.js';
+import type { ConversationTurnRecord, PostLog, TweetContext } from '../../shared/types.js';
 import {
   RECENT_TURNS,
   SUMMARY_MAX_LENGTH,
   buildConversationPrompt,
   buildSummaryPrompt,
-  buildTranscript,
   conversationBudget,
   deMentionStrangers,
   ensureMention,
   pickNext,
   shouldSummarize,
-  type TranscriptTurn,
+  turnBufferOf,
+  unsummarizedTurns,
 } from './conversationTurn.js';
 
 export interface ConversationTurn {
@@ -56,13 +56,17 @@ const needHandle = (handle: string | undefined, accountId: string): string => {
 export const createConversationService = (deps: ConversationServiceDeps) => {
   const generate = deps.generate ?? generateAgentText;
 
-  /** Best effort: folds old turns into the summary; a failure keeps the old one. */
-  const refreshSummary = async (ctx: TweetContext, transcript: TranscriptTurn[]): Promise<void> => {
+  /**
+   * Best effort: folds the oldest buffered turns into the summary (keeping the last RECENT_TURNS
+   * verbatim) and drops them from the buffer in the same step, so the summary always covers every
+   * turn that is no longer buffered. A failure keeps both the old summary and the buffer.
+   */
+  const refreshSummary = async (ctx: TweetContext, turns: ConversationTurnRecord[]) => {
     const state = ctx.conversationState;
     if (!state || !shouldSummarize(state)) return;
     const through = state.turnCount - RECENT_TURNS;
     const old = state.summaryThroughTurn ?? 0;
-    const fold = transcript.filter((t) => t.turn > old && t.turn <= through);
+    const fold = turns.filter((t) => t.turn > old && t.turn <= through);
     if (!fold.length) return;
     try {
       const prompt = buildSummaryPrompt(state.summary, fold);
@@ -71,12 +75,14 @@ export const createConversationService = (deps: ConversationServiceDeps) => {
         maxLength: SUMMARY_MAX_LENGTH,
         temperature: 0.4,
       });
-      // Mutate the live state (persisted with the next recorded turn); skip a restarted run.
+      // Mutate the live state (persisted with the next save); skip a restarted run.
       const live = deps.contexts.getContext(ctx.id)?.conversationState;
       for (const s of new Set([state, live])) {
-        if (s && s.runId === state.runId) {
+        // Another summary may have landed meanwhile (a concurrent preview): never move backwards.
+        if (s && s.runId === state.runId && (s.summaryThroughTurn ?? 0) === old) {
           s.summary = summary;
           s.summaryThroughTurn = through;
+          s.turns = (s.turns ?? turns).filter((t) => t.turn > through);
         }
       }
     } catch (err) {
@@ -102,9 +108,11 @@ export const createConversationService = (deps: ConversationServiceDeps) => {
     const nextSpeakerHandle = handleOf(nextSpeakerAccountId);
     const handles = ids.map(handleOf);
 
-    const transcript = buildTranscript(deps.logs.getLogs(), ctx.id, state.runId);
-    await refreshSummary(ctx, transcript);
-    const recent = transcript.filter((t) => t.turn > state.turnCount - RECENT_TURNS);
+    // The campaign's own buffer, never the shared capped log (legacy state is seeded from it once).
+    if (!state.turns) state.turns = turnBufferOf(state, () => deps.logs.getLogs(), ctx.id);
+    await refreshSummary(ctx, state.turns);
+    // Every turn the summary does not cover (normally 15-20), so nothing falls in between.
+    const recent = unsummarizedTurns(state, state.turns ?? []);
 
     const max = conversationBudget(nextSpeakerHandle);
     const prompt = buildConversationPrompt({
@@ -145,7 +153,7 @@ export const createConversationService = (deps: ConversationServiceDeps) => {
       text,
       replyToTweetId: targetTweetId,
       summaryUsed: !!state.summary,
-      transcriptLength: transcript.length,
+      transcriptLength: recent.length,
     };
   };
 

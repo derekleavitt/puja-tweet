@@ -60,14 +60,33 @@ export function substituteVariables(text: string, color: ColorData, slotLabel?: 
   return substituteTemplate(text, color, { slotLabel });
 }
 
+/** One earlier post of the series as shown to the agent (a `PostLog` fits too). */
+export interface HistoryEntry {
+  timestamp?: string;
+  slotType?: string;
+  color?: { name?: string; hex?: string };
+  tweetText: string;
+}
+
 /**
- * Fetch chronological series history for context or target tweet
+ * Chronological series history (oldest first, at most `limitCount`) of a campaign: its own
+ * `recentPosts` buffer, which other campaigns' posts can never trim out of the shared, capped log.
+ * Without a known campaign it falls back to the log (same context / target, successful posts only).
  */
 export function getSeriesHistory(
   contextId?: string,
   targetTweetId?: string,
   limitCount = 10,
-): PostLog[] {
+): HistoryEntry[] {
+  const own = contextId ? services.contexts?.getRecentPosts?.(contextId) : undefined;
+  if (own) {
+    return own.slice(-limitCount).map((p) => ({
+      timestamp: p.at,
+      slotType: p.slotType,
+      color: { name: p.colorName, hex: p.colorHex },
+      tweetText: p.text,
+    }));
+  }
   const allLogs = services.logs.getLogs(); // returns newest first
   // Same context only (no cross-context fallback); successful posts only.
   const matches = (log: PostLog) =>
@@ -83,7 +102,7 @@ export function getSeriesHistory(
 /**
  * Format series history into a readable timeline for the agent
  */
-export function formatHistoryForPrompt(history: PostLog[], includeColor = true): string {
+export function formatHistoryForPrompt(history: HistoryEntry[], includeColor = true): string {
   if (history.length === 0) {
     return 'No previous tweets in this series yet. This is the debut/opening drop.';
   }
@@ -111,7 +130,7 @@ export class AgentUnavailableError extends HttpError {
 function buildAgentContents(
   userPrompt: string,
   color: ColorData,
-  history: PostLog[] | null,
+  history: HistoryEntry[] | null,
   slotLabel: string | undefined,
   includeColor: boolean,
   agent: AgentTextOptions,
@@ -278,7 +297,7 @@ export async function generateAgentText(
 export async function generatePoeticAgentText(
   userPrompt: string,
   color: ColorData,
-  history: PostLog[] | null,
+  history: HistoryEntry[] | null,
   slotLabel?: string,
   includeColor = true,
   agent: AgentTextOptions = {},
