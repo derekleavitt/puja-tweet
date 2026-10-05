@@ -9,8 +9,8 @@ Errors: `{ "success": false, "error": "<message>" }` with a real HTTP status (40
 | GET | `/api/rate-limits` | Telemetry and cooldown state |
 | POST | `/api/cooldown/clear` | Clears the global cooldown |
 | GET | `/api/contexts` | Contexts, active id, next posts |
-| POST | `/api/contexts` | Create a context (400 on invalid body) |
-| PUT | `/api/contexts/:id` | Update (404 unknown id) |
+| POST | `/api/contexts` | Create a context (400 on invalid body). Optional `hashtagEvolution` config, see [Evolving hashtags](#evolving-hashtags) |
+| PUT | `/api/contexts/:id` | Update (404 unknown id); `hashtagEvolution` merges over the stored config |
 | DELETE | `/api/contexts/:id` | Delete (404 unknown id, 400 if last context) |
 | POST | `/api/contexts/:id/activate` | 404 unknown id |
 | POST | `/api/contexts/:id/toggle` | 404 unknown id |
@@ -23,14 +23,32 @@ Errors: `{ "success": false, "error": "<message>" }` with a real HTTP status (40
 | DELETE | `/api/credentials/:method` | Remove stored credentials for `oauth1`, `oauth2` or `bearer` |
 | POST | `/api/twitter/verify` | Verify credentials; failure is `{ valid:false, message }` |
 | POST | `/api/generate-color` | Body `{ slotType?, color?, contextId?, template? }` |
-| POST | `/api/template/preview` | Body `{ template?, color?, slotType?, contextId? }` |
-| POST | `/api/post-now` | Body `{ contextId?, slotType?, color?, forceLive? }`; 404 unknown `contextId` |
+| POST | `/api/template/preview` | Body `{ template?, color?, slotType?, contextId? }`; returns `previewText` and, when the campaign evolves hashtags, `hashtags` (the tags used, without `#`) |
+| POST | `/api/post-now` | Body `{ contextId?, slotType?, color?, forceLive?, text?, hashtags?, slotId? }`; 404 unknown `contextId`. `text` is posted verbatim; send the preview's `hashtags` with it so the post does not re-roll them. The response carries `hashtags` when evolution is on |
 | ALL | `/api/cron/trigger`, `/api/webhook/trigger` | Secret via `?secret=`, `x-cron-secret` or body; `contextId`/`slot`/`forceLive`; 404 unknown `contextId` |
 | GET | `/api/queue` | Optional `?contextId=` |
 | POST | `/api/queue/regenerate` | Body or query `contextId` |
 | POST | `/api/queue/reroll` | Body `{ slotId }`; 400 missing, 404 unknown slot |
 | GET | `/api/history` | `{ logs }` |
 | DELETE | `/api/history` | Clears logs |
+
+## Evolving hashtags
+
+Per campaign, default off. Config (client-editable) and state (server-owned) on the context:
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `hashtagEvolution.enabled` | boolean | Default `false` |
+| `hashtagEvolution.maxTags` | integer 1-5 | Default `3`; 400 outside the range |
+| `hashtagEvolution.keepSeedTags` | boolean | Default `false`; kept tags count toward `maxTags`, one slot always evolves |
+| `hashtagState.current` | string[] | Tags (no `#`) of the latest successful post. Read-only: stripped from any client body |
+| `hashtagState.recent` | string[] | Last 40 tags used, never repeated |
+
+Seed tags are the `#tags` in the campaign template (`{weather_tweet}` counts as `#eternal #colors`;
+`<agent>` prompts are ignored), or `#colors` when there are none. Each drop swaps them for fresh related tags
+(Gemini when configured and under `GEMINI_MAX_CALLS_PER_DAY`, otherwise the built-in offline generator),
+trimming trailing tags to stay within 280 weighted chars. `hashtagState` only advances after a successful
+post (live or simulated). Scheduler, webhook and CLI drops compute fresh tags themselves.
 
 ## Serverless mode
 
