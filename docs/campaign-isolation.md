@@ -36,6 +36,22 @@ campaign on the **same** account, independent between accounts:
 | `/api/status.stats`, `latestLog`                                    | `routes/status.ts`                                                         | Whole-bot counters (per-campaign stats live on the campaign) |
 | `activeContextId`                                                   | `state.activeContextId`                                                    | UI selection only: which campaign the Studio/Settings show   |
 
+### Conversation campaigns (`mode: 'conversation'`, see [conversations.md](conversations.md))
+
+- **The chain anchor spans accounts.** One campaign, one thread: each turn is posted by a different
+  participant but replies to the same `chainAnchor`, which only the campaign's own live posts move.
+  Changing a conversation's account is meaningless (`accountId` is ignored), so `patchContext` skips
+  the account-change chain reset for it. Changing `targetTweetId` or the mode starts a new run.
+- **State is per run.** `conversationState` (`runId`, `turnCount`, `nextSpeakerAccountId`, summary)
+  belongs to the campaign and is server-owned. Logs carry `conversationRunId` and `turn`, and the
+  transcript is built from the logs of that run only, so Restart gets a clean transcript without
+  deleting history, and two conversations never read each other's turns.
+- **Per-account state stays per account.** Cooldown, 50 s spacing and revoked status are checked for
+  the next speaker's account, so a conversation waits for one blocked voice without blocking
+  single-account campaigns, and a single campaign on the same account still shares that account's
+  cooldown.
+- Tick-vs-manual races are closed by a per-campaign in-flight lock in `dropService`.
+
 ### Per-campaign (must be isolated)
 
 | Field                                                                  | Written by                                                                            | Read by                                                                | Risk before this audit                            |

@@ -55,6 +55,8 @@ export const QueueViewer: React.FC<QueueViewerProps> = ({
       : `Daily at ${(activeContext.schedule?.scheduleTimes || ['06:00', '18:00']).map(formatHHmm12h).join(', ')} (${tzAbbreviation(new Date(), activeContext.schedule?.timezone)})`
     : 'Twice Daily Cadence';
 
+  const conversation = activeContext?.mode === 'conversation';
+  const voices = activeContext?.conversation?.participants.length ?? 0;
   const modeLabel = activeContext
     ? activeContext.engagementMode === 'quote'
       ? 'Quote Tweet'
@@ -125,7 +127,32 @@ export const QueueViewer: React.FC<QueueViewerProps> = ({
       </div>
 
       {/* Shown campaign: template & schedule banner */}
-      {activeContext && (
+      {activeContext && conversation && (
+        <div
+          data-testid="queue-conversation-banner"
+          className="p-4 rounded-xl bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900 shadow-2xs flex flex-wrap items-center gap-3 text-xs"
+        >
+          <span className="font-semibold text-indigo-700 dark:text-indigo-300">
+            Conversation ({voices} voices)
+          </span>
+          <span className="text-neutral-300 dark:text-neutral-700">·</span>
+          <span className="flex items-center gap-1.5 font-semibold text-neutral-900 dark:text-neutral-100">
+            <Target className="w-3.5 h-3.5 text-indigo-500" />
+            Opening reply:
+            <span className="font-mono text-indigo-600 dark:text-indigo-400">
+              #{activeContext.targetTweetId}
+            </span>
+          </span>
+          <span className="text-neutral-300 dark:text-neutral-700">·</span>
+          <span className="text-neutral-600 dark:text-neutral-400">
+            Schedule:{' '}
+            <strong className="text-neutral-800 dark:text-neutral-200 font-mono">
+              {cadenceLabel}
+            </strong>
+          </span>
+        </div>
+      )}
+      {activeContext && !conversation && (
         <div className="p-4 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 shadow-2xs flex flex-col lg:flex-row lg:items-center justify-between gap-3 text-xs">
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-1.5 font-semibold text-neutral-900 dark:text-neutral-100">
@@ -176,7 +203,12 @@ export const QueueViewer: React.FC<QueueViewerProps> = ({
             slot={slot}
             index={idx}
             timezone={slotContext(slot)?.schedule?.timezone}
-            canReroll={templateUsesColor(slotContext(slot)?.template)}
+            canReroll={
+              slotContext(slot)?.mode !== 'conversation' &&
+              templateUsesColor(slotContext(slot)?.template)
+            }
+            conversation={slotContext(slot)?.mode === 'conversation'}
+            isNextTurn={idx === 0}
             evolvesHashtags={!!slotContext(slot)?.hashtagEvolution?.enabled}
             lastHashtags={slotContext(slot)?.hashtagState?.current}
             isPosting={isPosting}

@@ -20,6 +20,8 @@ import { TemplateHashtagsHint } from './TemplateHashtagsHint.js';
 import { TargetField } from './TargetField.js';
 import { CampaignWebhookUrl } from './CampaignWebhookUrl.js';
 import { AccountSelect } from './AccountSelect.js';
+import { ModeSwitch, OpeningReplyField } from './ModeSwitch.js';
+import { ConversationEditor } from './ConversationEditor.js';
 
 interface ContextFormModalProps {
   form: ContextForm;
@@ -28,6 +30,7 @@ interface ContextFormModalProps {
 export const ContextFormModal: React.FC<ContextFormModalProps> = ({ form }) => {
   const { editingContext: ctx, isCreating, formError, patch, patchSchedule, close } = form;
   if (!ctx) return null;
+  const isConversation = ctx.mode === 'conversation';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
@@ -69,78 +72,100 @@ export const ContextFormModal: React.FC<ContextFormModalProps> = ({ form }) => {
             />
           </div>
 
-          <AccountSelect
-            value={ctx.accountId}
-            savedValue={form.savedAccountId}
-            hasChain={!!ctx.lastPostedTweetId || ctx.replyTargetMode === 'last_comment'}
-            onChange={(accountId) => patch({ accountId })}
-          />
+          <ModeSwitch value={ctx.mode ?? 'single'} onChange={form.setMode} />
 
-          <TargetField
-            value={ctx.targetTweetId || ''}
-            onChange={(targetTweetId) => patch({ targetTweetId })}
-          />
-
-          <ReplyModeSelector context={ctx} onChange={patch} />
-          <EngagementModeSelector
-            value={ctx.engagementMode}
-            onChange={(engagementMode) => patch({ engagementMode })}
-          />
-          {(ctx.engagementMode || 'reply') === 'reply' && (
-            <label className="flex items-start gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={ctx.autoFallbackToQuote ?? false}
-                onChange={(e) => patch({ autoFallbackToQuote: e.target.checked })}
-                className="mt-0.5 h-4 w-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-500"
+          {isConversation ? (
+            <>
+              <OpeningReplyField
+                value={ctx.targetTweetId || ''}
+                onChange={(targetTweetId) => patch({ targetTweetId })}
               />
-              <span className="text-xs text-neutral-700 dark:text-neutral-300">
-                Fall back to a Quote Tweet
-                <span className="block text-[11px] text-neutral-500">
-                  If X refuses the reply (reply cooldown or restricted thread), retry once as a
-                  quote of the target post on your timeline. Off by default.
-                </span>
-              </span>
-            </label>
+              {ctx.conversation && (
+                <ConversationEditor value={ctx.conversation} onChange={form.patchConversation} />
+              )}
+            </>
+          ) : (
+            <>
+              <AccountSelect
+                value={ctx.accountId}
+                savedValue={form.savedAccountId}
+                hasChain={!!ctx.lastPostedTweetId || ctx.replyTargetMode === 'last_comment'}
+                onChange={(accountId) => patch({ accountId })}
+              />
+
+              <TargetField
+                value={ctx.targetTweetId || ''}
+                onChange={(targetTweetId) => patch({ targetTweetId })}
+              />
+
+              <ReplyModeSelector context={ctx} onChange={patch} />
+              <EngagementModeSelector
+                value={ctx.engagementMode}
+                onChange={(engagementMode) => patch({ engagementMode })}
+              />
+              {(ctx.engagementMode || 'reply') === 'reply' && (
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={ctx.autoFallbackToQuote ?? false}
+                    onChange={(e) => patch({ autoFallbackToQuote: e.target.checked })}
+                    className="mt-0.5 h-4 w-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-500"
+                  />
+                  <span className="text-xs text-neutral-700 dark:text-neutral-300">
+                    Fall back to a Quote Tweet
+                    <span className="block text-[11px] text-neutral-500">
+                      If X refuses the reply (reply cooldown or restricted thread), retry once as a
+                      quote of the target post on your timeline. Off by default.
+                    </span>
+                  </span>
+                </label>
+              )}
+            </>
           )}
           <ScheduleEditor schedule={ctx.schedule} onChange={patchSchedule} />
-          <TemplateEditor
-            template={ctx.template || ''}
-            onChange={(template) => patch({ template })}
-            contextId={ctx.id}
-            rows={3}
-          />
-          <TemplateHashtagsHint
-            template={ctx.template || ''}
-            hashtags={ctx.hashtags ?? []}
-            onMove={(template, hashtags) => patch({ template, hashtags })}
-          />
-          <CampaignHashtagsInput
-            value={ctx.hashtags}
-            onChange={(hashtags) => patch({ hashtags })}
-          />
-          <HashtagEvolutionEditor
-            hashtags={ctx.hashtags ?? []}
-            value={ctx.hashtagEvolution}
-            onChange={(hashtagEvolution) => patch({ hashtagEvolution })}
-          />
+          {!isConversation && (
+            <>
+              <TemplateEditor
+                template={ctx.template || ''}
+                onChange={(template) => patch({ template })}
+                contextId={ctx.id}
+                rows={3}
+              />
+              <TemplateHashtagsHint
+                template={ctx.template || ''}
+                hashtags={ctx.hashtags ?? []}
+                onMove={(template, hashtags) => patch({ template, hashtags })}
+              />
+              <CampaignHashtagsInput
+                value={ctx.hashtags}
+                onChange={(hashtags) => patch({ hashtags })}
+              />
+              <HashtagEvolutionEditor
+                hashtags={ctx.hashtags ?? []}
+                value={ctx.hashtagEvolution}
+                onChange={(hashtagEvolution) => patch({ hashtagEvolution })}
+              />
+            </>
+          )}
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className={LABEL_CLASS}>Theme Preference</label>
-              <select
-                value={ctx.themePreference || 'dynamic'}
-                onChange={(e) =>
-                  patch({ themePreference: e.target.value as TweetContext['themePreference'] })
-                }
-                className={FIELD_CLASS}
-              >
-                <option value="dynamic">Dynamic (Atmospheric)</option>
-                <option value="vibrant">Vibrant &amp; Saturated</option>
-                <option value="minimal">Minimal &amp; Modern</option>
-                <option value="poetic">Poetic &amp; Evocative</option>
-              </select>
-            </div>
+          <div className={isConversation ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-2 gap-3'}>
+            {!isConversation && (
+              <div className="space-y-1.5">
+                <label className={LABEL_CLASS}>Theme Preference</label>
+                <select
+                  value={ctx.themePreference || 'dynamic'}
+                  onChange={(e) =>
+                    patch({ themePreference: e.target.value as TweetContext['themePreference'] })
+                  }
+                  className={FIELD_CLASS}
+                >
+                  <option value="dynamic">Dynamic (Atmospheric)</option>
+                  <option value="vibrant">Vibrant &amp; Saturated</option>
+                  <option value="minimal">Minimal &amp; Modern</option>
+                  <option value="poetic">Poetic &amp; Evocative</option>
+                </select>
+              </div>
+            )}
 
             <div className="space-y-1.5">
               <label className={LABEL_CLASS}>Posting Mode</label>

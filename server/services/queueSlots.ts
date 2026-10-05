@@ -10,6 +10,9 @@ import { appendTagBlock, dedupeHashtags } from '../../shared/hashtags/index.js';
 
 export const QUEUE_SLOTS_PER_CONTEXT = 14;
 
+/** Conversation slots show no color or template: the turn is written when it posts. */
+export const CONVERSATION_SLOT_PREVIEW = '✨ AI turn, written when it posts';
+
 export const formatSlotPreviewText = (
   template: string,
   color: ColorData,
@@ -110,8 +113,15 @@ export const createQueueSlotForContext = (
     color,
     contextId: ctx.id,
     contextName: ctx.name,
-    previewText: formatSlotPreviewText(ctx.template, color, timeSlot, ctx.hashtags ?? []),
+    previewText:
+      ctx.mode === 'conversation'
+        ? CONVERSATION_SLOT_PREVIEW
+        : formatSlotPreviewText(ctx.template, color, timeSlot, ctx.hashtags ?? []),
     targetTweetId: ctx.targetTweetId,
     replyTargetMode: ctx.replyTargetMode || 'original_post',
+    // Only the next speaker is known; later turns pick their speaker at random.
+    ...(ctx.mode === 'conversation' && slotIndex === 0 && ctx.conversationState
+      ? { speakerAccountId: ctx.conversationState.nextSpeakerAccountId }
+      : {}),
   };
 };

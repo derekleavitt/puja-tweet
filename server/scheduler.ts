@@ -38,6 +38,10 @@ const dueAt = (c: TweetContext): number => {
   return c.pendingFire?.fireAt ?? Number.MAX_SAFE_INTEGER;
 };
 
+/** The X account that will sign this campaign's next post (a conversation's next speaker). */
+const postingAccountId = (c: TweetContext): string | undefined =>
+  c.mode === 'conversation' ? c.conversationState?.nextSpeakerAccountId : c.accountId;
+
 export interface TickOptions {
   /** Max drops this tick may start; the rest stay due and fire on the next tick. Default: no cap. */
   maxDrops?: number;
@@ -91,9 +95,10 @@ class SchedulerService {
     if (this.dropsLeft <= 0) return false; // MAX_DROPS_PER_TICK: stays due for the next tick
     if (services.settings.isGlobalDryRun() || context.dryRun) return true;
     // Cooldown and spacing belong to the X account the campaign posts as.
-    if (services.rateLimit.getCooldownState(context.accountId).isThrottled) return false;
-    if (services.rateLimit.getWindowExhaustedSeconds(context.accountId) > 0) return false;
-    return services.rateLimit.getTimeSinceLastLivePostMs(context.accountId) >= MIN_LIVE_SPACING_MS;
+    const accountId = postingAccountId(context);
+    if (services.rateLimit.getCooldownState(accountId).isThrottled) return false;
+    if (services.rateLimit.getWindowExhaustedSeconds(accountId) > 0) return false;
+    return services.rateLimit.getTimeSinceLastLivePostMs(accountId) >= MIN_LIVE_SPACING_MS;
   }
 
   /** Starts a drop, charging it to the per-tick budget (callers check `canFireNow` first). */
@@ -281,17 +286,22 @@ class SchedulerService {
         ? `Campaign auto-paused: ${context.autoPausedReason}`
         : 'Campaign is paused (resume it on its card)';
     }
-    const problem = services.accounts.problem(context.accountId);
-    if (problem) return problem;
-    const windowSeconds = services.rateLimit.getWindowExhaustedSeconds(context.accountId);
+    const accountId = postingAccountId(context);
+    const handle = services.accounts.handleOf(accountId);
+    // A conversation waits for its next speaker (it never skips to another voice).
+    const who =
+      context.mode === 'conversation'
+        ? `Next speaker ${handle ? `@${handle}` : (accountId ?? '?')}: `
+        : '';
+    const problem = services.accounts.problem(accountId);
+    if (problem) return `${who}${problem}`;
+    const windowSeconds = services.rateLimit.getWindowExhaustedSeconds(accountId);
     if (windowSeconds > 0) {
-      const handle = services.accounts.handleOf(context.accountId);
-      return `X rate-limit window used up${handle ? ` for @${handle}` : ''}: resets in ${Math.ceil(windowSeconds / 60)}m`;
+      return `${who}X rate-limit window used up${handle ? ` for @${handle}` : ''}: resets in ${Math.ceil(windowSeconds / 60)}m`;
     }
-    const cooldown = services.rateLimit.getCooldownState(context.accountId);
+    const cooldown = services.rateLimit.getCooldownState(accountId);
     if (cooldown.isThrottled) {
-      const handle = services.accounts.handleOf(context.accountId);
-      return `X cooldown${handle ? ` for @${handle}` : ''}: ${Math.ceil(cooldown.secondsRemaining / 60)}m left${cooldown.reason ? ` (${cooldown.reason})` : ''}`;
+      return `${who}X cooldown${handle ? ` for @${handle}` : ''}: ${Math.ceil(cooldown.secondsRemaining / 60)}m left${cooldown.reason ? ` (${cooldown.reason})` : ''}`;
     }
     return undefined;
   }
@@ -313,9 +323,14 @@ class SchedulerService {
   }
 
   private calculateNextPostForContext(context: TweetContext) {
+    const speakerHandle =
+      context.mode === 'conversation'
+        ? services.accounts.handleOf(context.conversationState?.nextSpeakerAccountId)
+        : undefined;
     return {
       ...this.calculateNextPostTiming(context),
       blockedReason: this.getBlockedReason(context),
+      ...(speakerHandle ? { speakerHandle } : {}),
     };
   }
 

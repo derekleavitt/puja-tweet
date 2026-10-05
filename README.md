@@ -50,6 +50,7 @@ a11ce00 revert: "feat: play it cool" — did not pass review
 - ✍️ **AI poetry** (Gemini): optional. Hard-capped at 280 characters, because even love has rate limits.
 - #️⃣ **Evolving hashtags**: optional, per campaign. Every tweet trades `#eternal #colors` for fresh, related tags and never repeats itself, like a poet with a thesaurus and commitment issues.
 - 👥 **Several X accounts**: connect extra accounts in Settings and pick one per campaign ("Posts as"). Each account keeps its own cooldown and spacing. See [`docs/accounts.md`](docs/accounts.md).
+- 💬 **Conversations**: let 2 to 5 of your accounts, each with its own AI persona, chat in one thread and hand the mic over with an @mention. A book club where nobody did the reading. See [`docs/conversations.md`](docs/conversations.md).
 - 🛑 **Global dry-run & pause**: a fresh install starts in "write love letters but don't send them" mode. Very relatable.
 - 🔐 **Locked to one Google account**: only the owner can log in. This is a love bot, not a group chat.
 - 🧯 **Circuit breaker**: 5 failures in a row and a campaign takes a breather instead of spamming. Emotional maturity, implemented in TypeScript.

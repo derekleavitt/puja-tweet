@@ -14,6 +14,8 @@ import {
   normaliseEvolution,
 } from '../../shared/hashtags/index.js';
 import type {
+  ConversationConfig,
+  ConversationState,
   HashtagState,
   PendingFire,
   TweetContext,
@@ -31,6 +33,12 @@ import { accountProblem, effectiveAccountId } from './accountService.js';
 import { DEFAULT_ACCOUNT_ID } from '../../shared/types.js';
 import { buildPrimaryContext } from './primaryContext.js';
 import { parseContextUpdate } from './contextSchema.js';
+import {
+  initConversationState,
+  repickNextSpeaker,
+  validateConversation,
+  type ValidatedConversation,
+} from './conversationConfig.js';
 import type { QueueService } from './queueService.js';
 import type { StateManager } from './stateManager.js';
 
@@ -53,6 +61,18 @@ const maxConsecutiveErrors = (): number => {
   return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 5;
 };
 
+/** Opening line of the auto-pause reason when a conversation reached its turn limit. */
+const FINISHED_PREFIX = 'Conversation finished';
+
+/** Fields a conversation campaign always has (the speaker changes per turn; no hashtags, no quotes). */
+const forceConversationFields = (ctx: TweetContext) => {
+  ctx.engagementMode = 'reply';
+  ctx.replyTargetMode = 'last_comment';
+  ctx.autoFallbackToQuote = false;
+  ctx.hashtags = [];
+  ctx.hashtagEvolution = normaliseEvolution(ctx.hashtagEvolution, { enabled: false });
+};
+
 const notFound = (id: string) => new HttpError(404, `Context ${id} not found`);
 
 export class ContextService {
@@ -72,6 +92,23 @@ export class ContextService {
       );
     }
     return accountId;
+  }
+
+  /** Known handle of an account (no '@'); the default account's comes from its verification or X_HANDLE. */
+  private handleOf(id: string): string | undefined {
+    if (id === DEFAULT_ACCOUNT_ID) {
+      const meta = this.sm.state.defaultAccount;
+      return meta?.handle || (process.env.X_HANDLE || '').trim().replace(/^@/, '') || undefined;
+    }
+    return this.sm.state.accounts.find((a) => a.id === id)?.handle || undefined;
+  }
+
+  private validateConversation(config: ConversationConfig | undefined): ValidatedConversation {
+    return validateConversation(config, {
+      accountExists: (id) =>
+        id === DEFAULT_ACCOUNT_ID || this.sm.state.accounts.some((a) => a.id === id),
+      handleOf: (id) => this.handleOf(id),
+    });
   }
 
   /** Boot-time: creates the primary context on first run and repairs polluted chains. */
@@ -137,11 +174,14 @@ export class ContextService {
       data.hashtags !== undefined
         ? { template, hashtags: normaliseCampaignTags(data.hashtags) }
         : extractTemplateHashtags(template);
+    const isConversation = data.mode === 'conversation';
+    const validated = isConversation ? this.validateConversation(data.conversation) : undefined;
     const newContext: TweetContext = {
       id,
       name: data.name?.trim() || `Context #${s.contexts.length + 1}`,
       description: data.description?.trim() || '',
-      accountId: this.checkAccountId(data.accountId),
+      // A conversation has no single account: the speaker changes per turn.
+      accountId: isConversation ? undefined : this.checkAccountId(data.accountId),
       targetTweetId: cleanTweetId(
         // Never inherit another campaign's target (the settings mirror holds the ACTIVE campaign's).
         data.targetTweetId || getDefaultTargetTweetId(),
@@ -171,6 +211,15 @@ export class ContextService {
       updatedAt: new Date().toISOString(),
       stats: data.stats || { totalPosts: 0, successfulPosts: 0, simulatedPosts: 0, failedPosts: 0 },
     };
+
+    if (validated) {
+      newContext.mode = 'conversation';
+      newContext.conversation = validated.config;
+      newContext.conversationState = initConversationState(validated.config, validated.handles);
+      forceConversationFields(newContext);
+    } else if (data.mode === 'single') {
+      newContext.mode = 'single';
+    }
 
     sanitizeContextChain(newContext, s.logs);
     generateJitterForContext(newContext);
@@ -224,12 +273,53 @@ export class ContextService {
     const targetChanged = targetTweetId !== current.targetTweetId;
     // Only a change of account is validated, so a campaign whose account was removed can still be
     // edited (and is refused on resume below).
-    const accountId =
-      'accountId' in updates &&
-      effectiveAccountId(updates.accountId) !== effectiveAccountId(current.accountId)
+    const wasConversation = current.mode === 'conversation';
+    const isConversation = (updates.mode ?? current.mode) === 'conversation';
+    const modeChanged = isConversation !== wasConversation;
+    const accountId = isConversation
+      ? current.accountId // ignored: the speaker changes per turn
+      : 'accountId' in updates &&
+          effectiveAccountId(updates.accountId) !== effectiveAccountId(current.accountId)
         ? this.checkAccountId(updates.accountId)
         : current.accountId;
     const accountChanged = effectiveAccountId(accountId) !== effectiveAccountId(current.accountId);
+
+    // A conversation is validated whenever its setup (or the mode) changes; progress restarts on a
+    // new target or mode, re-picks the next speaker if the cast dropped them, and otherwise stays.
+    const validated =
+      isConversation && (updates.conversation || modeChanged || targetChanged)
+        ? this.validateConversation(updates.conversation ?? current.conversation)
+        : undefined;
+    const conversation = isConversation ? (validated?.config ?? current.conversation) : undefined;
+    let conversationState: ConversationState | undefined;
+    if (isConversation && conversation) {
+      const kept = current.conversationState;
+      // Before turn 1 nothing has happened yet, so a new first speaker/opening post takes effect.
+      if (validated && (!kept || targetChanged || modeChanged || kept.turnCount === 0)) {
+        conversationState = initConversationState(conversation, validated.handles);
+      } else if (!kept) {
+        conversationState = initConversationState(
+          conversation,
+          this.validateConversation(conversation).handles,
+        );
+      } else if (
+        !conversation.participants.some((p) => p.accountId === kept.nextSpeakerAccountId)
+      ) {
+        // Never the account that spoke last (no one replies to themselves).
+        const lastSpeaker = s.logs.find(
+          (l) =>
+            l.contextId === id &&
+            l.conversationRunId === kept.runId &&
+            (l.status === 'success' || l.status === 'simulated'),
+        )?.accountId;
+        conversationState = {
+          ...kept,
+          nextSpeakerAccountId: repickNextSpeaker(conversation, lastSpeaker),
+        };
+      } else {
+        conversationState = kept;
+      }
+    }
 
     const mergedSchedule: TweetContextSchedule = {
       ...current.schedule,
@@ -241,13 +331,29 @@ export class ContextService {
       (updates.schedule?.mode !== undefined && updates.schedule.mode !== current.schedule.mode);
 
     const resumed = updates.enabled === true && !current.enabled;
-    const blocked = resumed ? accountProblem(this.sm.state, accountId) : undefined;
+    // A conversation can resume only when every participant is usable.
+    const blocked = !resumed
+      ? undefined
+      : isConversation
+        ? conversation?.participants
+            .map((p) => accountProblem(this.sm.state, p.accountId))
+            .find(Boolean)
+        : accountProblem(this.sm.state, accountId);
     if (blocked) throw new HttpError(400, `Cannot resume "${current.name}": ${blocked}.`);
+    const finishedAt = conversation?.maxTurns;
+    const finished =
+      isConversation && !!finishedAt && (conversationState?.turnCount ?? 0) >= finishedAt;
+    if (resumed && finished) {
+      throw new HttpError(
+        400,
+        `Cannot resume "${current.name}": the conversation finished (${finishedAt} turns). Restart it with a new opening reply.`,
+      );
+    }
 
     // The chain anchor is server-owned: only a target change, an account change (another account's
     // replies are a different thread) or an explicit reset moves it. A client-sent
     // `lastPostedTweetId` (e.g. the edit form echoing a stale value) is ignored.
-    const keepChain = !targetChanged && !accountChanged && !resetChain;
+    const keepChain = !targetChanged && !modeChanged && !accountChanged && !resetChain;
     const updated: TweetContext = {
       ...current,
       ...fields,
@@ -266,6 +372,15 @@ export class ContextService {
       schedule: mergedSchedule,
       updatedAt: new Date().toISOString(),
     };
+    // Server-owned: a client/trusted patch can never set the state directly.
+    updated.conversation = isConversation ? conversation : current.conversation;
+    updated.conversationState = conversationState;
+    if (isConversation) forceConversationFields(updated);
+    // A lowered turn limit that is already reached finishes the conversation now.
+    if (finished && updated.enabled) {
+      updated.enabled = false;
+      updated.autoPausedReason = `${FINISHED_PREFIX} (${finishedAt} turns)`;
+    }
 
     sanitizeContextChain(updated, s.logs);
     if (scheduleChanged) generateJitterForContext(updated);
@@ -342,6 +457,14 @@ export class ContextService {
       hashtags: source.hashtags ? [...source.hashtags] : undefined,
       themePreference: source.themePreference,
       hashtagEvolution: source.hashtagEvolution ? { ...source.hashtagEvolution } : undefined,
+      mode: source.mode,
+      // Fresh state: createContext starts a new run for the copy.
+      conversation: source.conversation
+        ? {
+            ...source.conversation,
+            participants: source.conversation.participants.map((p) => ({ ...p })),
+          }
+        : undefined,
     });
   }
 
@@ -369,6 +492,89 @@ export class ContextService {
     current.chainAnchor = undefined;
     this.sm.persist();
     return current;
+  }
+
+  /**
+   * Advances a conversation after a turn. Success/simulated: turnCount++, the pre-chosen next speaker
+   * takes over, the queue is regenerated, and at `maxTurns` the campaign pauses. Errors change
+   * nothing (the same speaker retries). A turn of another run, or not the expected next one, is
+   * ignored (`applied: false`), e.g. after a restart while a post was in flight.
+   */
+  recordConversationTurn(
+    id: string,
+    turn: { runId: string; turnNumber: number; nextSpeakerAccountId: string },
+    status: 'success' | 'simulated' | 'error',
+  ): { applied: boolean; autoPausedReason?: string } {
+    const ctx = this.sm.getContext(id);
+    const state = ctx?.conversationState;
+    if (!ctx || ctx.mode !== 'conversation' || !state || status === 'error') {
+      return { applied: false };
+    }
+    if (turn.runId !== state.runId || turn.turnNumber !== state.turnCount + 1) {
+      return { applied: false };
+    }
+    state.turnCount += 1;
+    state.nextSpeakerAccountId = turn.nextSpeakerAccountId;
+    const max = ctx.conversation?.maxTurns;
+    let autoPausedReason: string | undefined;
+    if (max && state.turnCount >= max) {
+      autoPausedReason = `${FINISHED_PREFIX} (${max} turns)`;
+      ctx.enabled = false;
+      ctx.autoPausedReason = autoPausedReason;
+      console.log(`[Context] ${autoPausedReason}: "${ctx.name}"`);
+    }
+    this.queue.clearAndRegenerateQueue(id);
+    this.sm.persist();
+    return { applied: true, autoPausedReason };
+  }
+
+  /**
+   * New run of a conversation campaign with a new opening post/anchor: turn count and transcript
+   * start over (new runId), the chain is reset and a "finished" pause is cleared. `enabled` stays.
+   */
+  restartConversation(
+    id: string,
+    input: {
+      targetTweetId: string;
+      openingPost: string;
+      openerHandle?: string;
+      firstSpeakerAccountId?: string;
+    },
+  ): TweetContext {
+    const ctx = this.sm.getContext(id);
+    if (!ctx) throw notFound(id);
+    if (ctx.mode !== 'conversation' || !ctx.conversation) {
+      throw new HttpError(400, `"${ctx.name}" is not a conversation campaign.`);
+    }
+    const targetTweetId = extractTweetId(input.targetTweetId ?? '');
+    if (!targetTweetId) throw new HttpError(400, 'targetTweetId must be a tweet ID or a tweet URL');
+    // Same limits as the campaign schema (the restart route takes a plain body).
+    if ((input.openingPost ?? '').length > 1000) {
+      throw new HttpError(400, 'openingPost must be at most 1000 characters');
+    }
+    const opener = input.openerHandle?.trim().replace(/^@/, '');
+    if (opener && !/^[A-Za-z0-9_]{1,15}$/.test(opener)) {
+      throw new HttpError(400, 'openerHandle must be an X handle (letters, digits, _; up to 15)');
+    }
+    const { participants, sharedPrompt, maxTurns } = ctx.conversation;
+    const validated = this.validateConversation({
+      participants,
+      sharedPrompt,
+      maxTurns,
+      openingPost: input.openingPost,
+      openerHandle: input.openerHandle,
+      firstSpeakerAccountId: input.firstSpeakerAccountId,
+    });
+    ctx.targetTweetId = targetTweetId;
+    ctx.conversation = validated.config;
+    ctx.conversationState = initConversationState(validated.config, validated.handles);
+    ctx.lastPostedTweetId = undefined;
+    ctx.chainAnchor = undefined;
+    if (ctx.autoPausedReason?.startsWith(FINISHED_PREFIX)) ctx.autoPausedReason = undefined;
+    ctx.updatedAt = new Date().toISOString();
+    this.queue.clearAndRegenerateQueue(id);
+    this.sm.persist();
+    return ctx;
   }
 
   getContextLastPostedTweetId(contextId: string): string | undefined {

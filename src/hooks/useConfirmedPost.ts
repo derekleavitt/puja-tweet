@@ -14,6 +14,8 @@ export interface PendingPost {
   targetTweetId: string;
   /** Account the campaign posts as (undefined = default). */
   accountId?: string;
+  /** Conversation turns: the speaking account's handle (no '@'). */
+  speakerHandle?: string;
 }
 
 interface Deps {
@@ -43,6 +45,7 @@ export function useConfirmedPost({ settings, contexts, post }: Deps) {
         campaign: ctx?.name || contextId,
         targetTweetId: ctx?.targetTweetId || '',
         accountId: ctx?.accountId,
+        speakerHandle: opts?.speakerHandle,
       });
     });
     return go ? post(contextId, opts) : undefined;

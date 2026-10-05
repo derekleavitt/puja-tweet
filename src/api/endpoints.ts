@@ -60,8 +60,24 @@ export const regenerateQueue = (contextId: string) =>
 export const getHistory = () => orNull(apiFetch<{ logs: PostLog[] }>('/api/history'));
 export const clearHistory = () => orNull(apiFetch<Json>('/api/history', { method: 'DELETE' }));
 
+/** The turn a conversation preview was written for; echoed back so the server can refuse a stale post. */
+export interface ConversationEcho {
+  runId: string;
+  turnNumber: number;
+  speakerAccountId: string;
+  nextSpeakerAccountId: string;
+}
+
+/** `conversation` block of a conversation preview response. */
+export interface ConversationPreviewInfo extends ConversationEcho {
+  speakerHandle?: string;
+  nextSpeakerHandle?: string;
+  summaryUsed?: boolean;
+  transcriptLength?: number;
+}
+
 // Posting, templates
-export const postNow = (body: {
+export const postNow = async (body: {
   slotType: string;
   color: ColorData | null;
   contextId: string;
@@ -69,7 +85,18 @@ export const postNow = (body: {
   /** Evolved hashtags the previewed `text` used (from the preview response). */
   hashtags?: string[];
   slotId?: string;
-}) => orBody(apiFetch<DropResponse>('/api/post-now', { method: 'POST', body }));
+  conversation?: ConversationEcho;
+}): Promise<DropResponse & { conflict?: boolean }> => {
+  try {
+    return await apiFetch<DropResponse>('/api/post-now', { method: 'POST', body });
+  } catch (err) {
+    // 409 on a conversation turn = the conversation moved on since the preview.
+    if (err instanceof ApiError) {
+      return { ...(err.body as DropResponse), conflict: err.status === 409 };
+    }
+    throw err;
+  }
+};
 export const previewTemplate = (body: {
   /** Omitted: the campaign's own template (what it will post). */
   template?: string;
@@ -83,6 +110,9 @@ export const previewTemplate = (body: {
       hashtags?: string[];
       color?: ColorData;
       breakdown?: DropTextBreakdown;
+      replyToTweetId?: string;
+      accountHandle?: string;
+      conversation?: ConversationPreviewInfo;
     }>('/api/template/preview', {
       method: 'POST',
       body,
@@ -115,6 +145,24 @@ export const clearContextHistory = (id: string) =>
   apiFetch<Json>(`/api/contexts/${id}/clear-history`, {
     method: 'POST',
     errorMessage: 'Failed to clear campaign history',
+  });
+
+export interface RestartConversationBody {
+  targetTweetId: string;
+  openingPost: string;
+  openerHandle?: string;
+  firstSpeakerAccountId?: string;
+}
+export const restartConversation = (id: string, body: RestartConversationBody) =>
+  apiFetch<{
+    success: boolean;
+    context?: TweetContext;
+    contexts?: TweetContext[];
+    queue?: QueueSlot[];
+  }>(`/api/contexts/${encodeURIComponent(id)}/conversation/restart`, {
+    method: 'POST',
+    body,
+    errorMessage: 'Could not restart the conversation',
   });
 
 // Settings

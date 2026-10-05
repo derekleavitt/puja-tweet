@@ -34,9 +34,17 @@ export const HistoryRow: React.FC<HistoryRowProps> = ({ log, copied, onCopy }) =
               {log.contextName}
             </span>
           )}
-          {log.accountHandle && (
+          {log.accountHandle && log.turn == null && (
             <span data-testid="history-account" className="text-neutral-500">
               @{log.accountHandle}
+            </span>
+          )}
+          {log.turn != null && (
+            <span
+              data-testid="history-turn"
+              className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800/60"
+            >
+              {log.accountHandle ? `@${log.accountHandle} · ` : ''}Turn {log.turn}
             </span>
           )}
           <span>

@@ -5,6 +5,7 @@
 import { ColorData, generateColor } from '../colorEngine.js';
 import type { QueueSlot } from '../../shared/types.js';
 import {
+  CONVERSATION_SLOT_PREVIEW,
   QUEUE_SLOTS_PER_CONTEXT,
   createQueueSlotForContext,
   formatSlotPreviewText,
@@ -62,7 +63,10 @@ export class QueueService {
     s.queue[idx] = {
       ...current,
       color: newColor,
-      previewText: formatSlotPreviewText(ctx.template, newColor, current.timeSlot),
+      previewText:
+        ctx.mode === 'conversation'
+          ? CONVERSATION_SLOT_PREVIEW
+          : formatSlotPreviewText(ctx.template, newColor, current.timeSlot),
       contextId: ctx.id,
       contextName: ctx.name,
       targetTweetId: ctx.targetTweetId,

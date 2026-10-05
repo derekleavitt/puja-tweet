@@ -73,6 +73,31 @@ export interface XAccountInfo {
   isDefault: boolean;
 }
 
+/** One voice of a conversation campaign: a connected account (or 'acct_env') and its persona. */
+export interface ConversationParticipant {
+  accountId: string;
+  persona: string;
+}
+
+/** Client-editable setup of a conversation campaign (several accounts replying in one thread). */
+export interface ConversationConfig {
+  participants: ConversationParticipant[]; // 2-5, unique accountId
+  sharedPrompt: string; // Premise / tone shared by every participant
+  openingPost: string; // The owner's own reply text (= the campaign's targetTweetId)
+  openerHandle?: string; // Without '@'; the account that posted the opening post
+  firstSpeakerAccountId?: string; // undefined = random participant
+  maxTurns?: number; // undefined = unlimited, else 1-500
+}
+
+/** Server-owned conversation progress (never accepted from clients). */
+export interface ConversationState {
+  runId: string; // 'run_<ts>'; a restart (or new target) creates a new one
+  turnCount: number; // Posted (live or simulated) turns in this run
+  nextSpeakerAccountId: string; // Chosen BEFORE the turn is written
+  summary?: string;
+  summaryThroughTurn?: number;
+}
+
 export interface TweetContext {
   id: string; // Unique context ID e.g. 'ctx_default', 'ctx_1790623000'
   name: string; // Context title e.g. 'Primary Eternal Colors'
@@ -94,6 +119,10 @@ export interface TweetContext {
   hashtags?: string[];
   hashtagEvolution?: HashtagEvolutionConfig; // Default off
   hashtagState?: HashtagState; // Server-owned (never accepted from clients)
+  /** undefined = 'single'. In 'conversation' mode several accounts take turns (see `conversation`). */
+  mode?: 'single' | 'conversation';
+  conversation?: ConversationConfig;
+  conversationState?: ConversationState; // Server-owned (never accepted from clients)
   lastPostedTimestamp?: number;
   currentJitterMs?: number;
   lastPostedSlot?: string;
@@ -207,6 +236,8 @@ export interface NextPostInfo {
   jitterFormatted?: string;
   /** Why the scheduler will not post this campaign right now (paused, cooldown, …); absent when free to post. */
   blockedReason?: string;
+  /** Handle of the next speaker (conversation campaigns). */
+  speakerHandle?: string;
 }
 
 export interface PostLog {
@@ -231,6 +262,10 @@ export interface PostLog {
   /** Account the drop was posted as (absent on logs from before multi-account). */
   accountId?: string;
   accountHandle?: string;
+  /** Conversation turns only (accountId/accountHandle hold the speaker). */
+  conversationRunId?: string;
+  turn?: number;
+  nextSpeakerAccountId?: string;
 }
 
 export interface QueueSlot {
@@ -246,6 +281,8 @@ export interface QueueSlot {
   replyTargetMode?: 'original_post' | 'last_comment';
   /** Handle of the account the campaign posts as (filled in when the queue is read). */
   accountHandle?: string;
+  /** Conversation campaigns: the account that speaks in this slot (only the next one is known). */
+  speakerAccountId?: string;
 }
 
 /** AI availability fields on `GET /api/status` (`geminiConfigured` is false when GEMINI_API_KEY is unset). */

@@ -9,6 +9,28 @@ import { DEFAULT_ACCOUNT_ID, type ColorData } from '../../shared/types.js';
 import { HttpError, toHttpError } from '../middleware/error.js';
 import { normaliseTags } from '../../shared/hashtags/index.js';
 import { formatTimeInZone } from '../../shared/time.js';
+import type { ExecuteDropOptions } from '../services/dropService.js';
+
+/** The conversation turn a preview returned, echoed by post-now; anything else is a 400. */
+const parseConversationEcho = (raw: unknown): ExecuteDropOptions['conversation'] => {
+  if (raw === undefined || raw === null) return undefined;
+  const c = raw as Record<string, unknown>;
+  if (
+    typeof c !== 'object' ||
+    typeof c.runId !== 'string' ||
+    typeof c.turnNumber !== 'number' ||
+    typeof c.speakerAccountId !== 'string' ||
+    typeof c.nextSpeakerAccountId !== 'string'
+  ) {
+    throw new HttpError(400, 'conversation must be the turn object returned by the preview');
+  }
+  return {
+    runId: c.runId,
+    turnNumber: c.turnNumber,
+    speakerAccountId: c.speakerAccountId,
+    nextSpeakerAccountId: c.nextSpeakerAccountId,
+  };
+};
 
 export const createDropsRouter = ({ services, drops }: AppDeps) => {
   const router = Router();
@@ -88,6 +110,33 @@ export const createDropsRouter = ({ services, drops }: AppDeps) => {
       ) {
         throw new HttpError(400, 'hashtags must be an array of strings');
       }
+      const target = resolveContext(contextId);
+      if (target.mode === 'conversation') {
+        // The turn is written once here; Post sends it back (with `conversation`) unchanged.
+        const turn = await drops.buildTurn(target);
+        const replyInfo = services.contexts.getEffectiveReplyTargetId(target);
+        res.json({
+          success: true,
+          previewText: turn.text,
+          charCount: turn.text.length,
+          replyToTweetId: turn.replyToTweetId,
+          lastPostedTweetId: target.lastPostedTweetId,
+          isFirstInChain: replyInfo.isFirstInChain,
+          accountId: turn.speakerAccountId,
+          accountHandle: turn.speakerHandle,
+          conversation: {
+            runId: turn.runId,
+            turnNumber: turn.turnNumber,
+            speakerAccountId: turn.speakerAccountId,
+            speakerHandle: turn.speakerHandle,
+            nextSpeakerAccountId: turn.nextSpeakerAccountId,
+            nextSpeakerHandle: turn.nextSpeakerHandle,
+            summaryUsed: turn.summaryUsed,
+            transcriptLength: turn.transcriptLength,
+          },
+        });
+        return;
+      }
       const targetColor = color || generateColor(slotType || 'random');
       const { fields } = await buildPreview(contextId, template, targetColor, hashtags);
 
@@ -104,7 +153,7 @@ export const createDropsRouter = ({ services, drops }: AppDeps) => {
 
   router.post('/post-now', async (req, res, next) => {
     try {
-      const { text, slotId, hashtags } = req.body;
+      const { text, slotId, hashtags, conversation } = req.body;
       if (text !== undefined && typeof text !== 'string') {
         throw new HttpError(400, 'text must be a string');
       }
@@ -114,6 +163,7 @@ export const createDropsRouter = ({ services, drops }: AppDeps) => {
         color: req.body.color,
         forceLive: req.body.forceLive === true,
         text,
+        conversation: parseConversationEcho(conversation),
         hashtags:
           text !== undefined && Array.isArray(hashtags) ? normaliseTags(hashtags) : undefined,
         source: 'manual',

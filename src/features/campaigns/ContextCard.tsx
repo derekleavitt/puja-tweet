@@ -8,6 +8,7 @@ import React, { useState } from 'react';
 import { Play, Pause, FlaskConical, Radio } from 'lucide-react';
 import { DropResponse, TweetContext } from '../../types.js';
 import { PostNowOptions } from '../../hooks/usePosting.js';
+import type { RestartConversationBody } from '../../api/endpoints.js';
 import { CardTarget } from './CardTarget.js';
 import { CardFrequency } from './CardFrequency.js';
 import { CardModeControls } from './CardModeControls.js';
@@ -15,6 +16,7 @@ import { CardActions } from './CardActions.js';
 import { AutoPausedBadge } from './AutoPausedBadge.js';
 import { CardHashtags } from './CardHashtags.js';
 import { CardHistory } from './CardHistory.js';
+import { CardConversation } from './CardConversation.js';
 import { CampaignPreview } from './CampaignPreview.js';
 import { useServerInfo } from '../../context/serverInfo.js';
 import { accountName, findAccount } from '../../lib/accounts.js';
@@ -28,6 +30,7 @@ interface ContextCardProps {
   onUpdate: (updates: Partial<TweetContext>) => Promise<void>;
   onToggle: () => void;
   onPost: (opts: PostNowOptions) => Promise<DropResponse | undefined>;
+  onRestart: (body: RestartConversationBody) => Promise<void>;
   onEdit: () => void;
   onDuplicate: () => void;
   onRequestClearHistory?: () => void;
@@ -59,7 +62,15 @@ const CHIP =
 export const ContextCard: React.FC<ContextCardProps> = (props) => {
   const { context: ctx, globalDryRun } = props;
   const [previewOpen, setPreviewOpen] = useState(false);
-  const badge = MODE_BADGES[ctx.engagementMode || 'reply'];
+  const conversation = ctx.mode === 'conversation';
+  const finished = !!ctx.autoPausedReason?.startsWith('Conversation finished');
+  const badge = conversation
+    ? {
+        label: 'Conversation',
+        className:
+          'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800',
+      }
+    : MODE_BADGES[ctx.engagementMode || 'reply'];
   const campaignDryRun = ctx.dryRun === true;
   const { accounts } = useServerInfo();
   const account = findAccount(accounts, ctx.accountId);
@@ -135,7 +146,7 @@ export const ContextCard: React.FC<ContextCardProps> = (props) => {
           </div>
         </div>
 
-        {!ctx.enabled && ctx.autoPausedReason && (
+        {!ctx.enabled && ctx.autoPausedReason && !(conversation && finished) && (
           <p
             data-testid="auto-paused-reason"
             className="p-2 rounded-lg text-[11px] bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800"
@@ -144,32 +155,41 @@ export const ContextCard: React.FC<ContextCardProps> = (props) => {
           </p>
         )}
 
-        <p data-testid="posts-as" className="text-xs text-neutral-600 dark:text-neutral-400">
-          Posts as{' '}
-          <span className="font-semibold text-neutral-900 dark:text-neutral-100">
-            {accountName(account, ctx.accountId)}
-          </span>
-          {account?.status === 'revoked' && (
-            <span className="ml-1.5 text-red-600 dark:text-red-400">(disconnected)</span>
-          )}
-          {ctx.accountId && !account && (
-            <span className="ml-1.5 text-red-600 dark:text-red-400">(pick another account)</span>
-          )}
-        </p>
+        {!conversation && (
+          <p data-testid="posts-as" className="text-xs text-neutral-600 dark:text-neutral-400">
+            Posts as{' '}
+            <span className="font-semibold text-neutral-900 dark:text-neutral-100">
+              {accountName(account, ctx.accountId)}
+            </span>
+            {account?.status === 'revoked' && (
+              <span className="ml-1.5 text-red-600 dark:text-red-400">(disconnected)</span>
+            )}
+            {ctx.accountId && !account && (
+              <span className="ml-1.5 text-red-600 dark:text-red-400">(pick another account)</span>
+            )}
+          </p>
+        )}
 
         <CardTarget targetTweetId={ctx.targetTweetId} />
 
         <CardFrequency context={ctx} countdown={props.countdown} onUpdate={props.onUpdate} />
-        <CardModeControls context={ctx} onUpdate={props.onUpdate} />
+        {conversation ? (
+          <CardConversation context={ctx} onRestart={props.onRestart} />
+        ) : (
+          <>
+            <CardModeControls context={ctx} onUpdate={props.onUpdate} />
 
-        <div className="text-xs">
-          <span className="text-[10px] uppercase font-mono text-neutral-400">Template:</span>
-          <div className="mt-1 p-2 rounded-md bg-neutral-100/70 dark:bg-neutral-800/80 font-mono text-[11px] text-neutral-700 dark:text-neutral-300 break-words">
-            {ctx.template}
-          </div>
-        </div>
+            <div className="text-xs">
+              <span className="text-[10px] uppercase font-mono text-neutral-400">Template:</span>
+              <div className="mt-1 p-2 rounded-md bg-neutral-100/70 dark:bg-neutral-800/80 font-mono text-[11px] text-neutral-700 dark:text-neutral-300 break-words">
+                {ctx.template}
+              </div>
+            </div>
 
-        <CardHashtags context={ctx} />
+            <CardHashtags context={ctx} />
+          </>
+        )}
+
         <CardHistory stats={ctx.stats} onRequestClearHistory={props.onRequestClearHistory} />
 
         {previewOpen && (
