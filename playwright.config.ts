@@ -27,7 +27,8 @@ export default defineConfig({
   workers: 1,
   retries: 0,
   timeout: 60_000,
-  reporter: [['list']],
+  // On CI the 'github' reporter turns failures into check-run annotations (readable without log access).
+  reporter: process.env.CI ? [['github'], ['list']] : [['list']],
   use: {
     baseURL: `http://localhost:${PORT}`,
     trace: 'retain-on-failure',
