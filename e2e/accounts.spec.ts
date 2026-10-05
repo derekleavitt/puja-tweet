@@ -57,7 +57,7 @@ async function mockAccounts(page: Page) {
         success: true,
         mode: 'pin',
         oauthToken: 'tok-pin',
-        authorizeUrl: 'https://api.x.com/oauth/authorize?oauth_token=tok-pin&force_login=true',
+        authorizeUrl: 'https://api.x.com/oauth/authorize?oauth_token=tok-pin',
       },
     }),
   );
@@ -142,10 +142,7 @@ test('connect (PIN), rename, assign to a campaign, and remove an account', async
   // Connect with a PIN
   await app.getByRole('button', { name: 'Use a PIN instead' }).click();
   const link = app.getByRole('link', { name: /Open X to authorize/ });
-  await expect(link).toHaveAttribute(
-    'href',
-    /oauth\/authorize\?oauth_token=tok-pin&force_login=true/,
-  );
+  await expect(link).toHaveAttribute('href', /oauth\/authorize\?oauth_token=tok-pin/);
   await app.getByLabel('PIN from X').fill('1234567');
   await app.getByRole('button', { name: 'Connect', exact: true }).click();
   await expect(row(app, 'brand_e2e')).toBeVisible();

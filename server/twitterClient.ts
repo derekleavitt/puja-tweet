@@ -520,11 +520,12 @@ export const OAUTH_ACCESS_TOKEN_URL = 'https://api.x.com/oauth/access_token';
 const OAUTH_AUTHORIZE_URL = 'https://api.x.com/oauth/authorize';
 
 /**
- * X's sign-in page for a request token. `force_login=true` makes X ask which account to
- * authorize instead of silently using whoever is signed in to x.com in this browser.
+ * X's authorize page for a request token. It authorizes the account currently signed in to x.com
+ * in this browser (switch accounts on x.com first). No `force_login`: X sends that to its new login
+ * flow, which loses the authorize step after "Continue with Google" and lands on the home feed.
  */
 export const oauth1AuthorizeUrl = (requestToken: string): string =>
-  `${OAUTH_AUTHORIZE_URL}?oauth_token=${encodeURIComponent(requestToken)}&force_login=true`;
+  `${OAUTH_AUTHORIZE_URL}?oauth_token=${encodeURIComponent(requestToken)}`;
 
 /** POSTs a signed, body-less OAuth 1.0a request and parses the form-encoded answer. */
 const oauthPost = async (url: string, authHeader: string, step: string) => {

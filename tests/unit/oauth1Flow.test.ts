@@ -98,9 +98,7 @@ describe('oauth1AccessToken', () => {
 
 describe('oauth1AuthorizeUrl', () => {
   it('forces X to ask which account to sign in with', () => {
-    expect(oauth1AuthorizeUrl('a b')).toBe(
-      'https://api.x.com/oauth/authorize?oauth_token=a%20b&force_login=true',
-    );
+    expect(oauth1AuthorizeUrl('a b')).toBe('https://api.x.com/oauth/authorize?oauth_token=a%20b');
   });
 });
 

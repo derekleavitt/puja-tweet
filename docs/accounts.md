@@ -35,9 +35,11 @@ a clear error). If the site is reached through a different host than the one the
 
 ## Connecting an account
 
-1. Settings → X accounts → **Connect account**. You are sent to X.
-2. X asks you to sign in (`force_login`): sign in as the account you want to add, not necessarily the
-   one your browser is logged in as. Approve the app.
+1. On x.com, switch to the account you want to add (account menu, bottom left; "Add an existing
+   account" if it isn't listed yet). X authorizes whichever account is active in this browser.
+2. Settings → X accounts → **Connect account**. X shows "Authorize app" for that account: approve it.
+   (The app does not send `force_login`: X routes it to its new login flow, which loses the
+   authorize step after "Continue with Google".)
 3. X sends you back to `/oauth/x/callback`; the app finishes the connection and shows Settings with
    the new @handle.
 

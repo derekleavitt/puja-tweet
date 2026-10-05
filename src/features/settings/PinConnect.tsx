@@ -35,7 +35,7 @@ export const PinConnect: React.FC<PinConnectProps> = ({ pending, busy, onSubmit,
         >
           Open X to authorize <ExternalLink className="w-3 h-3" />
         </a>{' '}
-        and sign in as the account you want to add. 2. Enter the PIN X shows:
+        while signed in to x.com as the account you want to add. 2. Enter the PIN X shows:
       </p>
       <div className="flex items-center gap-2">
         <input
