@@ -47,13 +47,14 @@ a11ce00 revert: "feat: play it cool" — did not pass review
 - 🌄 **Sunrise & sunset palettes**: timezone-aware and daylight-saving-proof, because love should not show up an hour early in November.
 - 🎲 **Jitter**: posts arrive at gently randomized times, so it feels spontaneous. (It is not spontaneous. It is a scheduler. But it *cares*.)
 - 🧵 **Reply chains**: each drop can reply to the last one, forming a long thread of devotion. If the thread breaks, it recovers. Unlike some of us.
-- ✍️ **AI poetry** (Gemini): optional. Hard-capped at 280 characters, because even love has rate limits.
+- ✍️ **AI poetry** (Gemini Flash-Lite): optional. Hard-capped at 280 characters and always ends on a full sentence, because even love has rate limits. If Gemini is busy it waits a beat and tries again.
 - #️⃣ **Evolving hashtags**: optional, per campaign. Every tweet trades `#eternal #colors` for fresh, related tags and never repeats itself, like a poet with a thesaurus and commitment issues.
 - 👥 **Several X accounts**: connect extra accounts in Settings and pick one per campaign ("Posts as"). Each account keeps its own cooldown and spacing. See [`docs/accounts.md`](docs/accounts.md).
-- 💬 **Conversations**: let 2 to 5 of your accounts, each with its own AI persona, chat in one thread and hand the mic over with an @mention. A book club where nobody did the reading. See [`docs/conversations.md`](docs/conversations.md).
+- 💬 **Conversations**: let 2 to 5 of your accounts, each with its own AI persona, chat in one thread and hand the mic over with an @mention (everyone else gets a `cc`, so anyone can jump in). Random turn order, unlimited or N turns per round, Resume for another round, Restart for a new thread. A book club where nobody did the reading. See [`docs/conversations.md`](docs/conversations.md).
 - 🛑 **Global dry-run & pause**: a fresh install starts in "write love letters but don't send them" mode. Very relatable.
 - 🔐 **Locked to one Google account**: only the owner can log in. This is a love bot, not a group chat.
-- 🧯 **Circuit breaker**: 5 failures in a row and a campaign takes a breather instead of spamming. Emotional maturity, implemented in TypeScript.
+- 🧯 **Circuit breaker**: 5 real failures in a row (revoked account, rejected reply…) and a campaign takes a breather instead of spamming. Emotional maturity, implemented in TypeScript.
+- 🩹 **Bounces back**: temporary hiccups (AI busy, X having a moment, network blips) retry on a growing back-off (up to 15 min) and never pause the campaign; a restart mid-post continues on the right turn. Each campaign keeps its own history, so the AI never forgets how the story started. See [`docs/campaign-isolation.md`](docs/campaign-isolation.md) §7.
 
 ---
 
@@ -113,12 +114,27 @@ npm run dev       # dashboard + API on http://localhost:3000
 
 | Command | What it does |
 | :--- | :--- |
-| `npm test` | 228 unit/API tests. All of them believe in you. |
+| `npm test` | 545 unit/API tests. All of them believe in you. |
 | `npm run e2e` | Playwright clicks through every screen like a nervous first date |
 | `npm run lint && npm run typecheck` | Ensures the love is well-typed |
 | `npm run post-drop -- --dry-run` | Rehearse a drop in the mirror without actually sending it |
 
 Configuration lives in `.env` (see [`.env.example`](.env.example)). Never commit real keys. *Never.* We have the `git filter-repo` scars to prove it.
+
+First time on a new machine: `npx playwright install chromium` before `npm run e2e`. Deploys don't need your machine at all: every merge to `main` deploys to Cloud Run through GitHub Actions.
+
+### 📚 Docs
+
+| Doc | What's in it |
+| :--- | :--- |
+| [`docs/gcp-setup.md`](docs/gcp-setup.md) / [`docs/deploy.md`](docs/deploy.md) | Cloud Run, Scheduler, secrets, deploys |
+| [`docs/accounts.md`](docs/accounts.md) | Connecting extra X accounts, "Posts as", X portal setup |
+| [`docs/conversations.md`](docs/conversations.md) | Conversation campaigns, step by step |
+| [`docs/hashtags.md`](docs/hashtags.md) | The Hashtags field, evolution, AI hashtag rules |
+| [`docs/campaign-isolation.md`](docs/campaign-isolation.md) | What is per campaign vs global, chains, recovery and history |
+| [`docs/api.md`](docs/api.md) | Every API route |
+| [`docs/design/conversations.md`](docs/design/conversations.md) | Design notes for conversations |
+| [`docs/handoff.md`](docs/handoff.md) | Where things stand, known trade-offs, ideas for later |
 
 ---
 
