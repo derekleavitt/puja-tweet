@@ -36,10 +36,12 @@ beforeEach(() => {
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   process.env.GEMINI_API_KEY = 'test-key';
   delete process.env.GEMINI_MAX_CALLS_PER_DAY;
+  process.env.GEMINI_BUSY_RETRY_MS = '0';
   resetGeminiCallCounter();
   generateContent.mockReset();
 });
 afterEach(() => {
+  delete process.env.GEMINI_BUSY_RETRY_MS;
   if (prevKey === undefined) delete process.env.GEMINI_API_KEY;
   else process.env.GEMINI_API_KEY = prevKey;
   vi.restoreAllMocks();
@@ -318,6 +320,32 @@ describe('generateAgentText', () => {
     expect(generateContent.mock.calls.length).toBeGreaterThan(1);
     delete process.env.GEMINI_API_KEY;
     await expect(generateAgentText('hi', opts)).rejects.toBeInstanceOf(AgentUnavailableError);
+  });
+
+  it('waits and retries every model once when they are all busy (503/429)', async () => {
+    process.env.GEMINI_BUSY_RETRY_MS = '0';
+    const busy = new Error('{"error":{"code":503,"message":"high demand","status":"UNAVAILABLE"}}');
+    const models = 3; // default model list
+    for (let i = 0; i < models; i++) generateContent.mockRejectedValueOnce(busy);
+    generateContent.mockResolvedValueOnce({ text: 'Back again.' });
+    await expect(generateAgentText('hi', opts)).resolves.toBe('Back again.');
+    expect(generateContent).toHaveBeenCalledTimes(models + 1);
+  });
+
+  it('gives up after the retry pass when the models stay busy', async () => {
+    process.env.GEMINI_BUSY_RETRY_MS = '0';
+    generateContent.mockRejectedValue(new Error('429 RESOURCE_EXHAUSTED'));
+    const err = await generateAgentText('hi', opts).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(AgentUnavailableError);
+    expect(generateContent).toHaveBeenCalledTimes(6);
+    expect((err as Error).message.match(/RESOURCE_EXHAUSTED/g)).toHaveLength(3);
+  });
+
+  it('does not retry errors that are not "busy"', async () => {
+    process.env.GEMINI_BUSY_RETRY_MS = '0';
+    generateContent.mockRejectedValue(new Error('models/x is not found'));
+    await expect(generateAgentText('hi', opts)).rejects.toBeInstanceOf(AgentUnavailableError);
+    expect(generateContent).toHaveBeenCalledTimes(3);
   });
 
   it('names each model and its reason (without API keys) when every model fails', async () => {
