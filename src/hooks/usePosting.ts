@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react';
-import { postNow } from '../api/endpoints.js';
+import { postNow, type ConversationEcho } from '../api/endpoints.js';
 import { ColorData, DropResponse, PostLog } from '../types.js';
 import { errorMessage } from '../lib/errors.js';
 
@@ -15,6 +15,10 @@ export interface PostNowOptions {
   text?: string;
   hashtags?: string[];
   slotId?: string;
+  /** Conversation turn the text was previewed for (the server rejects a stale one with 409). */
+  conversation?: ConversationEcho;
+  /** Conversation turns: speaker handle (no '@'), used only to name the speaker in the confirm dialog. */
+  speakerHandle?: string;
 }
 
 interface UsePostingDeps {
@@ -38,6 +42,7 @@ export function usePosting({ addLog, refresh }: UsePostingDeps) {
         ...(opts.text ? { text: opts.text } : {}),
         ...(opts.text && opts.hashtags ? { hashtags: opts.hashtags } : {}),
         ...(opts.slotId ? { slotId: opts.slotId } : {}),
+        ...(opts.conversation ? { conversation: opts.conversation } : {}),
       });
       if (data.log) {
         addLog(data.log);

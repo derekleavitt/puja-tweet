@@ -18,6 +18,10 @@ interface QueueSlotCardProps {
   evolvesHashtags?: boolean;
   /** The campaign's most recently posted evolved tags (without '#'). */
   lastHashtags?: string[];
+  /** The slot belongs to a conversation campaign: its speaker is named instead of an account. */
+  conversation?: boolean;
+  /** First slot of the queue: for a conversation its speaker is known (the next one). */
+  isNextTurn?: boolean;
   isPosting: boolean;
   onReroll: () => void;
   onSend: () => void;
@@ -30,6 +34,8 @@ export const QueueSlotCard: React.FC<QueueSlotCardProps> = ({
   canReroll,
   evolvesHashtags,
   lastHashtags,
+  conversation,
+  isNextTurn,
   isPosting,
   onReroll,
   onSend,
@@ -61,7 +67,15 @@ export const QueueSlotCard: React.FC<QueueSlotCardProps> = ({
 
         <div className="p-2 rounded-lg bg-neutral-50 dark:bg-neutral-800/70 border border-neutral-200/70 dark:border-neutral-700/60">
           <div className="text-[10px] uppercase font-mono text-neutral-400 mb-0.5 flex items-center justify-between">
-            <span>Queued Message{slot.accountHandle ? ` · @${slot.accountHandle}` : ''}</span>
+            <span data-testid="queue-slot-speaker">
+              {conversation
+                ? `Queued Turn · ${
+                    isNextTurn && slot.accountHandle
+                      ? `@${slot.accountHandle} (next)`
+                      : 'random voice'
+                  }`
+                : `Queued Message${slot.accountHandle ? ` · @${slot.accountHandle}` : ''}`}
+            </span>
             {slot.targetTweetId && <span>→ #{slot.targetTweetId.slice(0, 6)}…</span>}
           </div>
           {slot.previewText ? (
@@ -72,7 +86,11 @@ export const QueueSlotCard: React.FC<QueueSlotCardProps> = ({
               {slot.previewText}
             </p>
           ) : (
-            <p className="text-neutral-400 text-[11px] italic">Text is composed when it posts.</p>
+            <p className="text-neutral-400 text-[11px] italic">
+              {conversation
+                ? '✨ AI turn, written when it posts'
+                : 'Text is composed when it posts.'}
+            </p>
           )}
           {evolvesHashtags && (
             <p

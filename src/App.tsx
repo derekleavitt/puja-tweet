@@ -164,6 +164,7 @@ function ChromaBotDashboard() {
                   onToggleContext={campaignActions.handleToggleContext}
                   onClearContextHistory={campaignActions.handleClearContextHistory}
                   onPostNow={confirmedPost.request}
+                  onRestartConversation={campaignActions.handleRestartConversation}
                 />
               )}
 
@@ -222,7 +223,7 @@ function ChromaBotDashboard() {
         {confirmedPost.pending && (
           <ConfirmDialog
             title="Post live to X?"
-            message={`Campaign "${confirmedPost.pending.campaign}" will post a real tweet as ${accountName(findAccount(status.serverInfo.accounts, confirmedPost.pending.accountId), confirmedPost.pending.accountId)} targeting #${confirmedPost.pending.targetTweetId}.`}
+            message={`Campaign "${confirmedPost.pending.campaign}" will post a real tweet as ${confirmedPost.pending.speakerHandle ? `@${confirmedPost.pending.speakerHandle}` : accountName(findAccount(status.serverInfo.accounts, confirmedPost.pending.accountId), confirmedPost.pending.accountId)} targeting #${confirmedPost.pending.targetTweetId}.`}
             confirmLabel="Post live"
             onConfirm={confirmedPost.confirm}
             onCancel={confirmedPost.cancel}
