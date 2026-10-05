@@ -363,15 +363,34 @@ describe('finished conversations, edits and restarts', () => {
     return c;
   };
 
-  it('a finished conversation cannot be resumed, triggered or posted', async () => {
+  it('a finished conversation is not triggered or posted until resumed', async () => {
     const c = await finishOne();
-    const resume = await request(app).put(`/api/contexts/${c.id}`).send({ enabled: true });
-    expect(resume.status).toBe(400);
-    expect(resume.body.error).toMatch(/finished/);
     const trigger = await request(app).post(`/api/contexts/${c.id}/trigger`).send({});
     expect(trigger.status).toBe(409);
     expect(fake.tweets).toHaveLength(1);
     expect(ctxOf(c.id).conversationState!.turnCount).toBe(1);
+  });
+
+  it('resuming a finished conversation continues the same thread for another round', async () => {
+    const c = await finishOne();
+    const first = fake.tweets[0];
+    const resume = await request(app).put(`/api/contexts/${c.id}`).send({ enabled: true });
+    expect(resume.status).toBe(200);
+    expect(resume.body.context.enabled).toBe(true);
+    expect(resume.body.context.autoPausedReason).toBeUndefined();
+    expect(resume.body.context.conversationState).toMatchObject({
+      turnCount: 1,
+      roundStartTurn: 1,
+    });
+    now += 61 * MIN;
+    makeDue(c.id);
+    await scheduler.tick();
+    expect(fake.tweets).toHaveLength(2);
+    expect(fake.tweets[1].inReplyTo).toBe(first.id); // same thread, continues the chain
+    const done = ctxOf(c.id);
+    expect(done.conversationState!.turnCount).toBe(2);
+    expect(done.enabled).toBe(false);
+    expect(done.autoPausedReason).toBe('Conversation finished (1 turns)');
   });
 
   it('lowering maxTurns to an already reached count finishes the conversation', async () => {

@@ -6,6 +6,7 @@
  */
 
 import type { ColorData, PostLog, TweetContext } from '../../shared/types.js';
+import { roundFinished } from '../../shared/conversationRound.js';
 import { formatTimeInZone, hourInZone, slotTypeForHour } from '../../shared/time.js';
 import { checkTweetText } from '../../shared/tweetLength.js';
 import { HttpError } from '../middleware/error.js';
@@ -205,10 +206,10 @@ export const createDropService = (deps: DropDeps) => {
       throw new HttpError(400, `"${context.name}" has no conversation state.`);
     }
     const maxTurns = context.conversation.maxTurns;
-    if (maxTurns && state.turnCount >= maxTurns) {
+    if (roundFinished(state, maxTurns)) {
       throw new HttpError(
         409,
-        `Conversation finished (${maxTurns} turns); restart it with a new opening reply.`,
+        `Conversation finished (${maxTurns} turns); resume it for ${maxTurns} more, or restart it.`,
       );
     }
     const isDryRun =

@@ -93,6 +93,7 @@ export interface ConversationConfig {
 export interface ConversationState {
   runId: string; // 'run_<ts>'; a restart (or new target) creates a new one
   turnCount: number; // Posted (live or simulated) turns in this run
+  roundStartTurn?: number; // turnCount when the current round began (resuming a finished run)
   nextSpeakerAccountId: string; // Chosen BEFORE the turn is written
   summary?: string;
   summaryThroughTurn?: number;

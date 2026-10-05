@@ -3,6 +3,7 @@
  */
 
 import { DEFAULT_TWEET_TEMPLATE } from '../colorEngine.js';
+import { roundFinished } from '../../shared/conversationRound.js';
 import { HttpError } from '../middleware/error.js';
 import { extractTweetId } from '../../shared/tweetId.js';
 import { createDefaultSettings, getDefaultTargetTweetId } from '../store/defaults.js';
@@ -341,13 +342,11 @@ export class ContextService {
         : accountProblem(this.sm.state, accountId);
     if (blocked) throw new HttpError(400, `Cannot resume "${current.name}": ${blocked}.`);
     const finishedAt = conversation?.maxTurns;
-    const finished =
-      isConversation && !!finishedAt && (conversationState?.turnCount ?? 0) >= finishedAt;
-    if (resumed && finished) {
-      throw new HttpError(
-        400,
-        `Cannot resume "${current.name}": the conversation finished (${finishedAt} turns). Restart it with a new opening reply.`,
-      );
+    let finished = isConversation && roundFinished(conversationState, finishedAt);
+    if (resumed && finished && conversationState) {
+      // Resuming a finished conversation starts a new round of maxTurns in the same thread.
+      conversationState = { ...conversationState, roundStartTurn: conversationState.turnCount };
+      finished = false;
     }
 
     // The chain anchor is server-owned: only a target change, an account change (another account's
@@ -517,7 +516,7 @@ export class ContextService {
     state.nextSpeakerAccountId = turn.nextSpeakerAccountId;
     const max = ctx.conversation?.maxTurns;
     let autoPausedReason: string | undefined;
-    if (max && state.turnCount >= max) {
+    if (roundFinished(state, max)) {
       autoPausedReason = `${FINISHED_PREFIX} (${max} turns)`;
       ctx.enabled = false;
       ctx.autoPausedReason = autoPausedReason;
