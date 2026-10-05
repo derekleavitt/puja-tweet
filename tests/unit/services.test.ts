@@ -255,7 +255,7 @@ describe('services over MemoryStore', () => {
       expect(svc.logs.getLogs()).toEqual([]);
     });
 
-    it('clears one context history and resets its stats and anchors', () => {
+    it('clears one context history and resets its stats but keeps its chain anchor', () => {
       const ctx = svc.contexts.createContext({ name: 'A', targetTweetId: TWEET });
       svc.contexts.recordContextPostResult(ctx.id, 'success', '7777777777777777777');
       svc.logs.addLog(makeLog({ id: 'mine', contextId: ctx.id }));
@@ -263,7 +263,9 @@ describe('services over MemoryStore', () => {
       const result = svc.logs.clearContextHistory(ctx.id);
       expect(result.clearedCount).toBe(1);
       expect(result.context?.stats?.totalPosts).toBe(0);
-      expect(result.context?.lastPostedTweetId).toBeUndefined();
+      // History cleanup is not a chain reset (that is reset-chain / "Reset to Root").
+      expect(result.context?.lastPostedTweetId).toBe('7777777777777777777');
+      expect(result.context?.chainAnchor?.tweetId).toBe('7777777777777777777');
       expect(svc.logs.getLogs().map((l) => l.id)).toEqual(['other']);
     });
 

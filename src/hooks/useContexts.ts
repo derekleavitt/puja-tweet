@@ -58,7 +58,11 @@ export function useContexts(deps: UseContextsDeps) {
   };
 
   const handleUpdateContext = async (id: string, updates: Partial<TweetContext>) => {
-    await applyResult(await updateContext(id, updates));
+    // The chain anchor is server-owned. A caller that wants "reset to root" passes
+    // `lastPostedTweetId: undefined`; JSON would drop that key, so send an explicit null.
+    const body: Record<string, unknown> = { ...updates };
+    if ('lastPostedTweetId' in updates && !updates.lastPostedTweetId) body.lastPostedTweetId = null;
+    await applyResult(await updateContext(id, body as Partial<TweetContext>));
   };
 
   const handleDeleteContext = async (id: string) => {

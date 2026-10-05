@@ -236,8 +236,9 @@ describe('dropService.executeDrop', () => {
         engagementMode: 'reply',
         replyTargetMode: 'last_comment',
         dryRun: false,
-        lastPostedTweetId: '555',
       });
+      // Anchors are server-owned: only this campaign's own successful reply can set one.
+      svc.contexts.recordContextPostResult(id, 'success', '555', 'reply');
       svc.logs.addLog({
         id: 'log_1',
         timestamp: new Date().toISOString(),

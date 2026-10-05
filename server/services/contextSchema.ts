@@ -41,6 +41,8 @@ export const contextUpdateSchema = z.object({
   schedule: scheduleSchema.optional(),
   template: z.string().optional(),
   themePreference: z.enum(['dynamic', 'vibrant', 'minimal', 'poetic']).optional(),
+  // Accepted only as an explicit reset (null / ''); a string value is ignored (the anchor is
+  // server-owned, see `ContextService.updateContext`), so an edit form echoing it is harmless.
   lastPostedTweetId: z.string().nullish(),
   // Config only: `hashtagState` is server-owned and stripped from client bodies.
   hashtagEvolution: hashtagEvolutionSchema.optional(),

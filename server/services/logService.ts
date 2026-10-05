@@ -42,16 +42,14 @@ export class LogService {
     });
     const clearedCount = beforeCount - s.logs.length;
 
-    // Reset campaign stats and anchors
+    // Reset this campaign's stats and clock only. Clearing history is log cleanup, not a chain
+    // reset: the chain anchor (verified by its own provenance, not by these logs) is kept, so the
+    // next drop still continues the thread. "Reset to root" / reset-chain is the explicit action.
     const ctx = this.sm.getContext(contextId);
     if (ctx) {
       ctx.stats = { totalPosts: 0, successfulPosts: 0, simulatedPosts: 0, failedPosts: 0 };
       ctx.lastPostedTimestamp = Date.now(); // restart the interval, never fire at once
       ctx.lastPostedSlot = undefined;
-      ctx.lastPostedTweetId = undefined; // Reset chain anchor to clean slate
-      if (s.activeContextId === contextId) {
-        s.settings.lastPostedTweetId = undefined;
-      }
       this.queue.clearAndRegenerateQueue(contextId);
     }
     this.sm.persist();
