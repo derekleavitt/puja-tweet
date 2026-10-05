@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ExternalLink, Clock, Repeat, UserCheck } from 'lucide-react';
+import { ExternalLink, Clock, Repeat, UserCheck, AlertTriangle } from 'lucide-react';
 import { formatHHmm12h, tzAbbreviation } from '../../shared/time.js';
 import { NextPostInfo, CredentialsStatus, BotSettings, TweetContext } from '../types.js';
 
@@ -159,6 +159,16 @@ export const StatusBar: React.FC<StatusBarProps> = ({
             <span className="font-mono font-semibold text-neutral-900 dark:text-neutral-100 tabular-nums">
               {formatCountdown(secondsLeft)}
             </span>
+            {nextPost?.blockedReason && (
+              <span
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800"
+                title="The scheduler will not post until this is resolved."
+                data-testid="scheduler-blocked-reason"
+              >
+                <AlertTriangle className="w-2.5 h-2.5" />
+                {nextPost.blockedReason}
+              </span>
+            )}
             {nextPost?.jitterFormatted && (
               <span
                 className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800"

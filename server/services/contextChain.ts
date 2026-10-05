@@ -115,6 +115,11 @@ export const generateJitterForContext = (context: TweetContext): number => {
     return 0;
   }
   const intervalMinutes = context.schedule.intervalMinutes || 60;
+  // Short intervals are already frequent; random delay there only makes posts skip whole ticks.
+  if (context.schedule.mode === 'interval' && intervalMinutes < 5) {
+    context.currentJitterMs = 0;
+    return 0;
+  }
   const windowMs =
     context.schedule.mode === 'interval'
       ? intervalMinutes * 60 * 1000

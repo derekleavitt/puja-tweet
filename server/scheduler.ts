@@ -20,7 +20,11 @@ import { services } from './services/index.js';
 import type { PendingFire, TweetContext } from '../shared/types.js';
 
 /** Minimum spacing between any two live drops across all campaigns. */
-const MIN_LIVE_SPACING_MS = 60 * 1000;
+// Slightly under a minute: Cloud Scheduler ticks every ~60 s and a post takes a few seconds,
+// so a strict 60 s gate made 1-minute campaigns skip every other tick.
+const MIN_LIVE_SPACING_MS = 50 * 1000;
+/** A campaign this close to due counts as due, so tick timing drift doesn't push it a whole tick later. */
+const DUE_TOLERANCE_MS = 5 * 1000;
 
 /** A persisted pending fire older than this at boot/tick is dropped rather than fired late. */
 const STALE_PENDING_MS = 60 * 60 * 1000;
@@ -127,19 +131,17 @@ class SchedulerService {
       console.error('[Scheduler] Failed to top up the queue:', err);
     }
 
-    // 0. Global pause: nothing scheduled runs until the owner resumes.
-    if (services.settings.isGlobalPaused()) return 'done';
+    // Global gates: global pause, cooldown, exhausted X rate window.
+    const globalBlock = this.getGlobalBlockedReason();
+    if (globalBlock) {
+      console.log(`[Scheduler] Tick skipped: ${globalBlock}`);
+      return 'done';
+    }
 
     const contexts = services.contexts.getContexts().filter((c) => c.enabled);
     this.enabledCount = contexts.length;
-    if (contexts.length === 0) return 'done';
-
-    // 1. Global Rate Limit / Cooldown: safe standby while it expires
-    if (services.rateLimit.getCooldownState().isThrottled) return 'done';
-
-    // 2. Pre-Emptive Rate Window Check: if no requests remain in the window, wait for reset
-    const telemetry = services.rateLimit.getRateLimitTelemetry();
-    if (telemetry.headersCaptured && telemetry.remaining <= 0 && telemetry.secondsUntilReset > 0) {
+    if (contexts.length === 0) {
+      console.log('[Scheduler] Tick skipped: no running campaigns (all paused).');
       return 'done';
     }
 
@@ -171,7 +173,7 @@ class SchedulerService {
         services.contexts.setContextLastPostedTimestamp(context.id, now);
         return;
       }
-      if (now - lastPosted >= effectiveRequiredMs) {
+      if (now - lastPosted >= effectiveRequiredMs - DUE_TOLERANCE_MS) {
         if (!this.canFireNow()) return; // anti-burst: wait for the next tick
         console.log(
           `[Scheduler] Context "${context.name}" interval reached ` +
@@ -239,6 +241,34 @@ class SchedulerService {
     await this.runDrop({ contextId: context.id, slotType, source: 'scheduler' });
   }
 
+  /** Why no scheduled post can go out at all right now; undefined when the scheduler is free to post. */
+  public getGlobalBlockedReason(): string | undefined {
+    if (services.settings.isGlobalPaused()) {
+      return 'Paused: scheduled posts are off (switch the header to Running)';
+    }
+    const cooldown = services.rateLimit.getCooldownState();
+    if (cooldown.isThrottled) {
+      return `X cooldown: ${Math.ceil(cooldown.secondsRemaining / 60)}m left${cooldown.reason ? ` (${cooldown.reason})` : ''}`;
+    }
+    const telemetry = services.rateLimit.getRateLimitTelemetry();
+    if (telemetry.headersCaptured && telemetry.remaining <= 0 && telemetry.secondsUntilReset > 0) {
+      return `X rate-limit window used up: resets in ${Math.ceil(telemetry.secondsUntilReset / 60)}m`;
+    }
+    return undefined;
+  }
+
+  /** Why this campaign won't be posted by the scheduler right now, if anything blocks it. */
+  public getBlockedReason(context: TweetContext): string | undefined {
+    const global = this.getGlobalBlockedReason();
+    if (global) return global;
+    if (!context.enabled) {
+      return context.autoPausedReason
+        ? `Campaign auto-paused: ${context.autoPausedReason}`
+        : 'Campaign is paused (resume it on its card)';
+    }
+    return undefined;
+  }
+
   public getNextScheduledPost(contextId?: string) {
     const context = contextId
       ? services.contexts.getContext(contextId) || services.contexts.getActiveContext()
@@ -255,6 +285,13 @@ class SchedulerService {
   }
 
   private calculateNextPostForContext(context: TweetContext) {
+    return {
+      ...this.calculateNextPostTiming(context),
+      blockedReason: this.getBlockedReason(context),
+    };
+  }
+
+  private calculateNextPostTiming(context: TweetContext) {
     const { schedule } = context;
     const now = Date.now();
 
