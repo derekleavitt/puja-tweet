@@ -96,7 +96,8 @@ export class ContextService {
       name: data.name?.trim() || `Context #${s.contexts.length + 1}`,
       description: data.description?.trim() || '',
       targetTweetId: cleanTweetId(
-        data.targetTweetId || s.settings.targetTweetId || getDefaultTargetTweetId(),
+        // Never inherit another campaign's target (the settings mirror holds the ACTIVE campaign's).
+        data.targetTweetId || getDefaultTargetTweetId(),
       ),
       replyTargetMode: data.replyTargetMode || 'original_post',
       engagementMode: data.engagementMode || 'reply',
