@@ -42,13 +42,10 @@ A snapshot for picking the project back up locally (Claude Code CLI on your own 
 - **Not built yet:** a "Generate personas" helper, hashtags every Nth conversation turn, and an AI
   that picks the next speaker.
 
-## Branches on GitHub
+## Branches
 
-| Branch | What it is | Status |
-| --- | --- | --- |
-| `main` | Everything above; this is what's deployed. | Use this. |
-| `held-docs-v2` | Two old docs commits that were held at the owner's request and never merged: a "Backlog v2" regroom of `BACKLOG.md` and a docs-drift pass. Both predate the multi-account, conversation and recovery work, so parts are stale. | Reference only. Cherry-pick what's useful or delete the branch. |
-| `claude/inspiring-bardeen-fhi8x3` | The cloud session's working branch. Every change on it is merged into `main` through its PRs (the last is #25). | Safe to delete. |
+`main` is the only branch: it is what's deployed. Work on a short-lived branch, open a PR, and merge
+when CI is green; merging deploys. See `CLAUDE.md` for commands, architecture and rules.
 
 ## Working locally
 

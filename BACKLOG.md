@@ -1,5 +1,11 @@
 # X ChromaBot — Engineering Backlog
 
+> **Historical record.** This is the original backlog from the first audit (2026-09-30). Most of it
+> has shipped, and the app has changed a lot since then: Studio was removed, and multiple X accounts,
+> conversation campaigns and recovery were added. For current state see
+> [`docs/handoff.md`](docs/handoff.md) and [`CLAUDE.md`](CLAUDE.md). File and line references
+> below are to the old commit.
+
 Audit date: 2026-09-30. Branch audited: `claude/inspiring-bardeen-fhi8x3` (identical to `main`, HEAD `b432d85`).
 All `file:line` references are to that commit. Line numbers will shift as tickets land; agents should
 locate code by the quoted identifiers, not only by line number.

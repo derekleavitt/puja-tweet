@@ -134,6 +134,7 @@ First time on a new machine: `npx playwright install chromium` before `npm run e
 | [`docs/campaign-isolation.md`](docs/campaign-isolation.md) | What is per campaign vs global, chains, recovery and history |
 | [`docs/api.md`](docs/api.md) | Every API route |
 | [`docs/design/conversations.md`](docs/design/conversations.md) | Design notes for conversations |
+| [`CLAUDE.md`](CLAUDE.md) | Commands, architecture, conventions and hard rules (for Claude Code and humans) |
 
 ---
 
