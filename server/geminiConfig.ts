@@ -2,11 +2,8 @@
  * Gemini configuration: env-driven model list, optional daily call cap, UA string.
  */
 
-export const DEFAULT_GEMINI_MODELS = [
-  'gemini-3.8-flash',
-  'gemini-3.1-flash-lite',
-  'gemini-flash-latest',
-];
+/** Owner's choice: Flash-Lite only (GEMINI_MODEL / GEMINI_FALLBACK_MODEL override it). */
+export const DEFAULT_GEMINI_MODELS = ['gemini-3.1-flash-lite'];
 
 /** GEMINI_MODEL (primary) then GEMINI_FALLBACK_MODEL (comma list ok); defaults when both unset. */
 export function getGeminiModels(env: NodeJS.ProcessEnv = process.env): string[] {

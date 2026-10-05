@@ -4,7 +4,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { generateColor } from '../../server/colorEngine.js';
-import { resetGeminiCallCounter } from '../../server/geminiConfig.js';
+import { getGeminiModels, resetGeminiCallCounter } from '../../server/geminiConfig.js';
 import { checkTweetText, weightedTweetLength } from '../../shared/tweetLength.js';
 import type { PostLog, TweetContext } from '../../shared/types.js';
 
@@ -41,6 +41,7 @@ beforeEach(() => {
   generateContent.mockReset();
 });
 afterEach(() => {
+  vi.unstubAllEnvs();
   delete process.env.GEMINI_BUSY_RETRY_MS;
   if (prevKey === undefined) delete process.env.GEMINI_API_KEY;
   else process.env.GEMINI_API_KEY = prevKey;
@@ -317,7 +318,7 @@ describe('generateAgentText', () => {
   it('throws AgentUnavailableError when not configured or every model fails', async () => {
     generateContent.mockRejectedValue(new Error('boom'));
     await expect(generateAgentText('hi', opts)).rejects.toBeInstanceOf(AgentUnavailableError);
-    expect(generateContent.mock.calls.length).toBeGreaterThan(1);
+    expect(generateContent).toHaveBeenCalledTimes(getGeminiModels().length);
     delete process.env.GEMINI_API_KEY;
     await expect(generateAgentText('hi', opts)).rejects.toBeInstanceOf(AgentUnavailableError);
   });
@@ -325,7 +326,7 @@ describe('generateAgentText', () => {
   it('waits and retries every model once when they are all busy (503/429)', async () => {
     process.env.GEMINI_BUSY_RETRY_MS = '0';
     const busy = new Error('{"error":{"code":503,"message":"high demand","status":"UNAVAILABLE"}}');
-    const models = 3; // default model list
+    const models = getGeminiModels().length;
     for (let i = 0; i < models; i++) generateContent.mockRejectedValueOnce(busy);
     generateContent.mockResolvedValueOnce({ text: 'Back again.' });
     await expect(generateAgentText('hi', opts)).resolves.toBe('Back again.');
@@ -337,18 +338,21 @@ describe('generateAgentText', () => {
     generateContent.mockRejectedValue(new Error('429 RESOURCE_EXHAUSTED'));
     const err = await generateAgentText('hi', opts).catch((e: Error) => e);
     expect(err).toBeInstanceOf(AgentUnavailableError);
-    expect(generateContent).toHaveBeenCalledTimes(6);
-    expect((err as Error).message.match(/RESOURCE_EXHAUSTED/g)).toHaveLength(3);
+    const models = getGeminiModels().length;
+    expect(generateContent).toHaveBeenCalledTimes(models * 2);
+    expect((err as Error).message.match(/RESOURCE_EXHAUSTED/g)).toHaveLength(models);
   });
 
   it('does not retry errors that are not "busy"', async () => {
     process.env.GEMINI_BUSY_RETRY_MS = '0';
     generateContent.mockRejectedValue(new Error('models/x is not found'));
     await expect(generateAgentText('hi', opts)).rejects.toBeInstanceOf(AgentUnavailableError);
-    expect(generateContent).toHaveBeenCalledTimes(3);
+    expect(generateContent).toHaveBeenCalledTimes(getGeminiModels().length);
   });
 
   it('names each model and its reason (without API keys) when every model fails', async () => {
+    vi.stubEnv('GEMINI_MODEL', 'model-a');
+    vi.stubEnv('GEMINI_FALLBACK_MODEL', 'model-b');
     generateContent
       .mockRejectedValueOnce(
         new Error(
@@ -361,6 +365,7 @@ describe('generateAgentText', () => {
     expect((err as Error).message).toMatch(/is not found for API version/);
     expect((err as Error).message).toMatch(/API key not valid/);
     expect((err as Error).message).not.toContain('SECRET123');
+    expect((err as Error).message).toMatch(/model-a: .*; model-b: /);
   });
 
   it('buildTurn surfaces Gemini being down as a 503', async () => {

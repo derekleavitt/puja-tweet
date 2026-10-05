@@ -10,8 +10,9 @@ import { test, expect, openApp, campaignCard, PRIMARY } from './fixtures.js';
 const NAME = 'E2E Campaign';
 const TWEET_ID = '1234567890123456789';
 
-/** The campaign name as rendered on a card. */
-const shownName = (page: Page) => page.getByText(NAME, { exact: true }).locator('visible=true');
+/** The campaign name as rendered on its card (the status bar may also name it as the next post). */
+const shownName = (page: Page) =>
+  page.getByRole('heading', { name: NAME, exact: true }).locator('visible=true');
 
 test('campaign lifecycle: create, edit schedule + template, pause/resume, delete', async ({
   app,
@@ -115,4 +116,12 @@ test('the card has a one-click 1-minute frequency', async ({ app }) => {
     })
     .toBe(1);
   await app.request.put(`/api/contexts/${primary.id}`, { data: { schedule: primary.schedule } });
+});
+
+// Clean up (also after a failure) so other specs never see a leftover test campaign.
+test.afterEach(async ({ request }) => {
+  const { contexts } = await (await request.get('/api/status')).json();
+  for (const c of contexts as { id: string; name: string }[]) {
+    if (c.name === NAME) await request.delete(`/api/contexts/${c.id}`);
+  }
 });

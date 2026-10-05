@@ -50,7 +50,7 @@ describe('weightedTweetLength', () => {
 
 describe('gemini config', () => {
   it('defaults and env overrides for models', () => {
-    expect(getGeminiModels({})[0]).toBe('gemini-3.8-flash');
+    expect(getGeminiModels({})).toEqual(['gemini-3.1-flash-lite']);
     expect(getGeminiModels({ GEMINI_MODEL: 'a', GEMINI_FALLBACK_MODEL: 'b, c' })).toEqual([
       'a',
       'b',
