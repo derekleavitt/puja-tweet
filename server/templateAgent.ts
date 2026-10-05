@@ -19,7 +19,7 @@ import {
   stripHistoryTags,
 } from '../shared/template/agentTags.js';
 import { getGeminiClient } from './geminiClient.js';
-import { getGeminiTimeoutMs } from './timeouts.js';
+import { getGeminiTimeoutMs, isTimeoutError } from './timeouts.js';
 import { getGeminiModels, isGeminiConfigured, tryConsumeGeminiCall } from './geminiConfig.js';
 import { AGENT_TARGET_LENGTH, weightedTweetLength } from '../shared/tweetLength.js';
 import { errorMessage } from './errorMessage.js';
@@ -205,14 +205,14 @@ export interface GenerateAgentTextOptions {
  * too-long draft once and finishes on a complete sentence. Throws `AgentUnavailableError` when AI is
  * not configured or every model fails (callers decide on any fallback text).
  */
-/** Each configured model, then (if all were busy) each model once more: [pass, model]. */
+/** Each configured model, then (if all failed transiently) each model once more: [pass, model]. */
 function* passes(): Generator<[number, string]> {
   for (let pass = 0; pass < 2; pass++) for (const m of getGeminiModels()) yield [pass, m];
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** Wait before the one retry pass when every model was busy (GEMINI_BUSY_RETRY_MS, default 4s). */
+/** Wait before the retry pass when a model was busy (GEMINI_BUSY_RETRY_MS, default 4s). */
 export function getGeminiBusyRetryMs(): number {
   const n = parseInt(process.env.GEMINI_BUSY_RETRY_MS ?? '', 10);
   return n >= 0 ? n : 4000;
@@ -224,8 +224,17 @@ export function isGeminiBusy(err: unknown): boolean {
   return /\b(503|429)\b|UNAVAILABLE|RESOURCE_EXHAUSTED|overloaded|high demand/i.test(text);
 }
 
+/**
+ * Our per-call deadline (GEMINI_TIMEOUT_MS) fired. The SDK reports it as a bare AbortError
+ * ("This operation was aborted"), so it is recognised by name.
+ */
+export function isGeminiTimeout(err: unknown): boolean {
+  return isTimeoutError(err);
+}
+
 /** One line from a Gemini error for the log: no API keys, at most 160 chars. */
 export function shortReason(err: unknown): string {
+  if (isGeminiTimeout(err)) return `timed out after ${Math.round(getGeminiTimeoutMs() / 1000)}s`;
   const raw = (errorMessage(err) || String(err)).replace(/\s+/g, ' ').trim();
   // The Gemini SDK can echo a JSON body; keep its "message" when present.
   const inner = /"message"\s*:\s*"([^"]+)"/.exec(raw)?.[1];
@@ -259,12 +268,14 @@ export async function generateAgentText(
 
   // Why each model failed: shown in the drop's log entry, not only in the server log.
   const reasons: string[] = [];
-  let busyOnly = true;
+  // Every failure was "busy" (503/429) or a timeout: Gemini spikes are short, so try once more.
+  let transientOnly = true;
+  let anyBusy = false;
   for (const [pass, model] of passes()) {
     if (pass > 0 && model === getGeminiModels()[0]) {
-      if (!busyOnly) break;
-      // Every model said "busy" (503/429): Gemini spikes are short, so wait once and try again.
-      await sleep(getGeminiBusyRetryMs());
+      if (!transientOnly) break;
+      // A busy model gets a moment to recover; a timeout is retried straight away.
+      if (anyBusy) await sleep(getGeminiBusyRetryMs());
       reasons.length = 0;
     }
     try {
@@ -275,14 +286,13 @@ export async function generateAgentText(
         return done.text;
       }
       reasons.push(`${model}: empty response`);
-      busyOnly = false;
+      transientOnly = false;
     } catch (err) {
-      console.warn(
-        `[TemplateAgent] Model ${model} encountered an issue:`,
-        errorMessage(err) || err,
-      );
       reasons.push(`${model}: ${shortReason(err)}`);
-      if (!isGeminiBusy(err)) busyOnly = false;
+      console.warn(`[TemplateAgent] Model ${model} (pass ${pass + 1}): ${reasons.at(-1)}`);
+      const busy = isGeminiBusy(err);
+      anyBusy ||= busy;
+      if (!busy && !isGeminiTimeout(err)) transientOnly = false;
       // continue to next model in loop
     }
   }
