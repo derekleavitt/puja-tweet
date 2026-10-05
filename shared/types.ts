@@ -34,7 +34,7 @@ export interface TweetContextSchedule {
 export interface HashtagEvolutionConfig {
   enabled: boolean;
   maxTags: number; // 1-5, default 3 (kept seed tags count toward it)
-  keepSeedTags: boolean; // Default false. true = the template's own hashtags are never replaced
+  keepSeedTags: boolean; // Default false. true = some of the campaign's own `hashtags` are always kept
 }
 
 /** Server-owned evolving-hashtag state; only advanced after a successful (live or simulated) post. */
@@ -69,6 +69,8 @@ export interface TweetContext {
   schedule: TweetContextSchedule;
   template: string; // Tweet text template with variables
   themePreference: 'dynamic' | 'vibrant' | 'minimal' | 'poetic';
+  /** The campaign's own hashtags (no '#', max 10), appended after the template body. Undefined = not migrated yet. */
+  hashtags?: string[];
   hashtagEvolution?: HashtagEvolutionConfig; // Default off
   hashtagState?: HashtagState; // Server-owned (never accepted from clients)
   lastPostedTimestamp?: number;
@@ -241,6 +243,37 @@ export interface StatusResponse extends AiStatus {
   cooldownState?: CooldownState;
   rateLimitTelemetry?: RateLimitTelemetry;
   queue?: QueueSlot[];
+}
+
+/**
+ * How a drop's text was put together (`POST /api/template/preview` -> `breakdown`), so the UI can
+ * explain it. The final text is `appendTagBlock(body, hashtags)`.
+ */
+export interface DropTextBreakdown {
+  /** Everything before the tag block: rendered template (static text + AI text). */
+  body: string;
+  /** The template's own text with variables filled in and AI parts left out. */
+  staticText: string;
+  /** The AI-written part(s) as posted (after hashtag clean-up and trimming); absent without `<agent>`. */
+  aiText?: string;
+  /** The appended tag block, e.g. "#Aurora #Glow" ('' when there is none). */
+  tagBlock: string;
+  /** Tags in the tag block (without '#'). */
+  hashtags: string[];
+  /** 'campaign' = the campaign's own hashtags, 'evolved' = evolution picked them, 'none' = no block. */
+  tagSource: 'campaign' | 'evolved' | 'none';
+  /** What evolution started from (evolution only). */
+  seedSource?: 'campaign' | 'previous' | 'ai' | 'theme';
+  /** AI's own trailing tags that were folded into the evolved block. */
+  foldedAiTags?: string[];
+  /** Hashtags the AI wrote that were taken out of its text (trailing cluster, duplicates, length). */
+  removedAiHashtags?: string[];
+  /** Inline AI hashtags turned into plain words ("#love" -> "love"). */
+  dehashedAiHashtags?: string[];
+  /** Body hashtags removed because the tag block (or earlier text) already has them. */
+  removedDuplicateTags?: string[];
+  /** Tags dropped from the end of the block so the tweet fits 280. */
+  droppedTags?: string[];
 }
 
 /** Outcome of one post attempt: `POST /api/post-now` and `/api/contexts/:id/trigger`. */

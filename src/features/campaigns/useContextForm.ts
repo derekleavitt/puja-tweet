@@ -54,7 +54,8 @@ export function useContextForm(opts: UseContextFormOptions) {
         humanizeJitterEnabled: true,
         jitterPercentage: 25,
       },
-      template: '{color_pick} {weather_desc} #eternal #colors',
+      template: '{color_pick} {weather_desc}',
+      hashtags: ['eternal', 'colors'],
       themePreference: 'dynamic',
       hashtagEvolution: { ...DEFAULT_HASHTAG_EVOLUTION },
     });
@@ -63,7 +64,12 @@ export function useContextForm(opts: UseContextFormOptions) {
   const openEdit = (context: TweetContext) => {
     setFormError(null);
     setIsCreating(false);
-    setEditingContext({ ...context, schedule: { ...context.schedule } });
+    setEditingContext({
+      ...context,
+      // An unset target starts from the server default (never a client constant).
+      targetTweetId: context.targetTweetId || defaultTargetTweetId,
+      schedule: { ...context.schedule },
+    });
   };
 
   const save = async (e: React.FormEvent) => {

@@ -1,20 +1,36 @@
+/**
+ * X ChromaBot - HistoryTable
+ * Post logs of every campaign, filterable by campaign and by status.
+ */
+
 import React, { useState } from 'react';
-import { ExternalLink, CheckCircle2, AlertCircle, Radio, Trash2, Copy, Check } from 'lucide-react';
-import { PostLog } from '../types.js';
+import { Trash2 } from 'lucide-react';
+import { PostLog, TweetContext } from '../types.js';
+import { HistoryRow } from './HistoryRow.js';
+
+/** Logs written before campaigns were tagged belong to the primary campaign. */
+const logCampaignId = (log: PostLog) => log.contextId || 'ctx_primary';
 
 interface HistoryTableProps {
   logs: PostLog[];
+  contexts?: TweetContext[];
   onClearHistory: () => void;
 }
 
-export const HistoryTable: React.FC<HistoryTableProps> = ({ logs, onClearHistory }) => {
+export const HistoryTable: React.FC<HistoryTableProps> = ({
+  logs,
+  contexts = [],
+  onClearHistory,
+}) => {
   const [filter, setFilter] = useState<'all' | 'success' | 'simulated' | 'error'>('all');
+  const [campaign, setCampaign] = useState<string>('all');
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const filteredLogs = logs.filter((log) => {
-    if (filter === 'all') return true;
-    return log.status === filter;
-  });
+  const filteredLogs = logs.filter(
+    (log) =>
+      (filter === 'all' || log.status === filter) &&
+      (campaign === 'all' || logCampaignId(log) === campaign),
+  );
 
   const copyText = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -34,7 +50,22 @@ export const HistoryTable: React.FC<HistoryTableProps> = ({ logs, onClearHistory
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          {contexts.length > 1 && (
+            <select
+              aria-label="Filter by campaign"
+              value={campaign}
+              onChange={(e) => setCampaign(e.target.value)}
+              className="px-2 py-1.5 text-xs font-medium rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-800 dark:text-neutral-200 cursor-pointer"
+            >
+              <option value="all">All campaigns</option>
+              {contexts.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          )}
           {/* Segmented Filter Control */}
           <div className="flex items-center gap-1 p-1 bg-neutral-100 dark:bg-neutral-900 rounded-lg text-xs">
             {(['all', 'success', 'simulated', 'error'] as const).map((key) => (
@@ -70,7 +101,7 @@ export const HistoryTable: React.FC<HistoryTableProps> = ({ logs, onClearHistory
             No post logs recorded yet
           </p>
           <p className="text-xs text-neutral-400 mt-1">
-            Trigger a test post in the Studio or wait for the next scheduled drop.
+            Use “Preview & post” on a campaign card or wait for the next scheduled drop.
           </p>
         </div>
       ) : (
@@ -87,145 +118,14 @@ export const HistoryTable: React.FC<HistoryTableProps> = ({ logs, onClearHistory
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800/80">
-                {filteredLogs.map((log) => {
-                  const dateStr = new Date(log.timestamp).toLocaleString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit',
-                    timeZoneName: 'short',
-                  });
-
-                  return (
-                    <tr
-                      key={log.id}
-                      className="hover:bg-neutral-50/60 dark:hover:bg-neutral-800/30 transition-colors"
-                    >
-                      {/* Time & Slot */}
-                      <td className="py-3.5 px-4 font-mono whitespace-nowrap tabular-nums">
-                        <div className="text-neutral-900 dark:text-neutral-100 font-medium">
-                          {dateStr}
-                        </div>
-                        <div className="text-[11px] text-neutral-400 flex items-center gap-1.5 flex-wrap">
-                          {log.contextName && (
-                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800/60">
-                              {log.contextName}
-                            </span>
-                          )}
-                          <span>
-                            {log.slotType === 'morning'
-                              ? 'Morning Drop'
-                              : log.slotType === 'evening'
-                                ? 'Evening Drop'
-                                : 'Manual Drop'}
-                          </span>
-                        </div>
-                      </td>
-
-                      {/* Tweet text */}
-                      <td className="py-3.5 px-4 min-w-48 max-w-sm">
-                        <p
-                          data-testid="history-tweet-text"
-                          className="text-neutral-800 dark:text-neutral-200 leading-snug line-clamp-2 break-words"
-                          title={log.tweetText}
-                        >
-                          {log.tweetText}
-                        </p>
-                      </td>
-
-                      {/* Status */}
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        {log.status === 'success' ? (
-                          <div className="inline-flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-medium">
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            <span>Posted to X</span>
-                          </div>
-                        ) : log.status === 'simulated' ? (
-                          <div className="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-400 font-medium">
-                            <Radio className="w-3.5 h-3.5" />
-                            <span>Simulated</span>
-                          </div>
-                        ) : (
-                          <div className="inline-flex items-center gap-1.5 text-red-600 dark:text-red-400 font-medium">
-                            <AlertCircle className="w-3.5 h-3.5" />
-                            <span>Failed</span>
-                          </div>
-                        )}
-                        {log.errorMessage && (
-                          <div
-                            className="text-[10px] text-red-500 font-mono mt-0.5 max-w-xs truncate"
-                            title={log.errorMessage}
-                          >
-                            {log.errorMessage}
-                          </div>
-                        )}
-                      </td>
-
-                      {/* Tweet Reference */}
-                      <td className="py-3.5 px-4 font-mono text-[11px] text-neutral-500">
-                        {log.tweetId ? (
-                          <div className="font-semibold text-neutral-800 dark:text-neutral-200">
-                            ID: {log.tweetId}
-                          </div>
-                        ) : (
-                          <div>Target: #{log.targetTweetId}</div>
-                        )}
-                        <div className="text-[10px] text-neutral-400 mt-0.5 flex items-center gap-1 flex-wrap">
-                          {log.quoteTweetId || log.engagementMode === 'quote' ? (
-                            <>
-                              <span>Quote #{log.quoteTweetId || log.targetTweetId}</span>
-                              <span className="text-[9px] font-semibold px-1 py-0.2 rounded bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 font-sans">
-                                Quote Tweet
-                              </span>
-                            </>
-                          ) : (
-                            <>
-                              <span>Reply to #{log.replyToTweetId || log.targetTweetId}</span>
-                              {log.replyToTweetId && log.replyToTweetId !== log.targetTweetId ? (
-                                <span className="text-[9px] font-semibold px-1 py-0.2 rounded bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 font-sans">
-                                  Chain
-                                </span>
-                              ) : (
-                                <span className="text-[9px] font-semibold px-1 py-0.2 rounded bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 font-sans">
-                                  Root
-                                </span>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      </td>
-
-                      {/* Actions */}
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        <div className="flex items-center gap-2">
-                          {log.tweetUrl && (
-                            <a
-                              href={log.tweetUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="px-2 py-1 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 rounded text-xs font-medium inline-flex items-center gap-1 transition-colors"
-                            >
-                              <span>View</span>
-                              <ExternalLink className="w-3 h-3" />
-                            </a>
-                          )}
-                          <button
-                            onClick={() => copyText(log.tweetText, log.id)}
-                            className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors cursor-pointer"
-                            title="Copy full tweet payload"
-                          >
-                            {copiedId === log.id ? (
-                              <Check className="w-3.5 h-3.5 text-emerald-600" />
-                            ) : (
-                              <Copy className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                {filteredLogs.map((log) => (
+                  <HistoryRow
+                    key={log.id}
+                    log={log}
+                    copied={copiedId === log.id}
+                    onCopy={() => copyText(log.tweetText, log.id)}
+                  />
+                ))}
               </tbody>
             </table>
           </div>

@@ -1,6 +1,7 @@
 /**
  * X ChromaBot - useBotStatus
- * Polled backend status: settings, contexts, next posts, credentials, rate limits.
+ * Polled backend status: global settings, campaigns, next posts, credentials, rate limits.
+ * The status payload's `queue`/`activeContext` are ignored: the UI has no "active campaign".
  */
 
 import { useState, useCallback } from 'react';
@@ -9,15 +10,13 @@ import { getStatus, getRateLimits, clearCooldown } from '../api/endpoints.js';
 import {
   BotSettings,
   CredentialsStatus,
-  NextPostInfo,
-  QueueSlot,
   TweetContext,
   CooldownState,
   RateLimitTelemetry,
   ContextNextPost,
 } from '../types.js';
 
-export function useBotStatus(onQueue: (queue: QueueSlot[]) => void) {
+export function useBotStatus() {
   const [settings, setSettings] = useState<BotSettings>({
     targetTweetId: '',
     scheduleTimes: ['06:00', '18:00'],
@@ -32,8 +31,6 @@ export function useBotStatus(onQueue: (queue: QueueSlot[]) => void) {
     intervalMinutes: 15,
   });
   const [contexts, setContexts] = useState<TweetContext[]>([]);
-  const [activeContextId, setActiveContextId] = useState<string>('ctx_primary');
-  const [nextPost, setNextPost] = useState<NextPostInfo | null>(null);
   const [allNextPosts, setAllNextPosts] = useState<ContextNextPost[]>([]);
   const [serverInfo, setServerInfo] = useState<ServerInfo>({ defaultTargetTweetId: '' });
   const [credentialsStatus, setCredentialsStatus] = useState<CredentialsStatus | null>(null);
@@ -53,10 +50,6 @@ export function useBotStatus(onQueue: (queue: QueueSlot[]) => void) {
         if (data.contexts && data.contexts.length > 0) {
           setContexts(data.contexts);
         }
-        if (data.activeContext?.id) {
-          setActiveContextId(data.activeContext.id);
-        }
-        setNextPost(data.nextPost);
         if (data.allNextPosts) {
           setAllNextPosts(data.allNextPosts);
         }
@@ -67,14 +60,11 @@ export function useBotStatus(onQueue: (queue: QueueSlot[]) => void) {
         if (data.rateLimitTelemetry) {
           setRateLimitTelemetry(data.rateLimitTelemetry);
         }
-        if (Array.isArray(data.queue)) {
-          onQueue(data.queue);
-        }
       }
     } catch (err) {
       console.error('Error fetching bot status:', err);
     }
-  }, [onQueue]);
+  }, []);
 
   const handleRefreshRateLimits = async () => {
     try {
@@ -104,9 +94,6 @@ export function useBotStatus(onQueue: (queue: QueueSlot[]) => void) {
     settings,
     setSettings,
     contexts,
-    activeContextId,
-    setActiveContextId,
-    nextPost,
     allNextPosts,
     serverInfo,
     credentialsStatus,

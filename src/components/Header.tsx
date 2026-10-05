@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  Sparkles,
   LogOut,
   UserCheck,
   Menu,
@@ -8,27 +7,22 @@ import {
   Layers,
   Calendar,
   FileText,
-  Clock,
+  Settings,
   Key,
   Activity,
 } from 'lucide-react';
 import { useAuth } from '../context/authState.js';
-import { TweetContext, RateLimitTelemetry, CooldownState } from '../types.js';
+import { RateLimitTelemetry, CooldownState } from '../types.js';
+
+export type Tab = 'contexts' | 'queue' | 'history' | 'settings' | 'credentials';
 
 interface HeaderProps {
-  activeTab: string;
-  setActiveTab: (tab: string) => void;
-  onQuickPost: () => void;
-  isPosting: boolean;
+  activeTab: Tab;
+  setActiveTab: (tab: Tab) => void;
   dryRun: boolean;
   onToggleDryRun: () => void;
   paused: boolean;
   onTogglePaused: () => void;
-  targetTweetId: string;
-  onUpdateTargetTweetId: (newId: string) => Promise<void>;
-  contexts?: TweetContext[];
-  activeContextId?: string;
-  onSelectContext?: (id: string) => void;
   rateLimitTelemetry?: RateLimitTelemetry | null;
   cooldownState?: CooldownState | null;
   onOpenRateLimits?: () => void;
@@ -37,15 +31,10 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({
   activeTab,
   setActiveTab,
-  onQuickPost,
-  isPosting,
   dryRun,
   onToggleDryRun,
   paused,
   onTogglePaused,
-  contexts = [],
-  activeContextId = '',
-  onSelectContext,
   rateLimitTelemetry,
   cooldownState,
   onOpenRateLimits,
@@ -55,12 +44,12 @@ export const Header: React.FC<HeaderProps> = ({
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const navItems = [
-    { id: 'studio', label: 'Studio', icon: Sparkles },
+  // Campaigns is the main screen: everything about one campaign is configured on its card.
+  const navItems: { id: Tab; label: string; icon: typeof Layers }[] = [
     { id: 'contexts', label: 'Campaigns', icon: Layers },
     { id: 'queue', label: 'Queue', icon: Calendar },
     { id: 'history', label: 'Logs', icon: FileText },
-    { id: 'settings', label: 'Timing', icon: Clock },
+    { id: 'settings', label: 'Settings', icon: Settings },
     { id: 'credentials', label: 'API Keys', icon: Key },
   ];
 
@@ -95,13 +84,13 @@ export const Header: React.FC<HeaderProps> = ({
     <header className="w-full max-w-full border-b border-neutral-200 dark:border-neutral-800 bg-white/95 dark:bg-neutral-950/95 backdrop-blur-md sticky top-0 z-40 transition-colors">
       <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 w-full">
         <div className="flex items-center justify-between h-14 sm:h-16 gap-2 sm:gap-3 w-full min-w-0">
-          {/* Left: Brand & Context Quick Switcher */}
+          {/* Left: Brand */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <a
-              href="#studio"
+              href="#campaigns"
               onClick={(e) => {
                 e.preventDefault();
-                setActiveTab('studio');
+                setActiveTab('contexts');
                 setMobileMenuOpen(false);
               }}
               className="text-base sm:text-lg font-bold tracking-tight text-neutral-900 dark:text-neutral-100 flex items-center gap-2 group"
@@ -109,29 +98,6 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="w-3.5 h-3.5 rounded-full bg-neutral-900 dark:bg-neutral-100 inline-block shadow-xs group-hover:scale-110 transition-transform shrink-0" />
               <span className="truncate">ChromaBot</span>
             </a>
-
-            {/* Context Quick Switcher Dropdown */}
-            {contexts.length > 0 && (
-              <div className="flex items-center gap-1.5 bg-neutral-100 dark:bg-neutral-900 px-2 py-1 rounded-md border border-neutral-200 dark:border-neutral-800 text-xs shadow-2xs shrink-0 max-w-[130px] sm:max-w-[200px]">
-                <Layers className="w-3 h-3 text-indigo-500 shrink-0" />
-                <select
-                  value={activeContextId}
-                  onChange={(e) => onSelectContext?.(e.target.value)}
-                  className="bg-transparent font-medium text-neutral-800 dark:text-neutral-200 focus:outline-none cursor-pointer truncate text-[11px] sm:text-xs w-full"
-                  title="Switch active tweet context"
-                >
-                  {contexts.map((c) => (
-                    <option
-                      key={c.id}
-                      value={c.id}
-                      className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100"
-                    >
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
           </div>
 
           {/* Center: Desktop Navigation Tabs (Visible on lg) */}
@@ -223,21 +189,6 @@ export const Header: React.FC<HeaderProps> = ({
                 className={`w-1.5 h-1.5 rounded-full shrink-0 ${paused ? 'bg-rose-500' : 'bg-emerald-500'}`}
               />
               <span>{paused ? 'Paused' : 'Running'}</span>
-            </button>
-
-            {/* Quick Trigger CTA */}
-            <button
-              onClick={onQuickPost}
-              disabled={isPosting}
-              className="px-2.5 sm:px-3 py-1 text-xs font-medium text-white bg-neutral-900 dark:bg-neutral-100 dark:text-neutral-900 rounded-md hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors whitespace-nowrap disabled:opacity-50 flex items-center gap-1.5 cursor-pointer shadow-xs shrink-0"
-            >
-              {isPosting ? (
-                <span className="w-3 h-3 border-2 border-white/30 border-t-white dark:border-neutral-900/30 dark:border-t-neutral-900 rounded-full animate-spin" />
-              ) : (
-                <Sparkles className="w-3.5 h-3.5 shrink-0" />
-              )}
-              <span className="hidden sm:inline">Post Reply</span>
-              <span className="sm:hidden">Post</span>
             </button>
 
             {/* Dedicated Log Out Button & User info */}

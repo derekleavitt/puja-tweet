@@ -1,22 +1,22 @@
 /**
  * X ChromaBot - campaign flows
- * Create, edit (fixed times, timezone, template), pause/resume and delete with the ConfirmDialog.
+ * Create, edit (target URL, fixed times, timezone, jitter, template, dry run), pause/resume and
+ * delete with the ConfirmDialog. The campaign form is the one place that configures a campaign.
  */
 
 import type { Page } from '@playwright/test';
-import { test, expect, openApp, openTab } from './fixtures.js';
+import { test, expect, openApp, campaignCard } from './fixtures.js';
 
 const NAME = 'E2E Campaign';
 const TWEET_ID = '1234567890123456789';
 
-/** The campaign name as rendered on a card (the header select also lists it in hidden options). */
+/** The campaign name as rendered on a card. */
 const shownName = (page: Page) => page.getByText(NAME, { exact: true }).locator('visible=true');
 
 test('campaign lifecycle: create, edit schedule + template, pause/resume, delete', async ({
   app,
 }) => {
-  await openApp(app);
-  await openTab(app, 'Campaigns');
+  await openApp(app); // Campaigns is the landing screen
 
   // Create
   await app.getByRole('button', { name: /Add Tweet Context/ }).click();
@@ -27,8 +27,10 @@ test('campaign lifecycle: create, edit schedule + template, pause/resume, delete
   await expect(shownName(app)).toBeVisible();
   await expect(app.getByText('2 campaigns')).toBeVisible();
 
-  // Edit: fixed times + timezone + template through the TemplateEditor
-  await app.getByTitle('Edit context & schedule').last().click();
+  // Edit: target URL + fixed times + timezone + jitter + template + dry run
+  await campaignCard(app, NAME).getByTitle('Edit context & schedule').click();
+  await form.getByPlaceholder(/Tweet ID or https/).fill('https://x.com/someone/status/9876543210');
+  await expect(form.getByText('Clean ID detected: 9876543210')).toBeVisible();
   await app.getByRole('button', { name: /Fixed Clock Drops/ }).click();
   const times = app.getByPlaceholder('06:00, 18:00');
   await times.fill('7:05, 19:30');
@@ -41,20 +43,39 @@ test('campaign lifecycle: create, edit schedule + template, pause/resume, delete
   await app.getByRole('button', { name: 'Reset to Default Formula' }).click();
   await app.getByRole('button', { name: '+ {hex}' }).click();
   await expect(app.locator('form textarea')).toHaveValue(/\{hex\}$/);
+  const jitter = form.locator('input[type="range"]');
+  await jitter.focus();
+  await jitter.press('ArrowRight'); // 25% -> 30%
+  await expect(jitter).toHaveValue('30');
+  await form.getByLabel('Posting Mode').selectOption('simulated');
   await app.getByRole('button', { name: 'Save & Regenerate Queue' }).click();
   await expect(app.getByRole('button', { name: 'Save & Regenerate Queue' })).toHaveCount(0);
 
   const { contexts } = await (await app.request.get('/api/status')).json();
   const saved = contexts.find((c: { name: string }) => c.name === NAME);
+  expect(saved.targetTweetId).toBe('9876543210');
+  expect(saved.dryRun).toBe(true);
   expect(saved.schedule).toMatchObject({
     mode: 'fixed_times',
     scheduleTimes: ['07:05', '19:30'],
     timezone: 'Europe/London',
+    jitterPercentage: 30,
   });
   expect(saved.template).toContain('{hex}');
 
+  // Survives a reload (server is the source of truth); the card shows the campaign's dry run
+  await app.reload();
+  const card = campaignCard(app, NAME);
+  await expect(card.getByRole('button', { name: 'Campaign dry run: on' })).toBeVisible();
+  await expect(card).toContainText('#9876543210');
+  await card.getByTitle('Edit context & schedule').click();
+  await expect(form.getByPlaceholder(/Tweet ID or https/)).toHaveValue('9876543210');
+  await expect(form.getByPlaceholder('06:00, 18:00')).toHaveValue('07:05, 19:30');
+  await expect(form.getByLabel('Timezone')).toHaveValue('Europe/London');
+  await app.getByRole('button', { name: 'Cancel' }).click();
+
   // Invalid times are refused with a clear message
-  await app.getByTitle('Edit context & schedule').last().click();
+  await campaignCard(app, NAME).getByTitle('Edit context & schedule').click();
   await app.getByPlaceholder('06:00, 18:00').fill('25:99');
   await app.getByRole('button', { name: 'Save & Regenerate Queue' }).click();
   await expect(app.getByText(/Invalid time\(s\): 25:99/).first()).toBeVisible();

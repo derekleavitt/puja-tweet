@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { generateColor } from '../../server/colorEngine.js';
 import { createDropService } from '../../server/services/dropService.js';
 import { createServices, type Services } from '../../server/services/index.js';
 import { MemoryStore } from '../../server/store/MemoryStore.js';
@@ -32,14 +33,15 @@ describe('dropService.executeDrop', () => {
     configure({ engagementMode: 'reply', dryRun: false });
     const out = await makeDrops().executeDrop({ slotType: 'morning', source: 'manual' });
     expect(post.mock.calls[0][1]).toMatchObject({
-      text: 'hello',
+      // The default campaign's own hashtags (moved out of the default template) are appended.
+      text: 'hello #eternal #colors',
       replyToTweetId: '111',
       quoteTweetId: undefined,
       engagementMode: 'reply',
     });
     expect(post.mock.calls[0][2]).toBe(false);
     expect(out.log).toMatchObject({ status: 'success', tweetId: '999', slotType: 'morning' });
-    expect(svc.logs.getLogs()[0].tweetText).toBe('hello');
+    expect(svc.logs.getLogs()[0].tweetText).toBe('hello #eternal #colors');
   });
 
   it('quotes the target tweet in quote mode', async () => {
@@ -127,7 +129,7 @@ describe('dropService.executeDrop', () => {
 
   it('uses a supplied colour and skips the queue', async () => {
     configure({});
-    const color = { colorPick: 'Test' } as never;
+    const color = { ...generateColor('morning'), colorPick: 'Test' };
     const out = await makeDrops().executeDrop({ slotType: 'manual', color });
     expect(resolveText.mock.calls[0][1]).toBe(color);
     expect(out.log.slotType).toBe('manual');

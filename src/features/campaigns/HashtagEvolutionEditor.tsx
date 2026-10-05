@@ -1,7 +1,7 @@
 /**
  * X ChromaBot - HashtagEvolutionEditor
  * "Evolve hashtags each tweet" settings for the campaign form: toggle, max tags, keep-originals,
- * and the seed hashtags detected in the template.
+ * and what evolution starts from (the campaign's Hashtags field).
  */
 
 import React from 'react';
@@ -11,12 +11,12 @@ import {
   MAX_EVOLVED_TAGS,
   MIN_EVOLVED_TAGS,
   normaliseEvolution,
-  getSeedTags,
 } from '../../../shared/hashtags/index.js';
 import { FIELD_CLASS, LABEL_CLASS } from './constants.js';
 
 interface HashtagEvolutionEditorProps {
-  template: string;
+  /** The campaign's own hashtags (the Hashtags field), evolution's starting point. */
+  hashtags: string[];
   value?: HashtagEvolutionConfig;
   onChange: (value: HashtagEvolutionConfig) => void;
 }
@@ -31,12 +31,11 @@ const TAG_CHIP =
   'px-1.5 py-0.5 rounded bg-teal-50 dark:bg-teal-950/50 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 font-mono text-[11px]';
 
 export const HashtagEvolutionEditor: React.FC<HashtagEvolutionEditorProps> = ({
-  template,
+  hashtags,
   value,
   onChange,
 }) => {
   const cfg = normaliseEvolution(value);
-  const { found, seed } = getSeedTags(template);
   const update = (fields: Partial<HashtagEvolutionConfig>) => onChange({ ...cfg, ...fields });
 
   return (
@@ -54,8 +53,8 @@ export const HashtagEvolutionEditor: React.FC<HashtagEvolutionEditorProps> = ({
             Evolve hashtags each tweet
           </span>
           <span className="block text-[11px] text-neutral-500">
-            Each tweet swaps your template&apos;s hashtags for fresh, related ones that never repeat
-            recently. Off by default.
+            Each tweet swaps your Hashtags for fresh, related ones that never repeat recently. Off:
+            your Hashtags are posted as they are.
           </span>
         </span>
       </label>
@@ -97,11 +96,11 @@ export const HashtagEvolutionEditor: React.FC<HashtagEvolutionEditorProps> = ({
 
           <div className="text-[11px] text-neutral-500 flex items-center gap-1.5 flex-wrap">
             <span>
-              {found.length > 0
-                ? 'Seed tags detected in your template:'
-                : 'No hashtags in your template, starting from:'}
+              {hashtags.length > 0
+                ? 'Evolves from your Hashtags:'
+                : 'No Hashtags set: evolves from the AI text or the template theme.'}
             </span>
-            {seed.map((tag) => (
+            {hashtags.map((tag) => (
               <span key={tag} className={TAG_CHIP}>
                 #{tag}
               </span>

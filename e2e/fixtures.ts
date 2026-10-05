@@ -4,7 +4,7 @@
  * A test that provokes an error on purpose registers it with `expectError(/pattern/)`.
  */
 
-import { test as base, expect, type Page } from '@playwright/test';
+import { test as base, expect, type Locator, type Page } from '@playwright/test';
 
 interface Fixtures {
   allowed: RegExp[];
@@ -40,15 +40,33 @@ export const test = base.extend<Fixtures>({
 
 export { expect };
 
-export const TABS = ['Studio', 'Campaigns', 'Queue', 'Logs', 'Timing', 'API Keys'] as const;
+export const TABS = ['Campaigns', 'Queue', 'Logs', 'Settings', 'API Keys'] as const;
 export type Tab = (typeof TABS)[number];
 
 /** Opens the app and waits for the header nav (rendered once auth has resolved). */
 export async function openApp(page: Page) {
   await page.goto('/');
-  await expect(page.getByRole('button', { name: 'Studio', exact: true }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Campaigns', exact: true }).first()).toBeVisible();
 }
 
 export async function openTab(page: Page, tab: Tab) {
   await page.getByRole('button', { name: tab, exact: true }).first().click();
 }
+
+/** The card of the campaign named `name` on the Campaigns screen. */
+export function campaignCard(page: Page, name: string): Locator {
+  return page
+    .getByTestId('campaign-card')
+    .filter({ has: page.getByRole('heading', { name, exact: true }) });
+}
+
+/** Opens a campaign card's "Preview & post" panel and waits for the rendered preview text. */
+export async function openPreview(page: Page, name: string): Promise<Locator> {
+  const card = campaignCard(page, name);
+  await card.getByRole('button', { name: 'Preview & post' }).click();
+  const preview = card.getByTestId('campaign-preview');
+  await expect(preview.getByTestId('tweet-preview-text')).not.toHaveText(/^(Rendering preview…)?$/);
+  return preview;
+}
+
+export const PRIMARY = 'Primary Eternal Colors';

@@ -1,18 +1,18 @@
 /**
- * X ChromaBot - JitterSettings
- * Humanized random delay toggle and window slider.
+ * X ChromaBot - JitterEditor
+ * Campaign form section: humanized random delay toggle and window slider.
  */
 
 import React from 'react';
 import { UserCheck } from 'lucide-react';
 
-interface JitterSettingsProps {
+interface JitterEditorProps {
   humanizeJitterEnabled: boolean;
   jitterPercentage: number;
   onChange: (patch: { humanizeJitterEnabled?: boolean; jitterPercentage?: number }) => void;
 }
 
-export const JitterSettings: React.FC<JitterSettingsProps> = ({
+export const JitterEditor: React.FC<JitterEditorProps> = ({
   humanizeJitterEnabled,
   jitterPercentage,
   onChange,

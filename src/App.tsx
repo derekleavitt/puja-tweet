@@ -1,13 +1,13 @@
 /**
- * X ChromaBot - Automated Color Reply Generator
- * Multi-Context Autonomous Architecture
+ * X ChromaBot - Automated Reply Generator
+ * Multi-campaign dashboard: the Campaigns screen configures, previews and posts each campaign;
+ * Settings only holds global switches. There is no "active campaign" in the UI.
  * Secured behind Google Authentication & synced with Cloud Firestore.
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Header } from './components/Header.js';
+import { Header, Tab } from './components/Header.js';
 import { StatusBar } from './components/StatusBar.js';
-import { LiveStudio } from './features/studio/LiveStudio.js';
 import { ContextsManager } from './features/campaigns/ContextsManager.js';
 import { QueueViewer } from './components/QueueViewer.js';
 import { SettingsPanel } from './features/settings/SettingsPanel.js';
@@ -34,14 +34,14 @@ import { PostLog } from './types.js';
 import { ToastViewport } from './components/ui/Toast.js';
 
 function ChromaBotDashboard() {
-  const [activeTab, setActiveTab] = useState<string>('studio');
+  const [activeTab, setActiveTab] = useState<Tab>('contexts');
   const [isRateLimitModalOpen, setIsRateLimitModalOpen] = useState<boolean>(false);
 
-  const { queue, setQueue, fetchQueue, handleRerollSlot, handleRegenerateQueue } = useQueue();
   const health = useHealth();
-  const status = useBotStatus(setQueue);
-  const { settings, setSettings, contexts, activeContextId, setActiveContextId, fetchStatus } =
-    status;
+  const status = useBotStatus();
+  const { settings, setSettings, contexts, fetchStatus } = status;
+  const queueState = useQueue(contexts);
+  const { fetchQueue } = queueState;
   const { logs, setLogs, fetchHistory, handleClearHistory } = useHistory();
 
   const refresh = useCallback(async () => {
@@ -50,49 +50,14 @@ function ChromaBotDashboard() {
   }, [fetchStatus, fetchQueue]);
   const addLog = (log: PostLog) => setLogs((prev) => [log, ...prev]);
 
-  const {
-    color,
-    isPosting,
-    lastPostedResult,
-    generateColor,
-    handlePostNow: postNowDirect,
-  } = usePosting({
-    activeContextId,
-    addLog,
-    refresh,
-  });
-  const {
-    handleSelectActiveContext,
-    handleCreateContext,
-    handleUpdateContext,
-    handleDeleteContext,
-    handleDuplicateContext,
-    handleToggleContext,
-    handleTriggerContext,
-    handleClearContextHistory,
-  } = useContexts({
-    setActiveContextId,
-    setQueue,
-    setLogs,
-    addLog,
-    refresh,
-    fetchHistory,
-    generateColor,
-  });
-  const confirmedPost = useConfirmedPost({
+  const { isPosting, handlePostNow: postNowDirect } = usePosting({ addLog, refresh });
+  const campaignActions = useContexts({ setLogs, refresh, fetchHistory });
+  const confirmedPost = useConfirmedPost({ settings, contexts, post: postNowDirect });
+  const { handleToggleDryRun, handleToggleGlobalPause } = useSettings({
     settings,
-    contexts,
-    activeContextId,
-    post: postNowDirect,
-    contextArgIndex: 2,
+    setSettings,
+    refresh,
   });
-  const handlePostNow = confirmedPost.request;
-  const {
-    handleSaveSettings,
-    handleToggleDryRun,
-    handleToggleGlobalPause,
-    handleUpdateTargetTweetId,
-  } = useSettings({ settings, setSettings, setQueue, refresh });
   const { handleSaveCredentials, handleClearCredentials, handleVerifyCredentials } = useCredentials(
     {
       setCredentialsStatus: status.setCredentialsStatus,
@@ -100,10 +65,9 @@ function ChromaBotDashboard() {
     },
   );
 
-  // Initial load (runs once on mount)
+  // Initial load (runs once on mount); the queue loads once the campaigns are known.
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const loadInitial = () =>
-    Promise.all([fetchStatus(), fetchQueue(), fetchHistory(), generateColor('morning')]);
+  const loadInitial = () => Promise.all([fetchStatus(), fetchHistory()]);
   const loadInitialRef = useRef(loadInitial);
   loadInitialRef.current = loadInitial;
   useEffect(() => {
@@ -116,9 +80,10 @@ function ChromaBotDashboard() {
     };
   }, []);
 
-  // Heartbeat: one /api/status poll every 10 s (it already carries the queue); paused while the
-  // browser tab is hidden. History is only polled while the History tab is open.
+  // Heartbeat: one /api/status poll every 10 s; paused while the browser tab is hidden.
+  // The queue and history are only polled while their screen is open.
   usePolling(fetchStatus, 10000, true);
+  usePolling(fetchQueue, 10000, activeTab === 'queue');
   usePolling(fetchHistory, 10000, activeTab === 'history');
   useEffect(() => {
     if (activeTab === 'history') fetchHistory();
@@ -126,7 +91,6 @@ function ChromaBotDashboard() {
 
   const {
     allNextPosts,
-    nextPost,
     credentialsStatus,
     cooldownState,
     rateLimitTelemetry,
@@ -134,59 +98,30 @@ function ChromaBotDashboard() {
     handleClearCooldown,
   } = status;
 
-  const activeContext = contexts.find((c) => c.id === activeContextId) || contexts[0];
-
   return (
     <ServerInfoContext.Provider value={status.serverInfo}>
       <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-neutral-100/60 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 flex flex-col font-sans antialiased">
-        {/* Top Bar with Context Switcher & Navigation */}
         <Header
           activeTab={activeTab}
           setActiveTab={setActiveTab}
-          onQuickPost={() => handlePostNow(color || undefined, 'manual')}
-          isPosting={isPosting}
           dryRun={settings.globalDryRun !== false}
           onToggleDryRun={handleToggleDryRun}
           paused={settings.globalPaused !== false}
           onTogglePaused={handleToggleGlobalPause}
-          targetTweetId={settings.targetTweetId}
-          onUpdateTargetTweetId={handleUpdateTargetTweetId}
-          contexts={contexts}
-          activeContextId={activeContextId}
-          onSelectContext={handleSelectActiveContext}
           rateLimitTelemetry={rateLimitTelemetry}
           cooldownState={cooldownState}
           onOpenRateLimits={() => setIsRateLimitModalOpen(true)}
         />
 
-        {/* Status Bar with live countdown and active context info */}
+        {/* Status bar: the next post across all campaigns */}
         <StatusBar
-          nextPost={nextPost}
+          contexts={contexts}
+          nextPosts={allNextPosts}
           credentialsStatus={credentialsStatus}
-          targetTweetId={settings.targetTweetId}
           globalPaused={settings.globalPaused !== false}
           onToggleGlobalPause={handleToggleGlobalPause}
-          settings={settings}
-          activeContext={activeContext}
-          onChangeFrequency={async (mode, minutes) => {
-            if (activeContext) {
-              await handleUpdateContext(activeContext.id, {
-                schedule: {
-                  ...activeContext.schedule,
-                  mode,
-                  intervalMinutes: minutes ?? activeContext.schedule.intervalMinutes,
-                },
-              });
-            } else {
-              await handleSaveSettings({
-                intervalMode: mode,
-                intervalMinutes: minutes,
-              });
-            }
-          }}
         />
 
-        {/* Main Container Viewport */}
         <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 md:p-8">
           {/* Anti-Spam Rate Limit / Reply Cooldown Alert Banner */}
           {cooldownState?.isThrottled && (
@@ -202,66 +137,53 @@ function ChromaBotDashboard() {
             </div>
           ) : (
             <>
-              {activeTab === 'studio' && (
-                <LiveStudio
-                  color={color}
-                  onGenerateColor={generateColor}
-                  onPostNow={handlePostNow}
-                  settings={settings}
-                  isPosting={isPosting}
-                  lastPostedResult={lastPostedResult}
-                  onUpdateTargetTweetId={handleUpdateTargetTweetId}
-                  contexts={contexts}
-                  activeContextId={activeContextId}
-                  onSelectContext={handleSelectActiveContext}
-                  onUpdateContext={handleUpdateContext}
-                />
-              )}
-
               {activeTab === 'contexts' && (
                 <ContextsManager
                   contexts={contexts}
-                  activeContextId={activeContextId}
+                  settings={settings}
                   nextPosts={allNextPosts}
-                  onSelectActiveContext={handleSelectActiveContext}
-                  onCreateContext={handleCreateContext}
-                  onUpdateContext={handleUpdateContext}
-                  onDeleteContext={handleDeleteContext}
-                  onDuplicateContext={handleDuplicateContext}
-                  onToggleContext={handleToggleContext}
-                  onTriggerContext={handleTriggerContext}
-                  onClearContextHistory={handleClearContextHistory}
+                  onCreateContext={campaignActions.handleCreateContext}
+                  onUpdateContext={campaignActions.handleUpdateContext}
+                  onDeleteContext={campaignActions.handleDeleteContext}
+                  onDuplicateContext={campaignActions.handleDuplicateContext}
+                  onToggleContext={campaignActions.handleToggleContext}
+                  onClearContextHistory={campaignActions.handleClearContextHistory}
+                  onPostNow={confirmedPost.request}
                 />
               )}
 
               {activeTab === 'queue' && (
                 <QueueViewer
-                  queue={queue}
-                  onRerollSlot={handleRerollSlot}
-                  onPostNow={(slotColor, slotType, slot) =>
-                    handlePostNow(slotColor, slotType, slot.contextId, { slotId: slot.slotId })
+                  queue={queueState.queue}
+                  contexts={contexts}
+                  contextId={queueState.queueContextId}
+                  onPickContext={queueState.setQueueContextId}
+                  onRerollSlot={queueState.handleRerollSlot}
+                  onPostNow={(slot) =>
+                    confirmedPost.request(slot.contextId || queueState.queueContextId, {
+                      color: slot.color,
+                      slotType: slot.slotType,
+                      slotId: slot.slotId,
+                    })
                   }
                   isPosting={isPosting}
-                  contexts={contexts}
-                  activeContextId={activeContextId}
-                  onSelectContext={handleSelectActiveContext}
-                  onRegenerateQueue={(contextId) =>
-                    handleRegenerateQueue(contextId || activeContextId)
-                  }
+                  onRegenerateQueue={queueState.handleRegenerateQueue}
                 />
               )}
 
               {activeTab === 'history' && (
-                <HistoryTable logs={logs} onClearHistory={handleClearHistory} />
+                <HistoryTable logs={logs} contexts={contexts} onClearHistory={handleClearHistory} />
               )}
 
               {activeTab === 'settings' && (
                 <SettingsPanel
                   settings={settings}
-                  onSaveSettings={handleSaveSettings}
-                  campaignName={activeContext?.name}
                   onToggleGlobalDryRun={handleToggleDryRun}
                   onToggleGlobalPause={handleToggleGlobalPause}
+                  cooldownState={cooldownState}
+                  rateLimitTelemetry={rateLimitTelemetry}
+                  onOpenRateLimits={() => setIsRateLimitModalOpen(true)}
+                  onClearCooldown={handleClearCooldown}
                 />
               )}
 
@@ -277,12 +199,7 @@ function ChromaBotDashboard() {
           )}
         </main>
 
-        {/* Clean Unboxed Footer */}
-        <Footer
-          activeName={activeContext?.name || 'Primary'}
-          targetTweetId={settings.targetTweetId}
-          health={health}
-        />
+        <Footer campaignCount={contexts.length} health={health} />
 
         {confirmedPost.pending && (
           <ConfirmDialog

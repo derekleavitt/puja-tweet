@@ -1,17 +1,16 @@
 /**
  * X ChromaBot - CardActions
- * Footer action row of a campaign card.
+ * Footer action row of a campaign card. "Preview & post" is the single manual-post action: it
+ * opens the preview, and the preview's button posts exactly the previewed text.
  */
 
 import React from 'react';
-import { Edit2, Copy, Trash2, Sparkles, History } from 'lucide-react';
+import { Edit2, Copy, Trash2, Eye, EyeOff, History } from 'lucide-react';
 
 interface CardActionsProps {
-  isActive: boolean;
-  isTriggering: boolean;
+  previewOpen: boolean;
   canDelete: boolean;
-  onSelectActive: () => void;
-  onTrigger: () => void;
+  onTogglePreview: () => void;
   onEdit: () => void;
   onDuplicate: () => void;
   onRequestClearHistory?: () => void;
@@ -23,28 +22,16 @@ const ICON_BTN =
 
 export const CardActions: React.FC<CardActionsProps> = (props) => (
   <div className="pt-3 border-t border-neutral-100 dark:border-neutral-800 flex items-center justify-between gap-2 flex-wrap">
-    <div className="flex items-center gap-1.5">
-      {!props.isActive && (
-        <button
-          onClick={props.onSelectActive}
-          className="px-2.5 py-1 text-xs font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-md transition-colors cursor-pointer"
-        >
-          Set Active
-        </button>
-      )}
-      <button
-        onClick={props.onTrigger}
-        disabled={props.isTriggering}
-        className="px-2.5 py-1 text-xs font-medium text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-950 rounded-md border border-indigo-200 dark:border-indigo-800 transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-      >
-        {props.isTriggering ? (
-          <span className="w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-        ) : (
-          <Sparkles className="w-3 h-3" />
-        )}
-        <span>Trigger Drop</span>
-      </button>
-    </div>
+    <button
+      type="button"
+      onClick={props.onTogglePreview}
+      aria-expanded={props.previewOpen}
+      className="px-2.5 py-1 text-xs font-medium text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-950 rounded-md border border-indigo-200 dark:border-indigo-800 transition-colors flex items-center gap-1.5 cursor-pointer"
+      title="Preview the exact next tweet, then post it now"
+    >
+      {props.previewOpen ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+      <span>{props.previewOpen ? 'Hide preview' : 'Preview & post'}</span>
+    </button>
 
     <div className="flex items-center gap-1">
       <button onClick={props.onEdit} className={ICON_BTN} title="Edit context & schedule">

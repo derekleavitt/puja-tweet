@@ -21,12 +21,17 @@ import {
 import { getGeminiClient } from './geminiClient.js';
 import { getGeminiTimeoutMs } from './timeouts.js';
 import { getGeminiModels, isGeminiConfigured, tryConsumeGeminiCall } from './geminiConfig.js';
-import {
-  AGENT_TARGET_LENGTH,
-  trimToCompleteSentence,
-  weightedTweetLength,
-} from '../shared/tweetLength.js';
+import { AGENT_TARGET_LENGTH, weightedTweetLength } from '../shared/tweetLength.js';
 import { errorMessage } from './errorMessage.js';
+import { finishAgentText, type ShapedAgentText } from '../shared/hashtags/agentText.js';
+import {
+  cleanAgentOutput,
+  plainShape,
+  stripColorHeader,
+  type AgentTextOptions,
+} from './agentOutput.js';
+
+export { cleanAgentOutput, stripColorHeader, type AgentTextOptions };
 
 export const POETRY_AGENT_SYSTEM_INSTRUCTION = `You are a world-class literary poet and creative writer specializing in atmospheric, earthy, and profound short-form poetry and expressions, channeling voices like Pablo Neruda, Mary Oliver, Octavio Paz, and Federico García Lorca.
 
@@ -45,6 +50,7 @@ export interface ResolveTemplateOptions {
   contextId?: string;
   targetTweetId?: string;
   forceFreshAgent?: boolean;
+  agent?: AgentTextOptions;
 }
 
 /**
@@ -94,21 +100,6 @@ export function formatHistoryForPrompt(history: PostLog[], includeColor = true):
     .join('\n\n');
 }
 
-/** Strip accidental enclosing quotes and markdown fences from model output. */
-export function cleanAgentOutput(raw: string): string {
-  let text = raw.trim();
-  if (text.startsWith('"') && text.endsWith('"') && text.length > 2) {
-    text = text.substring(1, text.length - 1).trim();
-  }
-  if (text.startsWith('“') && text.endsWith('”') && text.length > 2) {
-    text = text.substring(1, text.length - 1).trim();
-  }
-  return text
-    .replace(/^```[a-z]*\n?/i, '')
-    .replace(/\n?```$/i, '')
-    .trim();
-}
-
 /** Thrown when an AI-only (no color tokens) template cannot be generated; the drop fails visibly instead of posting color filler. */
 export class AgentUnavailableError extends HttpError {
   constructor(message: string) {
@@ -116,21 +107,16 @@ export class AgentUnavailableError extends HttpError {
   }
 }
 
-/** Removes a leading "Sunset Copper (#C03F0B) —" style header the model may echo. */
-export function stripColorHeader(text: string): string {
-  return text.replace(/^[^\n()#]{2,40}\(#[0-9a-f]{3,8}\)\s*[—–:-]\s*/i, '').trim();
-}
-
-/**
- * Call Gemini AI to generate poetic tweet content
- */
-export async function generatePoeticAgentText(
+/** The user prompt for one `<agent>` block (color context only for color templates). */
+function buildAgentContents(
   userPrompt: string,
   color: ColorData,
   history: PostLog[] | null,
-  slotLabel?: string,
-  includeColor = true,
-): Promise<string> {
+  slotLabel: string | undefined,
+  includeColor: boolean,
+  agent: AgentTextOptions,
+): string {
+  const max = agent.maxLength ?? AGENT_TARGET_LENGTH;
   const timeTag = slotLabel || formatTimeInZone(new Date());
   const resolvedPrompt = substituteVariables(userPrompt, color, timeTag);
 
@@ -152,14 +138,58 @@ ${formatHistoryForPrompt(history, includeColor)}\n\n`;
 
   contents += `USER DIRECTIVE FOR THIS TWEET:
 ${resolvedPrompt}
+${agent.directive ? `\n${agent.directive}\n` : ''}
+Remember: Output ONLY the exact tweet text (no quotes, no intro, under ${max} chars).`;
+  return contents;
+}
 
-Remember: Output ONLY the exact tweet text (no quotes, no intro, under 240 chars).`;
+/** One draft, regenerated once with a stricter reminder when it is over `max` (shorter wins). */
+async function draftWithRetry(
+  call: (prompt: string) => Promise<string>,
+  contents: string,
+  shape: (text: string) => ShapedAgentText,
+  max: number,
+): Promise<ShapedAgentText> {
+  const draft = shape(await call(contents));
+  const draftLength = weightedTweetLength(draft.body);
+  if (!draft.body || draftLength <= max) return draft;
+  try {
+    const retry = shape(
+      await call(
+        `${contents}\n\nYour previous draft was too long (${draftLength} chars). Write a shorter version, strictly under ${max} characters.`,
+      ),
+    );
+    if (retry.body && weightedTweetLength(retry.body) < draftLength) return retry;
+  } catch {
+    // keep the first draft; it is trimmed to a complete sentence afterwards
+  }
+  return draft;
+}
+
+/**
+ * Call Gemini AI to generate poetic tweet content
+ */
+export async function generatePoeticAgentText(
+  userPrompt: string,
+  color: ColorData,
+  history: PostLog[] | null,
+  slotLabel?: string,
+  includeColor = true,
+  agent: AgentTextOptions = {},
+): Promise<string> {
+  const max = agent.maxLength ?? AGENT_TARGET_LENGTH;
+  const shape = agent.shape ?? plainShape;
+  const contents = buildAgentContents(userPrompt, color, history, slotLabel, includeColor, agent);
 
   const fallback = `${color.colorPick} (${color.hex}) — ${color.mood}`;
+  const useFallback = () => {
+    agent.onText?.({ text: fallback, shaped: plainShape(fallback), droppedTail: [] });
+    return fallback;
+  };
   if (!isGeminiConfigured()) {
     if (!includeColor)
       throw new AgentUnavailableError('AI generation is not configured (GEMINI_API_KEY).');
-    return fallback;
+    return useFallback();
   }
 
   const callModel = async (model: string, prompt: string): Promise<string> => {
@@ -179,21 +209,12 @@ Remember: Output ONLY the exact tweet text (no quotes, no intro, under 240 chars
 
   for (const model of getGeminiModels()) {
     try {
-      let text = await callModel(model, contents);
-      if (text && weightedTweetLength(text) > AGENT_TARGET_LENGTH) {
-        // Regenerate once with a stricter reminder, then truncate at a word boundary.
-        try {
-          const retry = await callModel(
-            model,
-            `${contents}\n\nYour previous draft was too long (${weightedTweetLength(text)} chars). Write a shorter version, strictly under ${AGENT_TARGET_LENGTH} characters.`,
-          );
-          if (retry && weightedTweetLength(retry) < weightedTweetLength(text)) text = retry;
-        } catch {
-          // keep first draft; truncated below
-        }
-        text = trimToCompleteSentence(text, AGENT_TARGET_LENGTH);
+      const draft = await draftWithRetry((p) => callModel(model, p), contents, shape, max);
+      if (draft.body) {
+        const done = finishAgentText(draft, max, agent.hardMaxLength ?? max);
+        agent.onText?.({ text: done.text, shaped: draft, droppedTail: done.droppedTail });
+        return done.text;
       }
-      if (text) return text;
     } catch (err) {
       console.warn(
         `[TemplateAgent] Model ${model} encountered an issue:`,
@@ -206,7 +227,7 @@ Remember: Output ONLY the exact tweet text (no quotes, no intro, under 240 chars
   // A color template falls back to its color mood; a non-color template must not post color text.
   if (!includeColor)
     throw new AgentUnavailableError('AI generation failed for every configured model.');
-  return fallback;
+  return useFallback();
 }
 
 /**
@@ -245,6 +266,7 @@ export async function resolveTemplateText(
       history,
       options.slotLabel,
       includeColor,
+      options.agent,
     );
 
     processed = processed.replace(fullMatch, () => generated);
@@ -264,6 +286,7 @@ export async function resolveTemplateText(
       null,
       options.slotLabel,
       includeColor,
+      options.agent,
     );
 
     processed = processed.replace(fullMatch, () => generated);

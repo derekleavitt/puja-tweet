@@ -2,45 +2,31 @@
  * X ChromaBot - settings and credentials flows
  */
 
-import { test, expect, openApp, openTab } from './fixtures.js';
+import { test, expect, openApp, openTab, campaignCard, PRIMARY } from './fixtures.js';
 
-test('timing settings save, webhook URL is shown and the secret rotates behind a confirm', async ({
+test('settings hold only global things; the webhook secret rotates behind a confirm', async ({
   app,
 }) => {
   await openApp(app);
-  await openTab(app, 'Timing');
+  await openTab(app, 'Settings');
 
-  // Target + schedule + template
-  await app
-    .getByPlaceholder('Tweet ID or https://x.com/...')
-    .fill('https://x.com/someone/status/9876543210');
-  await expect(app.getByText('Clean ID detected: 9876543210')).toBeVisible();
-  await app.getByRole('button', { name: /Fixed Clock Times/ }).click();
-  const times = app.getByPlaceholder('06:00, 18:00');
-  await times.fill('08:15, 20:45');
-  await app.locator('select').filter({ hasText: 'America/Denver' }).selectOption('Asia/Tokyo');
-  await app.getByRole('button', { name: 'Reset to Default Formula' }).click();
-  await app.getByRole('button', { name: '+ {color_name}' }).click();
-  await app.getByRole('button', { name: 'Save Settings' }).click();
-  await expect(app.getByText('Settings Saved')).toBeVisible();
+  // Global only: no per-campaign target / schedule / template / campaign switches here
+  await expect(app.getByRole('region', { name: 'All campaigns' })).toBeVisible();
+  await expect(app.getByRole('region', { name: 'This campaign' })).toHaveCount(0);
+  await expect(app.getByRole('region', { name: 'Rate limits' })).toContainText('X quota');
+  await expect(app.locator('main textarea')).toHaveCount(0);
+  await expect(app.getByPlaceholder(/Tweet ID or https/)).toHaveCount(0);
+  await expect(app.getByPlaceholder('06:00, 18:00')).toHaveCount(0);
+  await expect(app.getByRole('button', { name: 'Save Settings' })).toHaveCount(0);
 
-  const { settings } = await (await app.request.get('/api/status')).json();
-  expect(settings).toMatchObject({
-    targetTweetId: '9876543210',
-    intervalMode: 'fixed_times',
-    scheduleTimes: ['08:15', '20:45'],
-    timezone: 'Asia/Tokyo',
-  });
-  expect(settings.template).toContain('{color_name}');
-
-  // Survives a reload (server is the source of truth)
-  await app.reload();
-  await openTab(app, 'Timing');
-  await expect(app.getByPlaceholder('Tweet ID or https://x.com/...')).toHaveValue('9876543210');
-  await expect(app.getByPlaceholder('06:00, 18:00')).toHaveValue('08:15, 20:45');
+  // Rate limits open the telemetry modal
+  await app.getByRole('button', { name: 'Open rate limits' }).click();
+  await expect(app.getByText('X API Rate Limits & Quota Telemetry')).toBeVisible();
+  await app.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(app.getByText('X API Rate Limits & Quota Telemetry')).toHaveCount(0);
 
   // Webhook URL is displayed; rotating requires confirmation and changes it
-  const url = app.locator('input[readonly]');
+  const url = app.locator('main input[readonly]');
   await expect(url).toHaveValue(/\/api\/cron\/trigger\?secret=/);
   const oldUrl = await url.inputValue();
   await app.getByRole('button', { name: 'Rotate Secret' }).click();
@@ -51,6 +37,15 @@ test('timing settings save, webhook URL is shown and the secret rotates behind a
   await app.getByRole('alertdialog').getByRole('button', { name: 'Rotate' }).click();
   await expect(url).not.toHaveValue(oldUrl);
   await expect(url).toHaveValue(/\/api\/cron\/trigger\?secret=/);
+
+  // Each campaign's own pinned URL (in its form) uses the rotated secret
+  const secret = new URL(await url.inputValue()).searchParams.get('secret')!;
+  await openTab(app, 'Campaigns');
+  await campaignCard(app, PRIMARY).getByTitle('Edit context & schedule').click();
+  const pinned = app.getByLabel('Campaign webhook URL');
+  await expect(pinned).toHaveValue(/contextId=/);
+  expect(new URL(await pinned.inputValue()).searchParams.get('secret')).toBe(secret);
+  await app.getByRole('button', { name: 'Cancel' }).click();
 });
 
 test('credentials screen refuses to persist without CREDENTIALS_ENCRYPTION_KEY', async ({

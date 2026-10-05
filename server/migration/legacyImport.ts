@@ -8,6 +8,7 @@
  * No I/O here: callers pass already-read documents and get back a merged state plus a report.
  */
 
+import { extractTemplateHashtags, normaliseCampaignTags } from '../../shared/hashtags/index.js';
 import { extractTweetId } from '../../shared/tweetId.js';
 import { normalizeHHmm, resolveTimezone } from '../../shared/time.js';
 import type { ColorData, PostLog, TweetContext } from '../../shared/types.js';
@@ -108,6 +109,15 @@ const mapStats = (raw: Raw): TweetContext['stats'] => {
   };
 };
 
+/** Legacy docs carry tags inside the template; they move into `hashtags` (unless given). */
+const legacyTemplateAndTags = (raw: Raw, fallback: string) => {
+  const template = str(raw.template)?.trim() ? (raw.template as string) : fallback;
+  if (Array.isArray(raw.hashtags)) {
+    return { template, hashtags: normaliseCampaignTags(raw.hashtags as unknown[]) };
+  }
+  return extractTemplateHashtags(template);
+};
+
 /**
  * Maps one legacy context doc. Always returns a campaign that is paused (`enabled: false`) and
  * dry-run, whatever its old state, so nothing starts posting live after the import.
@@ -152,7 +162,7 @@ export const mapLegacyContext = (
     enabled: false,
     dryRun: true,
     schedule: mapSchedule(raw, label, warnings),
-    template: str(raw.template)?.trim() ? (raw.template as string) : d.template,
+    ...legacyTemplateAndTags(raw, d.template),
     themePreference: oneOf(raw.themePreference, THEMES) ?? 'dynamic',
     lastPostedTimestamp: Number.isFinite(Number(raw.lastPostedTimestamp))
       ? Number(raw.lastPostedTimestamp)

@@ -87,7 +87,8 @@ describe('POST /api/settings edits one campaign by id', () => {
     expect(res.body.queue.every((s: { contextId: string }) => s.contextId === B)).toBe(true);
     expect(ctx(B)).toMatchObject({ template: 'B edited {hex}', dryRun: false });
     expect(ctx(B).schedule.intervalMinutes).toBe(30);
-    expect(ctx(A).template).toBe('A {color_pick} #alpha');
+    expect(ctx(A).template).toBe('A {color_pick}');
+    expect(ctx(A).hashtags).toEqual(['alpha']);
     expect(ctx(A).schedule.intervalMinutes).toBe(1);
     expect(ctx(B).targetTweetId).toBe(bBefore.targetTweetId);
     // The real active campaign did not change
@@ -106,7 +107,8 @@ describe('POST /api/settings edits one campaign by id', () => {
 
   it('rejects an unknown `contextId` with 404 instead of editing the active campaign', async () => {
     await request(app).post('/api/settings').send({ contextId: 'nope', template: 'x' }).expect(404);
-    expect(ctx(A).template).toBe('A {color_pick} #alpha');
+    expect(ctx(A).template).toBe('A {color_pick}');
+    expect(ctx(A).hashtags).toEqual(['alpha']);
   });
 
   it('the global switches stay global and touch no campaign field', async () => {
