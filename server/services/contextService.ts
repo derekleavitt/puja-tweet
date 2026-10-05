@@ -27,6 +27,8 @@ import {
   type EffectiveReplyTarget,
 } from './contextChain.js';
 import type { XErrorClass } from '../xErrors.js';
+import { accountProblem, effectiveAccountId } from './accountService.js';
+import { DEFAULT_ACCOUNT_ID } from '../../shared/types.js';
 import { buildPrimaryContext } from './primaryContext.js';
 import { parseContextUpdate } from './contextSchema.js';
 import type { QueueService } from './queueService.js';
@@ -58,6 +60,19 @@ export class ContextService {
     private readonly sm: StateManager,
     private readonly queue: QueueService,
   ) {}
+
+  /** Stored form of an account id: undefined for the default account. Unknown ids are a 400. */
+  private checkAccountId(id: string | undefined): string | undefined {
+    const accountId = effectiveAccountId(id);
+    if (accountId === DEFAULT_ACCOUNT_ID) return undefined;
+    if (!this.sm.state.accounts.some((a) => a.id === accountId)) {
+      throw new HttpError(
+        400,
+        `Unknown X account "${accountId}". Pick one connected under Settings, X accounts.`,
+      );
+    }
+    return accountId;
+  }
 
   /** Boot-time: creates the primary context on first run and repairs polluted chains. */
   ensureDefaultContext() {
@@ -126,6 +141,7 @@ export class ContextService {
       id,
       name: data.name?.trim() || `Context #${s.contexts.length + 1}`,
       description: data.description?.trim() || '',
+      accountId: this.checkAccountId(data.accountId),
       targetTweetId: cleanTweetId(
         // Never inherit another campaign's target (the settings mirror holds the ACTIVE campaign's).
         data.targetTweetId || getDefaultTargetTweetId(),
@@ -206,6 +222,14 @@ export class ContextService {
       ? cleanTweetId(updates.targetTweetId)
       : current.targetTweetId;
     const targetChanged = targetTweetId !== current.targetTweetId;
+    // Only a change of account is validated, so a campaign whose account was removed can still be
+    // edited (and is refused on resume below).
+    const accountId =
+      'accountId' in updates &&
+      effectiveAccountId(updates.accountId) !== effectiveAccountId(current.accountId)
+        ? this.checkAccountId(updates.accountId)
+        : current.accountId;
+    const accountChanged = effectiveAccountId(accountId) !== effectiveAccountId(current.accountId);
 
     const mergedSchedule: TweetContextSchedule = {
       ...current.schedule,
@@ -217,10 +241,13 @@ export class ContextService {
       (updates.schedule?.mode !== undefined && updates.schedule.mode !== current.schedule.mode);
 
     const resumed = updates.enabled === true && !current.enabled;
+    const blocked = resumed ? accountProblem(this.sm.state, accountId) : undefined;
+    if (blocked) throw new HttpError(400, `Cannot resume "${current.name}": ${blocked}.`);
 
-    // The chain anchor is server-owned: only a target change or an explicit reset moves it.
-    // A client-sent `lastPostedTweetId` (e.g. the edit form echoing a stale value) is ignored.
-    const keepChain = !targetChanged && !resetChain;
+    // The chain anchor is server-owned: only a target change, an account change (another account's
+    // replies are a different thread) or an explicit reset moves it. A client-sent
+    // `lastPostedTweetId` (e.g. the edit form echoing a stale value) is ignored.
+    const keepChain = !targetChanged && !accountChanged && !resetChain;
     const updated: TweetContext = {
       ...current,
       ...fields,
@@ -229,6 +256,7 @@ export class ContextService {
         ? { lastPostedTimestamp: Date.now(), consecutiveErrors: 0, autoPausedReason: undefined }
         : {}),
       id: current.id, // Never allow id to be overwritten
+      accountId,
       targetTweetId,
       replyTargetMode: updates.replyTargetMode ?? (current.replyTargetMode || 'original_post'),
       engagementMode: updates.engagementMode ?? (current.engagementMode || 'reply'),
@@ -298,6 +326,7 @@ export class ContextService {
     return this.createContext({
       name: `${source.name} (Copy)`,
       description: source.description,
+      accountId: source.accountId,
       targetTweetId: source.targetTweetId,
       replyTargetMode: source.replyTargetMode || 'original_post',
       engagementMode: source.engagementMode || 'reply',

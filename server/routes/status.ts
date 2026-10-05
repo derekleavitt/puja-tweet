@@ -37,6 +37,7 @@ export const createStatusRouter = ({ services, scheduler }: AppDeps) => {
       rateLimitTelemetry: services.rateLimit.getRateLimitTelemetry(),
       queue: services.queue.getQueue(),
       latestLog: logs[0] || null,
+      accounts: services.accounts.list(),
     });
   });
 

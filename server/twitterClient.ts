@@ -529,7 +529,7 @@ const oauthPost = async (url: string, authHeader: string, step: string) => {
       headers: { Authorization: authHeader, 'User-Agent': 'X-ChromaBot/1.0' },
     });
   } catch (err) {
-    throw new Error(`Could not reach X for the ${step} step: ${errorMessage(err)}`);
+    throw new Error(`Could not reach X for the ${step} step: ${errorMessage(err)}`, { cause: err });
   }
   const text = await res.text();
   if (!res.ok) {
