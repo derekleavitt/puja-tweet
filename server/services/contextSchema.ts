@@ -44,6 +44,8 @@ export const contextUpdateSchema = z.object({
   // Accepted only as an explicit reset (null / ''); a string value is ignored (the anchor is
   // server-owned, see `ContextService.updateContext`), so an edit form echoing it is harmless.
   lastPostedTweetId: z.string().nullish(),
+  // The campaign's own hashtags (normalised and capped at 10 by the service).
+  hashtags: z.array(z.string().max(100)).max(50).optional(),
   // Config only: `hashtagState` is server-owned and stripped from client bodies.
   hashtagEvolution: hashtagEvolutionSchema.optional(),
 });
@@ -62,6 +64,7 @@ export type ContextUpdateInput = Partial<
     | 'template'
     | 'themePreference'
     | 'lastPostedTweetId'
+    | 'hashtags'
   >
 > & {
   schedule?: Partial<TweetContext['schedule']>;

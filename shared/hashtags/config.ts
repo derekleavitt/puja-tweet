@@ -4,13 +4,14 @@
 
 import type { HashtagEvolutionConfig, HashtagState } from '../types.js';
 import { WEATHER_TWEET_TAGS } from '../template/substitute.js';
+import { themeSeedTags } from './campaignTags.js';
 import { parseHashtags, stripAgentBlocks, tagKey } from './normalise.js';
 
 export const MIN_EVOLVED_TAGS = 1;
 export const MAX_EVOLVED_TAGS = 5;
 /** How many recently used tags are remembered so they are not repeated. */
 export const RECENT_LIMIT = 40;
-/** Seed used when a template carries no hashtag at all. */
+/** Seed used when a color template carries no hashtag at all (see `themeSeedTags`). */
 export const FALLBACK_SEED_TAG = 'colors';
 
 export const DEFAULT_HASHTAG_EVOLUTION: HashtagEvolutionConfig = {
@@ -44,7 +45,7 @@ export function normaliseEvolution(
 export interface SeedTags {
   /** Hashtags literally present in the template (what gets replaced in the rendered text). */
   found: string[];
-  /** What evolution starts from: `found`, or a fallback theme tag when the template has none. */
+  /** What evolution starts from: `found`, or a theme (`themeSeedTags`) when the template has none. */
   seed: string[];
 }
 
@@ -52,7 +53,7 @@ export interface SeedTags {
 export function getSeedTags(template: string): SeedTags {
   const text = stripAgentBlocks(template).replace(/{weather_tweet}/g, ` ${WEATHER_TWEET_TAGS} `);
   const found = parseHashtags(text);
-  return { found, seed: found.length > 0 ? found : [FALLBACK_SEED_TAG] };
+  return { found, seed: found.length > 0 ? found : themeSeedTags(template) };
 }
 
 /** State after a successful post: `used` becomes current and joins the (capped) recent list. */

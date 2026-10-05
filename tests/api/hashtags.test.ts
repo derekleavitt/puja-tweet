@@ -134,3 +134,81 @@ describe('preview -> post-now', () => {
     expect(preview.previewText).toContain('#eternal');
   });
 });
+
+describe('campaign hashtags + preview breakdown', () => {
+  const color = { ...generateColor('morning'), colorPick: 'Amber', weatherDesc: 'soft air' };
+  const preview = async (body: Record<string, unknown>) =>
+    (
+      await request(app)
+        .post('/api/template/preview')
+        .send({ color, ...body })
+        .expect(200)
+    ).body;
+
+  it('stores hashtags outside the template (moved on create, normalised on update)', async () => {
+    const ctx = await create({ name: 'Tags', template: '{color_pick} {weather_desc} #eternal' });
+    expect(ctx).toMatchObject({ template: '{color_pick} {weather_desc}', hashtags: ['eternal'] });
+    const res = await request(app)
+      .put(`/api/contexts/${ctx.id}`)
+      .send({ hashtags: ['#Dawn', 'dawn', 'golden hour', '#1'] })
+      .expect(200);
+    expect(res.body.context.hashtags).toEqual(['Dawn', 'GoldenHour']);
+    await request(app).put(`/api/contexts/${ctx.id}`).send({ hashtags: 'nope' }).expect(400);
+  });
+
+  it('returns a breakdown of body, tag block and tag source', async () => {
+    const ctx = await create({
+      name: 'Off',
+      template: '{color_pick} {weather_desc}',
+      hashtags: ['eternal', 'colors'],
+    });
+    const body = await preview({ contextId: ctx.id });
+    expect(body.previewText).toBe('Amber soft air #eternal #colors');
+    expect(body.breakdown).toEqual({
+      body: 'Amber soft air',
+      staticText: 'Amber soft air',
+      tagBlock: '#eternal #colors',
+      hashtags: ['eternal', 'colors'],
+      tagSource: 'campaign',
+    });
+  });
+
+  it('previews unsaved template + hashtags, and rejects malformed hashtags', async () => {
+    const ctx = await create({ name: 'Draft', template: '{color_pick}', hashtags: ['old'] });
+    const body = await preview({
+      contextId: ctx.id,
+      template: '{weather_tweet}',
+      hashtags: ['colors', 'Dawn'],
+    });
+    expect(body.previewText).toBe('Amber soft air #eternal #colors #Dawn');
+    expect(body.breakdown).toMatchObject({
+      tagSource: 'campaign',
+      removedDuplicateTags: ['colors'],
+    });
+    await request(app)
+      .post('/api/template/preview')
+      .send({ contextId: ctx.id, hashtags: [1] })
+      .expect(400);
+  });
+
+  it('evolved breakdown matches the preview text and the tags post-now takes back', async () => {
+    const ctx = await create({
+      name: 'Evo',
+      template: '{color_pick}',
+      hashtags: ['eternal'],
+      hashtagEvolution: { enabled: true, maxTags: 2 },
+    });
+    const body = await preview({ contextId: ctx.id });
+    expect(body.breakdown.tagSource).toBe('evolved');
+    expect(body.breakdown.seedSource).toBe('campaign');
+    expect(body.breakdown.hashtags).toEqual(body.hashtags);
+    expect(body.previewText).toBe(`Amber ${body.breakdown.tagBlock}`);
+  });
+
+  it('queue previews append the campaign hashtags', async () => {
+    const ctx = await create({ name: 'Queue', template: '{color_pick} x', hashtags: ['Ink'] });
+    const queue = (await request(app).get(`/api/queue?contextId=${ctx.id}`).expect(200)).body.queue;
+    expect(queue.length).toBeGreaterThan(0);
+    for (const slot of queue) expect(slot.previewText).toMatch(/ x #Ink$/);
+  });
+});

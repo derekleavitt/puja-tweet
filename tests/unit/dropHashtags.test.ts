@@ -34,7 +34,8 @@ beforeEach(async () => {
   svc = await createServices(new MemoryStore());
   svc.settings.updateSettings({ globalDryRun: false, globalPaused: false });
   post.mockReset().mockResolvedValue({ success: true, tweetId: '999', url: 'u' });
-  resolveText.mockReset().mockResolvedValue('Amber air #eternal #colors');
+  // The template renders the body only; the campaign's tags (#eternal #colors) live outside it.
+  resolveText.mockReset().mockResolvedValue('Amber air');
   next.mockReset().mockResolvedValue({ tags: ['Aurora', 'Glow'], source: 'offline' });
 });
 
@@ -92,7 +93,10 @@ describe('dropService with evolving hashtags', () => {
     const drops = makeDrops();
     const context = svc.contexts.getContext(id)!;
     const preview = await drops.composeText(context, color);
-    expect(preview).toEqual({ text: 'Amber air #Aurora #Glow', hashtags: ['Aurora', 'Glow'] });
+    expect(preview).toMatchObject({
+      text: 'Amber air #Aurora #Glow',
+      hashtags: ['Aurora', 'Glow'],
+    });
 
     next.mockClear();
     next.mockResolvedValue({ tags: ['Different'], source: 'offline' });
@@ -113,7 +117,7 @@ describe('dropService with evolving hashtags', () => {
 
   it('keeps the 280 guard by dropping trailing tags', async () => {
     enable();
-    resolveText.mockResolvedValue(`${'x'.repeat(266)} #eternal`);
+    resolveText.mockResolvedValue('x'.repeat(266));
     next.mockResolvedValue({ tags: ['Aurora', 'Glowing', 'Dawn'], source: 'offline' });
     const out = await makeDrops().executeDrop({ color });
     const posted = post.mock.calls[0][1].text as string;

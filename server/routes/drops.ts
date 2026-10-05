@@ -28,13 +28,19 @@ export const createDropsRouter = ({ services, drops }: AppDeps) => {
     contextId: string | undefined,
     template: string | undefined,
     color: ColorData,
+    campaignTags: string[] | undefined,
   ) => {
     const context = resolveContext(contextId);
     const timeTag = formatTimeInZone(new Date(), context.schedule?.timezone);
     const templateToUse = template || context.template;
 
-    const { text: previewText, hashtags } = await drops.composeText(context, color, {
-      template: templateToUse,
+    const {
+      text: previewText,
+      hashtags,
+      breakdown,
+    } = await drops.composeText(context, color, {
+      template: template || undefined,
+      hashtags: campaignTags,
       slotLabel: timeTag,
     });
     const replyInfo = services.contexts.getEffectiveReplyTargetId(context);
@@ -47,6 +53,8 @@ export const createDropsRouter = ({ services, drops }: AppDeps) => {
         previewText,
         // Evolved tags the preview used; post-now takes them back so the post does not re-roll.
         ...(hashtags ? { hashtags } : {}),
+        // How the text was put together (body, tag block, AI tag clean-up), for the UI to explain.
+        breakdown,
         charCount: previewText.length,
         targetTweetId: context.targetTweetId,
         replyToTweetId: replyInfo.targetTweetId,
@@ -70,9 +78,15 @@ export const createDropsRouter = ({ services, drops }: AppDeps) => {
 
   router.post('/template/preview', async (req, res, next) => {
     try {
-      const { template, color, slotType, contextId } = req.body;
+      const { template, color, slotType, contextId, hashtags } = req.body;
+      if (
+        hashtags !== undefined &&
+        (!Array.isArray(hashtags) || hashtags.some((t: unknown) => typeof t !== 'string'))
+      ) {
+        throw new HttpError(400, 'hashtags must be an array of strings');
+      }
       const targetColor = color || generateColor(slotType || 'random');
-      const { fields } = await buildPreview(contextId, template, targetColor);
+      const { fields } = await buildPreview(contextId, template, targetColor, hashtags);
 
       res.json({
         success: true,

@@ -3,13 +3,16 @@
  */
 
 import { DEFAULT_TWEET_TEMPLATE } from '../colorEngine.js';
-import { DEFAULT_HASHTAG_EVOLUTION } from '../../shared/hashtags/index.js';
+import { DEFAULT_HASHTAG_EVOLUTION, extractTemplateHashtags } from '../../shared/hashtags/index.js';
 import type { TweetContext } from '../../shared/types.js';
 import type { BotState } from '../store/Store.js';
 import { getDefaultTargetTweetId } from '../store/defaults.js';
 
 export const buildPrimaryContext = (s: BotState): TweetContext => {
   const now = new Date().toISOString();
+  const { template, hashtags } = extractTemplateHashtags(
+    s.settings.template || DEFAULT_TWEET_TEMPLATE,
+  );
   return {
     id: 'ctx_primary',
     name: 'Primary Eternal Colors',
@@ -27,7 +30,8 @@ export const buildPrimaryContext = (s: BotState): TweetContext => {
       humanizeJitterEnabled: s.settings.humanizeJitterEnabled ?? true,
       jitterPercentage: s.settings.jitterPercentage ?? 25,
     },
-    template: s.settings.template || DEFAULT_TWEET_TEMPLATE,
+    template,
+    hashtags,
     themePreference: s.settings.themePreference || 'dynamic',
     hashtagEvolution: { ...DEFAULT_HASHTAG_EVOLUTION },
     lastPostedTimestamp: Date.now(),

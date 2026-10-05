@@ -56,7 +56,10 @@ describe('post-drop CLI over dropService', () => {
     const code = await run([]);
     expect(code).toBe(0);
     expect(post.mock.calls[0][2]).toBe(true);
-    expect(svc.logs.getLogs()[0]).toMatchObject({ status: 'simulated', tweetText: 'hello' });
+    expect(svc.logs.getLogs()[0]).toMatchObject({
+      status: 'simulated',
+      tweetText: 'hello #eternal #colors',
+    });
   });
 
   it('honours the DRY_RUN=false env only as a live request, still behind the window guard', async () => {
