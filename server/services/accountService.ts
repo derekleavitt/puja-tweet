@@ -12,6 +12,7 @@ import { HttpError } from '../middleware/error.js';
 import {
   oauth1AccessToken,
   oauth1AuthorizeUrl,
+  OAUTH_AUTHORIZE_URL_ALT,
   oauth1RequestToken,
   verifyTwitterCredentials,
   type TwitterCredentials,
@@ -182,7 +183,9 @@ export class AccountService {
    * the PIN flow. The request-token secret is persisted (encrypted) so a different server instance
    * can finish the flow.
    */
-  async startConnect(callback: string): Promise<{ authorizeUrl: string; oauthToken: string }> {
+  async startConnect(
+    callback: string,
+  ): Promise<{ authorizeUrl: string; altAuthorizeUrl: string; oauthToken: string }> {
     const key = this.requireKey();
     const consumer = this.consumer();
     const token = await oauth1RequestToken(consumer, callback);
@@ -197,7 +200,11 @@ export class AccountService {
       createdAt: Date.now(),
     });
     await this.sm.flush();
-    return { authorizeUrl: oauth1AuthorizeUrl(token.oauthToken), oauthToken: token.oauthToken };
+    return {
+      authorizeUrl: oauth1AuthorizeUrl(token.oauthToken),
+      altAuthorizeUrl: oauth1AuthorizeUrl(token.oauthToken, OAUTH_AUTHORIZE_URL_ALT),
+      oauthToken: token.oauthToken,
+    };
   }
 
   /** Step 3: trades the authorized request token for the account's tokens and stores them. */

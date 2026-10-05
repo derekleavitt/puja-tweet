@@ -517,15 +517,20 @@ export interface AccessTokenResult {
 
 export const OAUTH_REQUEST_TOKEN_URL = 'https://api.x.com/oauth/request_token';
 export const OAUTH_ACCESS_TOKEN_URL = 'https://api.x.com/oauth/access_token';
-const OAUTH_AUTHORIZE_URL = 'https://api.x.com/oauth/authorize';
+/**
+ * X's authorize page. The classic api.twitter.com page signs in on the page itself; the api.x.com
+ * one hands sign-in to x.com's new login flow, which in practice can drop the authorize step and land
+ * on the home feed. Both accept the same request token, so the UI offers the other as a fallback.
+ */
+export const OAUTH_AUTHORIZE_URL = 'https://api.twitter.com/oauth/authorize';
+export const OAUTH_AUTHORIZE_URL_ALT = 'https://api.x.com/oauth/authorize';
 
 /**
- * X's authorize page for a request token. It authorizes the account currently signed in to x.com
- * in this browser (switch accounts on x.com first). No `force_login`: X sends that to its new login
- * flow, which loses the authorize step after "Continue with Google" and lands on the home feed.
+ * Authorize link for a request token. It authorizes the account signed in on that page. No
+ * `force_login`: X sends that to its new login flow, which loses the authorize step.
  */
-export const oauth1AuthorizeUrl = (requestToken: string): string =>
-  `${OAUTH_AUTHORIZE_URL}?oauth_token=${encodeURIComponent(requestToken)}`;
+export const oauth1AuthorizeUrl = (requestToken: string, base = OAUTH_AUTHORIZE_URL): string =>
+  `${base}?oauth_token=${encodeURIComponent(requestToken)}`;
 
 /** POSTs a signed, body-less OAuth 1.0a request and parses the form-encoded answer. */
 const oauthPost = async (url: string, authHeader: string, step: string) => {

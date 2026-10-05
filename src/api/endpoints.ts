@@ -133,10 +133,17 @@ export const verifyCredentials = () =>
 type AccountsResult = { success: boolean; accounts: XAccountInfo[] };
 export const getAccounts = () => orNull(apiFetch<AccountsResult>('/api/accounts'));
 export const startAccountConnect = (body: { mode: 'redirect' | 'pin'; callbackUrl?: string }) =>
-  apiFetch<{ success: boolean; mode: string; authorizeUrl: string; oauthToken: string }>(
-    '/api/accounts/connect/start',
-    { method: 'POST', body, errorMessage: 'Could not start connecting the account' },
-  );
+  apiFetch<{
+    success: boolean;
+    mode: string;
+    authorizeUrl: string;
+    altAuthorizeUrl?: string;
+    oauthToken: string;
+  }>('/api/accounts/connect/start', {
+    method: 'POST',
+    body,
+    errorMessage: 'Could not start connecting the account',
+  });
 export const completeAccountConnect = (body: { oauthToken: string; verifier: string }) =>
   apiFetch<AccountsResult & { account: XAccountInfo }>('/api/accounts/connect/complete', {
     method: 'POST',
