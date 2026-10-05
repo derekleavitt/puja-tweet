@@ -10,7 +10,6 @@ import { HttpError, toHttpError } from '../middleware/error.js';
 import { normaliseTags } from '../../shared/hashtags/index.js';
 import { formatTimeInZone } from '../../shared/time.js';
 import type { ExecuteDropOptions } from '../services/dropService.js';
-import { buildTurn } from '../services/conversationService.js';
 
 /** The conversation turn a preview returned, echoed by post-now; anything else is a 400. */
 const parseConversationEcho = (raw: unknown): ExecuteDropOptions['conversation'] => {
@@ -114,7 +113,7 @@ export const createDropsRouter = ({ services, drops }: AppDeps) => {
       const target = resolveContext(contextId);
       if (target.mode === 'conversation') {
         // The turn is written once here; Post sends it back (with `conversation`) unchanged.
-        const turn = await buildTurn(target);
+        const turn = await drops.buildTurn(target);
         const replyInfo = services.contexts.getEffectiveReplyTargetId(target);
         res.json({
           success: true,

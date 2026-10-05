@@ -16,7 +16,11 @@ import { DEFAULT_ACCOUNT_ID } from '../../shared/types.js';
 import { composeDropText, isEvolutionEnabled, nextHashtagState, usedHashtags } from './dropText.js';
 import type { ComposeOptions } from './dropText.js';
 import { hashtagService, type HashtagService } from './hashtagService.js';
-import { buildTurn, type ConversationTurn } from './conversationService.js';
+import {
+  buildTurn as globalBuildTurn,
+  createConversationService,
+  type ConversationTurn,
+} from './conversationService.js';
 import { services, type Services } from './index.js';
 import { generateColor } from '../colorEngine.js';
 
@@ -54,6 +58,8 @@ export interface DropDeps {
   resolveTemplateText: typeof resolveTemplateText;
   /** Evolving-hashtag generator; defaults to the Gemini-with-offline-fallback service. */
   hashtags?: Pick<HashtagService, 'next'>;
+  /** Conversation turn composer; defaults to the real one over `services`. */
+  buildTurn?: (ctx: TweetContext) => Promise<ConversationTurn>;
 }
 
 type TweetResult = Awaited<ReturnType<typeof postColorTweet>>;
@@ -83,6 +89,12 @@ const classify = (r: TweetResult) =>
 export const createDropService = (deps: DropDeps) => {
   const s = deps.services;
   const hashtags = deps.hashtags ?? hashtagService;
+  const buildTurn =
+    deps.buildTurn ??
+    ((ctx: TweetContext) =>
+      s === services
+        ? globalBuildTurn(ctx)
+        : createConversationService(s as unknown as Services).buildTurn(ctx));
 
   /** Builds the drop text (template + evolved hashtags); shared by the preview route and posting. */
   const composeText = (context: TweetContext, color: ColorData, options: ComposeOptions = {}) =>
@@ -197,7 +209,11 @@ export const createDropService = (deps: DropDeps) => {
       !!options.forceDryRun ||
       (options.forceLive ? false : (context.dryRun ?? false));
     const slotType = options.slotType || 'manual';
-    const chainInfo = s.contexts.getEffectiveReplyTargetId(context);
+    // Conversations always cascade: each turn replies to the previous one.
+    const chainInfo = s.contexts.getEffectiveReplyTargetId({
+      ...context,
+      replyTargetMode: 'last_comment',
+    });
 
     let turn: ConversationTurn | undefined;
     let turnError: unknown;
@@ -499,7 +515,7 @@ export const createDropService = (deps: DropDeps) => {
     };
   };
 
-  return { executeDrop, composeText };
+  return { executeDrop, composeText, buildTurn };
 };
 
 export type DropService = ReturnType<typeof createDropService>;
