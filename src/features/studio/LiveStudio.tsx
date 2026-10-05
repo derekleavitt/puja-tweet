@@ -1,6 +1,7 @@
 /**
  * X ChromaBot - LiveStudio
- * Loading gate plus the studio body that wires color, preview and posting together.
+ * Loading gate plus the studio body: the tweet preview (with evolved hashtags) and the Post action.
+ * The generated color is an invisible input; color controls only appear for color templates.
  */
 
 import React, { useState } from 'react';
@@ -12,11 +13,11 @@ import {
   hasAgentTag as templateHasAgentTag,
   hasHistoryTag as templateHasHistoryTag,
 } from '../../../shared/template/agentTags.js';
-import { ColorCanvas } from './ColorCanvas.js';
 import { TweetPreviewCard } from './TweetPreviewCard.js';
 import { PostResultToast } from './PostResultToast.js';
 import { StudioHeader, StudioSlot } from './StudioHeader.js';
 import { useAiPreview } from './useAiPreview.js';
+import { templateUsesColor } from '../../lib/templateTokens.js';
 
 interface LiveStudioProps {
   color: ColorData | null;
@@ -39,14 +40,9 @@ interface LiveStudioProps {
 
 type LiveStudioReadyProps = Omit<LiveStudioProps, 'color'> & { color: ColorData };
 
-const SLOT_BADGE: Record<StudioSlot, string> = {
-  morning: 'Morning Slot',
-  evening: 'Evening Slot',
-  manual: 'Custom Slot',
-};
-
 /**
- * Loading gate: the studio body owns many hooks, so the "no color yet" state is rendered here
+ * Loading gate: the studio body owns many hooks, so the "no color yet" state (the preview of a
+ * color template needs it) is rendered here
  * (before the hooks run) rather than as an early return in the middle of the body.
  */
 export const LiveStudio: React.FC<LiveStudioProps> = ({ color, ...props }) => {
@@ -54,7 +50,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({ color, ...props }) => {
     return (
       <div className="p-12 text-center text-neutral-500">
         <div className="w-8 h-8 mx-auto mb-3 rounded-full border-2 border-neutral-300 border-t-neutral-800 animate-spin" />
-        <p>Loading Chroma Engine...</p>
+        <p>Loading studio...</p>
       </div>
     );
   }
@@ -75,18 +71,11 @@ const LiveStudioReady: React.FC<LiveStudioReadyProps> = ({
   onUpdateContext,
 }) => {
   const [selectedSlot, setSelectedSlot] = useState<StudioSlot>('morning');
-  const [copiedField, setCopiedField] = useState<string | null>(null);
 
   const currentContext = contexts.find((c) => c.id === activeContextId) || contexts[0];
   const replyTargetMode =
     currentContext?.replyTargetMode || settings.replyTargetMode || 'original_post';
   const lastPostedTweetId = currentContext?.lastPostedTweetId || settings.lastPostedTweetId;
-
-  const copyToClipboard = (text: string, fieldName: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedField(fieldName);
-    setTimeout(() => setCopiedField(null), 1800);
-  };
 
   const hasAgentTag = templateHasAgentTag(settings.template);
   const hasHistoryTag = templateHasHistoryTag(settings.template);
@@ -125,9 +114,34 @@ const LiveStudioReady: React.FC<LiveStudioReadyProps> = ({
         activeContextId={activeContextId}
         targetTweetId={settings.targetTweetId}
         selectedSlot={selectedSlot}
+        showColorSlots={templateUsesColor(settings.template)}
         onSelectContext={onSelectContext}
         onPickSlot={pickSlot}
       />
+
+      <div className="max-w-2xl mx-auto w-full space-y-4">
+        <TweetPreviewCard
+          tweetText={tweetText}
+          targetTweetId={settings.targetTweetId}
+          dryRun={settings.globalDryRun !== false || settings.dryRun}
+          replyTargetMode={replyTargetMode}
+          lastPostedTweetId={lastPostedTweetId}
+          hasAgentTag={hasAgentTag}
+          hasHistoryTag={hasHistoryTag}
+          evolving={evolving}
+          isGeneratingAi={isGeneratingAi}
+          isPosting={isPosting}
+          onRegenerate={fetchAiPreview}
+          onPost={() =>
+            onPostNow(color, selectedSlot, undefined, {
+              // Post exactly what the preview shows (skip an agent tag's unresolved fallback).
+              text: !serverRendered || aiPreviewText ? tweetText : undefined,
+              hashtags: evolving ? aiPreviewTags : undefined,
+            })
+          }
+        />
+        {lastPostedResult && <PostResultToast lastPostedResult={lastPostedResult} />}
+      </div>
 
       <TargetTweetEditor
         currentTargetId={settings.targetTweetId}
@@ -139,42 +153,6 @@ const LiveStudioReady: React.FC<LiveStudioReadyProps> = ({
         onToggleReplyTargetMode={(newMode) => updateContext({ replyTargetMode: newMode })}
         onResetChain={() => updateContext({ lastPostedTweetId: undefined })}
       />
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        <div className="lg:col-span-7 space-y-6">
-          <ColorCanvas
-            color={color}
-            slotBadge={SLOT_BADGE[selectedSlot]}
-            copiedField={copiedField}
-            onCopy={copyToClipboard}
-          />
-        </div>
-
-        <div className="lg:col-span-5 space-y-4">
-          <TweetPreviewCard
-            color={color}
-            tweetText={tweetText}
-            targetTweetId={settings.targetTweetId}
-            dryRun={settings.globalDryRun !== false || settings.dryRun}
-            replyTargetMode={replyTargetMode}
-            lastPostedTweetId={lastPostedTweetId}
-            hasAgentTag={hasAgentTag}
-            hasHistoryTag={hasHistoryTag}
-            evolving={evolving}
-            isGeneratingAi={isGeneratingAi}
-            isPosting={isPosting}
-            onRegenerate={fetchAiPreview}
-            onPost={() =>
-              onPostNow(color, selectedSlot, undefined, {
-                // Post exactly what the preview shows (skip an agent tag's unresolved fallback).
-                text: !serverRendered || aiPreviewText ? tweetText : undefined,
-                hashtags: evolving ? aiPreviewTags : undefined,
-              })
-            }
-          />
-          {lastPostedResult && <PostResultToast lastPostedResult={lastPostedResult} />}
-        </div>
-      </div>
     </div>
   );
 };

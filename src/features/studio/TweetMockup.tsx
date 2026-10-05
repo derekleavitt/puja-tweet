@@ -4,10 +4,9 @@
  */
 
 import React from 'react';
-import { ColorData } from '../../types.js';
+import { AtSign } from 'lucide-react';
 
 interface TweetMockupProps {
-  color: ColorData;
   tweetText: string;
   targetTweetId: string;
   replyTargetMode: 'original_post' | 'last_comment';
@@ -15,7 +14,6 @@ interface TweetMockupProps {
 }
 
 export const TweetMockup: React.FC<TweetMockupProps> = ({
-  color,
   tweetText,
   targetTweetId,
   replyTargetMode,
@@ -23,11 +21,8 @@ export const TweetMockup: React.FC<TweetMockupProps> = ({
 }) => (
   <div className="space-y-3 pt-1">
     <div className="flex items-center gap-2.5">
-      <div
-        className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-xs"
-        style={{ backgroundColor: color.hex }}
-      >
-        🎨
+      <div className="w-10 h-10 rounded-full flex items-center justify-center bg-neutral-200 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 shadow-xs">
+        <AtSign className="w-4 h-4" />
       </div>
       <div>
         <div className="flex items-center gap-1.5 leading-none">
@@ -51,7 +46,10 @@ export const TweetMockup: React.FC<TweetMockupProps> = ({
     </div>
 
     {/* Formatted Text Box */}
-    <div className="bg-neutral-50 dark:bg-neutral-950 p-3.5 rounded-lg border border-neutral-100 dark:border-neutral-800 text-sm font-sans text-neutral-800 dark:text-neutral-200 whitespace-pre-line leading-relaxed selection:bg-neutral-200">
+    <div
+      data-testid="tweet-preview-text"
+      className="bg-neutral-50 dark:bg-neutral-950 p-3.5 rounded-lg border border-neutral-100 dark:border-neutral-800 text-sm font-sans text-neutral-800 dark:text-neutral-200 whitespace-pre-line leading-relaxed selection:bg-neutral-200"
+    >
       {tweetText}
     </div>
 

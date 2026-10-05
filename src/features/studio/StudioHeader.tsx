@@ -1,6 +1,6 @@
 /**
  * X ChromaBot - StudioHeader
- * Studio title, context picker and quick slot generators.
+ * Studio title, campaign picker and (for color templates only) the color slot re-roll.
  */
 
 import React from 'react';
@@ -10,9 +10,9 @@ import { TweetContext } from '../../types.js';
 export type StudioSlot = 'morning' | 'evening' | 'manual';
 
 const SLOTS = [
-  { slot: 'morning', label: 'Morning Dawn', Icon: Sun, iconClass: 'text-amber-500' },
-  { slot: 'evening', label: 'Evening Dusk', Icon: Moon, iconClass: 'text-indigo-400' },
-  { slot: 'manual', label: 'Random Pick', Icon: Shuffle, iconClass: 'text-rose-500' },
+  { slot: 'morning', label: 'Morning', Icon: Sun },
+  { slot: 'evening', label: 'Evening', Icon: Moon },
+  { slot: 'manual', label: 'Random', Icon: Shuffle },
 ] as const;
 
 interface StudioHeaderProps {
@@ -20,6 +20,8 @@ interface StudioHeaderProps {
   activeContextId: string;
   targetTweetId: string;
   selectedSlot: StudioSlot;
+  /** The template uses a color token, so re-rolling the color changes the tweet. */
+  showColorSlots: boolean;
   onSelectContext?: (id: string) => Promise<void>;
   onPickSlot: (slot: StudioSlot) => void;
 }
@@ -29,6 +31,7 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
   activeContextId,
   targetTweetId,
   selectedSlot,
+  showColorSlots,
   onSelectContext,
   onPickSlot,
 }) => (
@@ -36,7 +39,7 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
     <div>
       <div className="flex items-center gap-2.5 flex-wrap">
         <h1 className="text-xl font-bold tracking-tight text-neutral-900 dark:text-neutral-100">
-          Chromatic Post Studio
+          Post Studio
         </h1>
         {contexts.length > 0 && (
           <div className="flex items-center gap-1.5 bg-neutral-100 dark:bg-neutral-800 px-2.5 py-1 rounded-lg border border-neutral-200 dark:border-neutral-700 text-xs">
@@ -74,22 +77,28 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
       </p>
     </div>
 
-    {/* Quick Slot Generator Selectors */}
-    <div className="flex items-center gap-1.5 p-1 bg-neutral-100 dark:bg-neutral-900 rounded-lg self-start sm:self-auto">
-      {SLOTS.map(({ slot, label, Icon, iconClass }) => (
-        <button
-          key={slot}
-          onClick={() => onPickSlot(slot)}
-          className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5 cursor-pointer ${
-            selectedSlot === slot
-              ? 'bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 shadow-xs'
-              : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200'
-          }`}
-        >
-          <Icon className={`w-3.5 h-3.5 ${iconClass}`} />
-          {label}
-        </button>
-      ))}
-    </div>
+    {/* Color re-roll: only meaningful when the template uses a color token */}
+    {showColorSlots && (
+      <div
+        className="flex items-center gap-1.5 p-1 bg-neutral-100 dark:bg-neutral-900 rounded-lg self-start sm:self-auto text-xs"
+        title="This template uses a color token: pick the palette to re-roll the color"
+      >
+        <span className="pl-2 pr-1 font-semibold text-neutral-500">Color:</span>
+        {SLOTS.map(({ slot, label, Icon }) => (
+          <button
+            key={slot}
+            onClick={() => onPickSlot(slot)}
+            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5 cursor-pointer ${
+              selectedSlot === slot
+                ? 'bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 shadow-xs'
+                : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200'
+            }`}
+          >
+            <Icon className="w-3.5 h-3.5 text-neutral-400" />
+            {label}
+          </button>
+        ))}
+      </div>
+    )}
   </div>
 );
