@@ -106,7 +106,9 @@ export function useContextForm(opts: UseContextFormOptions) {
         mode === 'conversation'
           ? (prev.conversation ?? defaultConversation(accounts))
           : prev.conversation;
-      return { ...prev, mode, conversation };
+      // A new conversation starts without the color campaign's default #eternal #colors.
+      const hashtags = mode === 'conversation' && isCreating ? [] : prev.hashtags;
+      return { ...prev, mode, conversation, hashtags };
     });
 
   const patchConversation = (fields: Partial<ConversationConfig>) =>

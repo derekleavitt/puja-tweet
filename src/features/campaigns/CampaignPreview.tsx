@@ -60,7 +60,7 @@ export const CampaignPreview: React.FC<CampaignPreviewProps> = ({
       : speakerLabel(accounts, turn.nextSpeakerAccountId)
     : '';
   const [notice, setNotice] = useState<string | null>(null);
-  const evolving = !isConversation && context.hashtagEvolution?.enabled === true;
+  const evolving = context.hashtagEvolution?.enabled === true;
   const text = preview?.text ?? '';
   const overLimit = text.length > 280;
 
@@ -76,6 +76,7 @@ export const CampaignPreview: React.FC<CampaignPreviewProps> = ({
         isConversation && turn
           ? {
               text: preview.text,
+              hashtags: preview.hashtags,
               slotType: slot,
               speakerHandle: turn.speakerHandle,
               conversation: {
@@ -179,7 +180,7 @@ export const CampaignPreview: React.FC<CampaignPreviewProps> = ({
         </p>
       )}
 
-      {!isConversation && preview?.hashtags && preview.hashtags.length > 0 && (
+      {preview?.hashtags && preview.hashtags.length > 0 && (
         <div data-testid="preview-hashtags" className="flex items-center gap-1 flex-wrap">
           <span className="text-[10px] uppercase font-mono text-neutral-400">Hashtags:</span>
           {preview.hashtags.map((tag) => (

@@ -217,7 +217,7 @@ describe('conversation create', () => {
         engagementMode: 'quote',
         replyTargetMode: 'original_post',
         autoFallbackToQuote: true,
-        hashtags: ['x'],
+        hashtags: ['Trout'],
         hashtagEvolution: { enabled: true },
       },
     );
@@ -227,18 +227,19 @@ describe('conversation create', () => {
       engagementMode: 'reply',
       replyTargetMode: 'last_comment',
       autoFallbackToQuote: false,
-      hashtags: [],
+      // Hashtags (and their evolution) work for conversations too.
+      hashtags: ['Trout'],
     });
-    expect(ctx.hashtagEvolution?.enabled).toBe(false);
+    expect(ctx.hashtagEvolution?.enabled).toBe(true);
     const patched = svc.contexts.patchContext(ctx.id, {
       engagementMode: 'quote',
-      hashtags: ['y'],
+      hashtags: ['RiverGods'],
       replyTargetMode: 'original_post',
     });
     expect(patched).toMatchObject({
       engagementMode: 'reply',
       replyTargetMode: 'last_comment',
-      hashtags: [],
+      hashtags: ['RiverGods'],
     });
   });
 

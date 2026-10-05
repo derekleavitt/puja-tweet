@@ -21,6 +21,9 @@ loop or driven externally through `POST /api/cron/tick`).
 - **Storage:** Firestore. **AI:** Gemini Flash-Lite only (`gemini-3.1-flash-lite`; `GEMINI_MODEL` overrides it).
 - **Deploys:** every merge to `main` deploys through GitHub Actions (keyless Workload Identity
   Federation; docs-only changes are skipped). Secrets live in Secret Manager, never in the repo.
+- **Quick check:** `bash scripts/prod-status.sh [30m]` prints the global switches, every campaign's
+  schedule and state, and the recent scheduler log (read-only; never prints credentials). If nothing
+  posts, look for `Tick skipped: Paused` first: the global Pause switch is on.
 - **Logs:**
 
   ```bash

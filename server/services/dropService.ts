@@ -305,6 +305,7 @@ export const createDropService = (deps: DropDeps) => {
         replyToTweetId: chainInfo.targetTweetId,
         summaryUsed: false,
         transcriptLength: 0,
+        ...(options.hashtags ? { hashtags: options.hashtags } : {}),
       };
     } else {
       try {
@@ -393,6 +394,13 @@ export const createDropService = (deps: DropDeps) => {
         s.contexts.recordConversationTurn(context.id, turn, status, res.tweetId).autoPausedReason ??
         autoPausedReason;
     }
+    // Evolving hashtags advance only after a posted (live or simulated) turn of this run.
+    let usedTags: string[] | undefined;
+    if (turn && res.success && sameRun && isEvolutionEnabled(context)) {
+      usedTags = usedHashtags(context, text, turn.hashtags);
+      const next = nextHashtagState(context, usedTags);
+      if (next) s.contexts.setHashtagState(context.id, next);
+    }
     const errorMessage =
       autoPausedReason && res.error
         ? `${res.error} [Campaign auto-paused: ${autoPausedReason}]`
@@ -422,7 +430,13 @@ export const createDropService = (deps: DropDeps) => {
     // Result, turn, transcript and log reach the store together, right after X answered.
     await s.flush();
 
-    return { success: res.success, result: res, log: logEntry, context };
+    return {
+      success: res.success,
+      result: res,
+      log: logEntry,
+      context,
+      ...(usedTags ? { hashtags: usedTags } : {}),
+    };
   };
 
   /** Execute a drop for a specific context or the active context. */

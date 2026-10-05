@@ -98,10 +98,13 @@ Code lives in `server/services/conversationService.ts`. The pure parts go in
   model loop in `generatePoeticAgentText`. It covers both models, the daily cap, the too-long retry
   and `trimToCompleteSentence`. The poetry path must behave exactly as today. It throws
   `AgentUnavailableError` when every model fails or none is configured (no fallback text).
-- **Length budget:** `mention = " @" + nextHandle` and
-  `max = min(240, 280 − weightedTweetLength(mention))`.
-- **Mention guarantee:** `ensureMention(text, nextHandle)` keeps the text when
-  `/(^|[^\w])@next\b/i` matches. Otherwise it returns `trimToCompleteSentence(text, max) + mention`.
+- **Length budget:** `conversationBudget(required, tagRoom)` =
+  `min(240, 280 − weightedTweetLength(" @a @b …") − tagRoom)`, where `required` is every participant
+  but the speaker (next speaker first) and `tagRoom` is the hashtag block's length.
+- **Mention placement:** `placeMentions(text, { required, speaker, maxLength })` keeps a mention
+  group the model wrote at the start (or end), leaves mentions inside sentences alone, adds every
+  missing participant to the group, drops the speaker's own handle and the comma of a dangling
+  vocative, and trims the text (never the mentions) to a complete sentence. No "cc".
   - Any @handle that is not a participant or the opener is de-@'d (`@foo` → `foo`).
   - Finish with a final `checkTweetText` (≤ 280).
 - **Building a turn:**
@@ -272,7 +275,7 @@ It returns no color, breakdown or hashtags, and ignores the template param.
 - **Participant removed or revoked:** the conversation pauses, and resume is refused until the cast is
   fixed. A permanently blocked speaker stalls the thread, so the card's blockedReason names the handle.
 - **2 participants:** strict alternation; the form hint says so.
-- **X 403 "not mentioned":** `ensureMention` and the save-time validation prevent it. If it still
+- **X 403 "not mentioned":** `placeMentions` and the save-time validation prevent it. If it still
   happens it is `reply_restricted`: the same speaker retries and the breaker trips after 5 failures.
   The quote fallback is forced off.
 - **Anchor deleted on X:** the existing `recoverChain` replies to the opening post instead.

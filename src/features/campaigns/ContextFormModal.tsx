@@ -136,17 +136,17 @@ export const ContextFormModal: React.FC<ContextFormModalProps> = ({ form }) => {
                 hashtags={ctx.hashtags ?? []}
                 onMove={(template, hashtags) => patch({ template, hashtags })}
               />
-              <CampaignHashtagsInput
-                value={ctx.hashtags}
-                onChange={(hashtags) => patch({ hashtags })}
-              />
-              <HashtagEvolutionEditor
-                hashtags={ctx.hashtags ?? []}
-                value={ctx.hashtagEvolution}
-                onChange={(hashtagEvolution) => patch({ hashtagEvolution })}
-              />
             </>
           )}
+          <CampaignHashtagsInput
+            value={ctx.hashtags}
+            onChange={(hashtags) => patch({ hashtags })}
+          />
+          <HashtagEvolutionEditor
+            hashtags={ctx.hashtags ?? []}
+            value={ctx.hashtagEvolution}
+            onChange={(hashtagEvolution) => patch({ hashtagEvolution })}
+          />
 
           <div className={isConversation ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-2 gap-3'}>
             {!isConversation && (

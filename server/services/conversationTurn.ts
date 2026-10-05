@@ -6,7 +6,6 @@
 
 import { trimToCompleteSentence, weightedTweetLength } from '../../shared/tweetLength.js';
 import type { ConversationState, ConversationTurnRecord, PostLog } from '../../shared/types.js';
-import { mentionsHandle } from './conversationConfig.js';
 
 /** Turns always sent word for word. */
 export const RECENT_TURNS = 15;
@@ -36,29 +35,81 @@ export const pickNext = (
   return others[i];
 };
 
-/** Room for the model's text so that " @next" and the " cc @…" tail still fit in a tweet. */
-export const conversationBudget = (nextHandle: string, ccHandles: readonly string[] = []): number =>
-  Math.min(
-    TURN_MAX_LENGTH,
-    TWEET_LIMIT - weightedTweetLength(` @${nextHandle}`) - weightedTweetLength(ccTail(ccHandles)),
-  );
-
-const ccTail = (handles: readonly string[]): string =>
-  handles.length ? ` cc ${handles.map((h) => `@${h}`).join(' ')}` : '';
+/** Weighted room a group of mentions takes next to the text (" @a @b", separator included). */
+const mentionBlockLength = (handles: readonly string[]): number =>
+  handles.length ? weightedTweetLength(` ${handles.map((h) => `@${h}`).join(' ')}`) : 0;
 
 /**
- * Tags the other participants (" cc @a @b") who are not mentioned yet, so ANY participant may
- * reply to this turn (X lets an app reply only to posts its account wrote or is mentioned in):
- * a re-picked next speaker (cast edit, removed account) can never hit a 403.
+ * Room for the model's text so that every participant's @mention and the hashtag block
+ * (`reserved`, separator included) still fit in a tweet.
  */
-export const appendCc = (text: string, ccHandles: readonly string[]): string =>
-  `${text}${ccTail(ccHandles.filter((h) => !mentionsHandle(text, h)))}`;
+export const conversationBudget = (handles: readonly string[], reserved = 0): number =>
+  Math.min(TURN_MAX_LENGTH, TWEET_LIMIT - mentionBlockLength(handles) - reserved);
 
-/** Keeps the text when it already @mentions the next speaker, else ends it with the mention. */
-export const ensureMention = (text: string, nextHandle: string, maxLength: number): string => {
-  if (mentionsHandle(text, nextHandle)) return text;
-  return `${trimToCompleteSentence(text.trim(), maxLength)} @${nextHandle}`;
+const MENTION = /[@\uFF20](\w+)/g;
+/** Mentions at the very start ("@a @b, …"). */
+const LEADING_GROUP = /^\s*((?:[@\uFF20]\w+[\s,]*)+)/u;
+/** Mentions at the very end ("…, @a and @b."), with the punctuation that closed the sentence. */
+const TRAILING_GROUP =
+  /[\s,;:\u2013\u2014-]*((?:(?:and\s+|&\s*)?[@\uFF20]\w+[\s,]*)+)([.!?\u2026]*)\s*$/iu;
+
+const handlesIn = (text: string): string[] => [...text.matchAll(MENTION)].map((m) => m[1]);
+
+export interface MentionRules {
+  /** Everyone who must be tagged (next speaker first), so any of them may reply. */
+  required: readonly string[];
+  /** The author: never tagged. */
+  speaker: string;
+  /** Weighted budget for the text with its mentions (the hashtag block is added later). */
+  maxLength: number;
+}
+
+/**
+ * Tags people the way X users do: all together at the start ("@a @b …") or at the end
+ * ("… @a @b"), never "cc". Mentions the model put inside a sentence (a different remark for each
+ * person) stay where they are; everyone else who must be tagged joins the group. A group the model
+ * wrote at the start stays at the start, otherwise the group goes at the end. Dangling vocatives
+ * ("…river gods, @bob.") lose their comma: "…river gods. @bob".
+ */
+export const placeMentions = (text: string, rules: MentionRules): string => {
+  let body = text.trim();
+  let lead: string[] = [];
+  let trail: string[] = [];
+  const leading = LEADING_GROUP.exec(body);
+  if (leading) {
+    lead = handlesIn(leading[1]);
+    body = body.slice(leading[0].length);
+  }
+  const trailing = TRAILING_GROUP.exec(body);
+  if (trailing && trailing.index > 0) {
+    trail = handlesIn(trailing[1]);
+    const before = body.slice(0, trailing.index).trimEnd();
+    body = /[.!?\u2026]$/.test(before) ? before : `${before}${trailing[2]}`;
+  }
+  body = body.replace(/^[\s,;:\u2013\u2014-]+/, '').trim();
+
+  const key = (h: string) => h.toLowerCase();
+  const canonical = new Map(rules.required.map((h) => [key(h), h]));
+  const inline = new Set(handlesIn(body).map(key));
+  const group: string[] = [];
+  for (const h of [...lead, ...trail, ...rules.required]) {
+    const k = key(h);
+    if (k === key(rules.speaker) || inline.has(k) || group.some((g) => key(g) === k)) continue;
+    group.push(canonical.get(k) ?? h);
+  }
+  if (!group.length) return trimToCompleteSentence(body, rules.maxLength);
+  const room = rules.maxLength - mentionBlockLength(group);
+  if (weightedTweetLength(body) > room) body = trimToCompleteSentence(body, room);
+  const tags = group.map((h) => `@${h}`).join(' ');
+  return lead.length && !trail.length ? `${tags} ${body}` : `${body} ${tags}`;
 };
+
+/**
+ * The app adds the hashtags itself: a run of hashtags the model wrote at the end anyway is dropped,
+ * and a "#word" inside a sentence becomes "word".
+ */
+export const dehash = (text: string): string =>
+  text.replace(/(?:\s*[#\uFF03]\w+)+\s*$/u, '').replace(/(^|[^\w&#])[#\uFF03](\w+)/gu, '$1$2');
 
 /** De-@s every handle that is not allowed (`@foo` becomes `foo`); allowed ones are kept. */
 export const deMentionStrangers = (text: string, allowedHandles: Iterable<string>): string => {
@@ -182,7 +233,8 @@ export const conversationSystemInstruction = (max: number): string =>
   `You write ONE reply in a public X (Twitter) conversation between several accounts. You speak as exactly one of them.
 Output ONLY the reply text: no quotes, no preamble, no name labels, no hashtags.
 Strictly under ${max} characters. Always end on a complete sentence.
-The reply MUST end by addressing the next speaker with their @handle exactly as given.
+Tag the people you talk to the way people do on X: their @handles together at the very start or at the very end of the reply, never "cc" and never a comma before a closing @handle.
+Only when you say something different to each person may you put each @handle right where you address them.
 Never mention anyone else. Stay in character, react to what was said last, don't repeat earlier points.`;
 
 const formatTurns = (turns: readonly TranscriptTurn[]): string =>
@@ -229,7 +281,7 @@ OPENING POST${p.openerHandle ? ` by @${p.openerHandle}` : ''}:
 ${summary}CONVERSATION SO FAR (oldest first):
 ${sofar}
 
-WRITE TURN ${p.turnNumber} AS @${p.speakerHandle}. End by addressing @${p.nextHandle} (write "@${p.nextHandle}" literally, as the last words).
+WRITE TURN ${p.turnNumber} AS @${p.speakerHandle}. @${p.nextHandle} answers next, so talk mainly to them; tag ${others} together at the start or the end (not "cc").
 Output ONLY the reply text, under ${p.max} characters, complete sentences.`;
   return { systemInstruction: conversationSystemInstruction(p.max), contents };
 };

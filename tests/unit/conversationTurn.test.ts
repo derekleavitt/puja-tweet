@@ -5,7 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { generateColor } from '../../server/colorEngine.js';
 import { getGeminiModels, resetGeminiCallCounter } from '../../server/geminiConfig.js';
-import { checkTweetText, weightedTweetLength } from '../../shared/tweetLength.js';
+import { weightedTweetLength } from '../../shared/tweetLength.js';
 import type { ConversationState, PostLog, TweetContext } from '../../shared/types.js';
 
 const generateContent = vi.fn();
@@ -18,8 +18,8 @@ vi.mock('../../server/services/index.js', () => ({ services: { logs: { getLogs: 
 
 const {
   pickNext,
-  ensureMention,
-  appendCc,
+  placeMentions,
+  dehash,
   deMentionStrangers,
   buildTranscript,
   buildConversationPrompt,
@@ -64,41 +64,71 @@ describe('pickNext', () => {
   });
 });
 
-describe('ensureMention', () => {
-  it('keeps text that already mentions the next speaker (case-insensitive)', () => {
-    const t = 'Well said, @Bob_X, but I disagree.';
-    expect(ensureMention(t, 'bob_x', 200)).toBe(t);
+describe('placeMentions', () => {
+  const rules = {
+    required: ['thebeethovenjr', 'bhaijahndai'],
+    speaker: 'bhalomachiato',
+    maxLength: 280,
+  };
+
+  it('turns a dangling vocative plus "cc" into one natural group at the end', () => {
+    const raw =
+      'Faith keeps me wading through the currents. Perhaps we simply need to sacrifice a few more ' +
+      'flies to the river gods, @thebeethovenjr.';
+    expect(placeMentions(raw, rules)).toBe(
+      'Faith keeps me wading through the currents. Perhaps we simply need to sacrifice a few more ' +
+        'flies to the river gods. @thebeethovenjr @bhaijahndai',
+    );
+    expect(placeMentions(raw, rules)).not.toContain('cc');
   });
 
-  it('appends the mention when missing and stays under 280', () => {
-    expect(ensureMention('Hello there.', 'bob', 200)).toBe('Hello there. @bob');
-    const long = `${'A fine sentence about stars. '.repeat(20)}`.trim();
-    const handle = 'a_very_long_h1';
-    const out = ensureMention(long, handle, conversationBudget(handle));
-    expect(checkTweetText(out).ok).toBe(true);
-    expect(out.endsWith(` @${handle}`)).toBe(true);
-    expect(out.slice(0, -(handle.length + 2))).toMatch(/[.!?…]$/);
+  it('keeps a group the model put at the start, and adds whoever is missing to it', () => {
+    expect(placeMentions('@thebeethovenjr, the trout disagree.', rules)).toBe(
+      '@thebeethovenjr @bhaijahndai the trout disagree.',
+    );
   });
 
-  it('does not treat a longer handle as the mention', () => {
-    expect(ensureMention('hi @bobby', 'bob', 200)).toBe('hi @bobby @bob');
+  it('merges "@a and @b" at the end and keeps the question mark', () => {
+    expect(placeMentions('What say you, @bhaijahndai and @thebeethovenjr?', rules)).toBe(
+      'What say you? @bhaijahndai @thebeethovenjr',
+    );
+  });
+
+  it('leaves mentions inside sentences (a remark for each person) where they are', () => {
+    const t = '@thebeethovenjr is wrong about lures, and @bhaijahndai is wrong about everything.';
+    expect(placeMentions(t, rules)).toBe(t);
+    expect(placeMentions('I agree with @bhaijahndai on this.', rules)).toBe(
+      'I agree with @bhaijahndai on this. @thebeethovenjr',
+    );
+  });
+
+  it('never tags the speaker, matches handles case-insensitively and keeps canonical case', () => {
+    expect(placeMentions('Indeed. @BhaloMachiato @THEBEETHOVENJR', rules)).toBe(
+      'Indeed. @thebeethovenjr @bhaijahndai',
+    );
+  });
+
+  it('trims the text (not the mentions) to fit the budget, on a complete sentence', () => {
+    const long = `${'A fine sentence about trout. '.repeat(20)}`.trim();
+    const out = placeMentions(long, { ...rules, maxLength: 200 });
+    expect(weightedTweetLength(out)).toBeLessThanOrEqual(200);
+    expect(out.endsWith(' @thebeethovenjr @bhaijahndai')).toBe(true);
+    expect(out.replace(/ @\w+/g, '')).toMatch(/[.!?…]$/);
   });
 });
 
-describe('appendCc / conversationBudget', () => {
-  it('tags the other participants who are not mentioned yet', () => {
-    expect(appendCc('Nice point. @bob', ['cy', 'dee'])).toBe('Nice point. @bob cc @cy @dee');
-    expect(appendCc('Ask @cy too. @bob', ['cy', 'dee'])).toBe('Ask @cy too. @bob cc @dee');
-    expect(appendCc('Just us. @bob', [])).toBe('Just us. @bob');
+describe('dehash / conversationBudget', () => {
+  it('turns hashtags the model wrote into plain words', () => {
+    expect(dehash('Sing the #RiverGods song now.')).toBe('Sing the RiverGods song now.');
+    expect(dehash('Cast again. @bob #fishing #trout')).toBe('Cast again. @bob');
+    expect(dehash('Q&A #1 at C#')).toBe('Q&A 1 at C#');
   });
 
-  it('reserves room for the cc tail so the tweet still fits', () => {
-    const cc = ['aaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbb', 'ccccccccccccccc'];
-    const max = conversationBudget('ddddddddddddddd', cc);
-    const body = 'x'.repeat(max);
-    const text = appendCc(`${body} @ddddddddddddddd`, cc);
-    expect(checkTweetText(text).ok).toBe(true);
-    expect(conversationBudget('bob', [])).toBeGreaterThan(max);
+  it('reserves room for every mention and the hashtag block', () => {
+    const handles = ['aaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbb', 'ccccccccccccccc', 'ddddddddddddddd'];
+    const max = conversationBudget(handles, 30);
+    expect(max).toBe(280 - 4 * 17 - 30);
+    expect(conversationBudget(['bob'])).toBe(240);
   });
 });
 
@@ -185,7 +215,9 @@ describe('prompt', () => {
     expect(contents).toContain(
       'CONVERSATION SO FAR (oldest first):\n[Turn 7] @a: "seven"\n[Turn 8] @b: "eight"',
     );
-    expect(contents).toContain('WRITE TURN 9 AS @a. End by addressing @c (write "@c" literally');
+    expect(contents).toContain('WRITE TURN 9 AS @a. @c answers next');
+    expect(contents).toContain('tag @b, @c together at the start or the end (not "cc")');
+    expect(systemInstruction).toContain('never "cc"');
     expect(contents).toContain('under 237 characters, complete sentences.');
   });
 
@@ -199,12 +231,6 @@ describe('prompt', () => {
     expect(contents).toContain('No one has replied yet; you reply to the opening post.');
     expect(contents).toContain('talking with @b, @c.');
     expect(contents).toContain('OPENING POST:\n');
-  });
-
-  it('budget leaves room for the mention', () => {
-    expect(conversationBudget('bob')).toBe(240);
-    expect(conversationBudget('x'.repeat(15))).toBe(240);
-    expect(280 - weightedTweetLength(' @bob')).toBeGreaterThan(240);
   });
 
   it('summary prompt carries the old summary and the turns', () => {
@@ -281,8 +307,47 @@ describe('buildTurn', () => {
       transcriptLength: 2,
     });
     // The next speaker is addressed, and every other participant is tagged so anyone can reply.
-    expect(turn.text).toBe('Hello @owner and stranger. @bob cc @cy');
+    expect(turn.text).toBe('Hello @owner and stranger. @bob @cy');
     expect(generate.mock.calls[0][0]).toContain('[Turn 2] @alice: "turn 2"');
+  });
+
+  it('appends evolved hashtags (reserving their room) and reports them', async () => {
+    const ctx = makeCtx(2, {
+      hashtags: ['FlyFishing'],
+      hashtagEvolution: { enabled: true, maxTags: 2, keepSeedTags: false },
+    });
+    const next = vi.fn().mockResolvedValue({ tags: ['TroutTalk', 'RiverGods'], source: 'gemini' });
+    const generate = vi.fn().mockResolvedValue('The river owes us nothing, @bob. #fishing');
+    const svc = createConversationService({
+      accounts: { handleOf: (id) => (id ? handles[id] : undefined) },
+      contexts: {
+        getContext: () => ctx,
+        getEffectiveReplyTargetId: (c) => ({ targetTweetId: c.targetTweetId }),
+      },
+      logs: { getLogs: () => turnsLogs(2) },
+      generate,
+      hashtags: { next },
+      rng: () => 0,
+    });
+    const turn = await svc.buildTurn(ctx);
+    expect(turn.text).toBe('The river owes us nothing. @bob @cy #TroutTalk #RiverGods');
+    expect(turn.hashtags).toEqual(['TroutTalk', 'RiverGods']);
+    // Seeded from the campaign's own tags and steered by the conversation's topic.
+    expect(next.mock.calls[0][2]).toMatchObject({ hashtags: ['FlyFishing'] });
+    expect(next.mock.calls[0][2].topic).toContain('Shared');
+    expect(next.mock.calls[0][2].topic).toContain('turn 2');
+    // The model's budget leaves room for the mentions and the tag block.
+    const room = 280 - ' @bob @cy'.length - ' #TroutTalk #RiverGods'.length;
+    expect(generate.mock.calls[0][1].maxLength).toBe(Math.min(240, room));
+  });
+
+  it('uses the campaign hashtags as-is when evolution is off', async () => {
+    const ctx = makeCtx(2, { hashtags: ['FlyFishing'] });
+    const { svc, generate } = makeSvc(ctx, turnsLogs(2));
+    generate.mockResolvedValue('Cast again.');
+    const turn = await svc.buildTurn(ctx);
+    expect(turn.text).toBe('Cast again. @bob @cy #FlyFishing');
+    expect(turn.hashtags).toBeUndefined();
   });
 
   it('previewing a turn leaves the campaign unchanged (no turn buffer is stored)', async () => {
