@@ -60,6 +60,8 @@ tracked separately, so prefer using one of them.
 - Changing the account of a chain campaign (Reply mode "last comment") **starts a new reply chain**:
   the next reply goes to the target post, exactly like changing the target.
 - Cards show "Posts as @handle"; logs, the queue and the live-post confirmation name the account.
+- A campaign in **Conversation** mode has no single account: it posts as each participant in turn.
+  See [conversations.md](conversations.md).
 
 ## What happens when an account goes away
 
@@ -68,6 +70,9 @@ tracked separately, so prefer using one of them.
 | **Remove** in Settings | Its tokens are deleted. Campaigns using it are paused with "Account @handle is removed or disconnected — pick an account and resume". They keep the account id so you can see what to fix; resuming is refused until you pick another account. |
 | X answers **401** to a live post | The account is marked *Disconnected* and the campaign auto-pauses. Other campaigns on that account stop at their next drop (nothing is sent to X). **Verify** marks it OK again once X accepts the tokens; otherwise reconnect it. |
 | `CREDENTIALS_ENCRYPTION_KEY` changed | Stored tokens cannot be read; live drops for those accounts fail without calling X and pause. Reconnect the accounts. |
+
+A conversation campaign also pauses when any **participant** is removed ("Participant @handle
+removed..."), and resuming checks every participant.
 
 Dry-run (simulated) drops never reach X, so they still run for an account that is gone.
 
