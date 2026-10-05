@@ -1,71 +1,49 @@
 /**
  * X ChromaBot - ContextsManager
- * Campaign list: header, card grid, create/edit modal and confirmations.
+ * The main screen: every campaign as a card (configure, preview, post), the create/edit modal
+ * and confirmations. There is no "active" campaign: each action names its campaign.
  */
 
 import React, { useState } from 'react';
 import { Layers, Plus } from 'lucide-react';
-import { ContextNextPost, DropResponse, TweetContext } from '../../types.js';
-import { errorMessage } from '../../lib/errors.js';
+import { BotSettings, ContextNextPost, DropResponse, TweetContext } from '../../types.js';
+import { PostNowOptions } from '../../hooks/usePosting.js';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog.js';
-import { ContextCard, TriggerNotice } from './ContextCard.js';
+import { ContextCard } from './ContextCard.js';
 import { ContextFormModal } from './ContextFormModal.js';
 import { useContextForm } from './useContextForm.js';
 
 interface ContextsManagerProps {
   contexts: TweetContext[];
-  activeContextId: string;
+  settings: BotSettings;
   nextPosts?: ContextNextPost[];
-  onSelectActiveContext: (id: string) => Promise<void>;
   onCreateContext: (data: Partial<TweetContext>) => Promise<void>;
   onUpdateContext: (id: string, updates: Partial<TweetContext>) => Promise<void>;
   onDeleteContext: (id: string) => Promise<void>;
   onDuplicateContext: (id: string) => Promise<void>;
   onToggleContext: (id: string) => Promise<void>;
-  onTriggerContext: (id: string) => Promise<DropResponse>;
   onClearContextHistory?: (id: string) => Promise<void>;
+  /** Manual post for one campaign (asks for confirmation when it would go live). */
+  onPostNow: (contextId: string, opts?: PostNowOptions) => Promise<DropResponse | undefined>;
 }
 
 type PendingConfirm = { kind: 'delete' | 'clear'; context: TweetContext } | null;
 
 export const ContextsManager: React.FC<ContextsManagerProps> = ({
   contexts,
-  activeContextId,
+  settings,
   nextPosts = [],
-  onSelectActiveContext,
   onCreateContext,
   onUpdateContext,
   onDeleteContext,
   onDuplicateContext,
   onToggleContext,
-  onTriggerContext,
   onClearContextHistory,
+  onPostNow,
 }) => {
-  const [triggeringId, setTriggeringId] = useState<string | null>(null);
-  const [triggerResult, setTriggerResult] = useState<(TriggerNotice & { id: string }) | null>(null);
   const [pending, setPending] = useState<PendingConfirm>(null);
 
   const form = useContextForm({ contexts, onCreateContext, onUpdateContext });
-
-  const handleTriggerDrop = async (id: string) => {
-    setTriggeringId(id);
-    setTriggerResult(null);
-    try {
-      const res = await onTriggerContext(id);
-      setTriggerResult({
-        id,
-        success: res.success,
-        message: res.success
-          ? 'Reply posted successfully!'
-          : res.result?.error || 'Failed to dispatch reply',
-      });
-    } catch (err) {
-      setTriggerResult({ id, success: false, message: errorMessage(err, 'Trigger failed') });
-    } finally {
-      setTriggeringId(null);
-      setTimeout(() => setTriggerResult(null), 4000);
-    }
-  };
 
   const handleConfirm = async () => {
     if (!pending) return;
@@ -94,8 +72,8 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
                 </span>
               </h2>
               <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">
-                Configure distinct target posts, independent repetition schedules, anti-bot delays,
-                and templates.
+                Everything about a campaign lives on its card: target, modes, schedule, template,
+                hashtags, dry run. Use “Preview &amp; post” to see and send its exact next tweet.
               </p>
             </div>
           </div>
@@ -115,15 +93,12 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
           <ContextCard
             key={ctx.id}
             context={ctx}
-            isActive={ctx.id === activeContextId}
             countdown={nextPosts.find((p) => p.contextId === ctx.id)?.countdownFormatted}
-            isTriggering={triggeringId === ctx.id}
-            notice={triggerResult?.id === ctx.id ? triggerResult : null}
+            globalDryRun={settings.globalDryRun !== false}
             canDelete={contexts.length > 1}
-            onSelectActive={() => onSelectActiveContext(ctx.id)}
             onUpdate={(updates) => onUpdateContext(ctx.id, updates)}
             onToggle={() => onToggleContext(ctx.id)}
-            onTrigger={() => handleTriggerDrop(ctx.id)}
+            onPost={(opts) => onPostNow(ctx.id, opts)}
             onEdit={() => form.openEdit(ctx)}
             onDuplicate={() => onDuplicateContext(ctx.id)}
             onRequestClearHistory={

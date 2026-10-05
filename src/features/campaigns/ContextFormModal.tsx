@@ -1,6 +1,8 @@
 /**
  * X ChromaBot - ContextFormModal
- * Create / edit campaign modal. State lives in useContextForm.
+ * Create / edit campaign modal: the ONE place that configures everything about a campaign
+ * (target, modes, schedule, jitter, template, hashtags, dry run, webhook URL). State lives in
+ * useContextForm.
  */
 
 import React from 'react';
@@ -13,6 +15,8 @@ import { EngagementModeSelector } from './EngagementModeSelector.js';
 import { ScheduleEditor } from './ScheduleEditor.js';
 import { TemplateEditor } from '../../components/TemplateEditor.js';
 import { HashtagEvolutionEditor } from './HashtagEvolutionEditor.js';
+import { TargetField } from './TargetField.js';
+import { CampaignWebhookUrl } from './CampaignWebhookUrl.js';
 
 interface ContextFormModalProps {
   form: ContextForm;
@@ -62,20 +66,10 @@ export const ContextFormModal: React.FC<ContextFormModalProps> = ({ form }) => {
             />
           </div>
 
-          <div className="space-y-1.5">
-            <label className={LABEL_CLASS}>Target Tweet ID or URL *</label>
-            <input
-              type="text"
-              required
-              value={ctx.targetTweetId || ''}
-              onChange={(e) => patch({ targetTweetId: e.target.value })}
-              placeholder="Tweet ID or https://x.com/user/status/..."
-              className={`${FIELD_CLASS} font-mono`}
-            />
-            <p className="text-[11px] text-neutral-500">
-              Numeric tweet ID of the post your automated replies will attach to.
-            </p>
-          </div>
+          <TargetField
+            value={ctx.targetTweetId || ''}
+            onChange={(targetTweetId) => patch({ targetTweetId })}
+          />
 
           <ReplyModeSelector context={ctx} onChange={patch} />
           <EngagementModeSelector
@@ -132,6 +126,7 @@ export const ContextFormModal: React.FC<ContextFormModalProps> = ({ form }) => {
             <div className="space-y-1.5">
               <label className={LABEL_CLASS}>Posting Mode</label>
               <select
+                aria-label="Posting Mode"
                 title="Per-campaign mode. The global Dry Run switch in the header overrides Live."
                 value={ctx.dryRun ? 'simulated' : 'live'}
                 onChange={(e) => patch({ dryRun: e.target.value === 'simulated' })}
@@ -142,6 +137,8 @@ export const ContextFormModal: React.FC<ContextFormModalProps> = ({ form }) => {
               </select>
             </div>
           </div>
+
+          {!isCreating && ctx.id && <CampaignWebhookUrl contextId={ctx.id} />}
 
           <div className="pt-3 border-t border-neutral-200 dark:border-neutral-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <span className="text-[11px] text-neutral-500">

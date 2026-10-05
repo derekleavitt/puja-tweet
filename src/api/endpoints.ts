@@ -47,7 +47,8 @@ export const clearCooldown = () =>
   orNull(apiFetch<Json>('/api/cooldown/clear', { method: 'POST' }));
 
 // Queue
-export const getQueue = () => orNull(apiFetch<{ queue: QueueSlot[] }>('/api/queue'));
+export const getQueue = (contextId: string) =>
+  orNull(apiFetch<{ queue: QueueSlot[] }>(`/api/queue?contextId=${encodeURIComponent(contextId)}`));
 export const rerollSlot = (slotId: string) =>
   orNull(apiFetch<Json>('/api/queue/reroll', { method: 'POST', body: { slotId } }));
 export const regenerateQueue = (contextId: string) =>
@@ -57,14 +58,7 @@ export const regenerateQueue = (contextId: string) =>
 export const getHistory = () => orNull(apiFetch<{ logs: PostLog[] }>('/api/history'));
 export const clearHistory = () => orNull(apiFetch<Json>('/api/history', { method: 'DELETE' }));
 
-// Colors, posting, templates
-export const generateColor = (slotType: string, contextId: string) =>
-  orNull(
-    apiFetch<{ color: ColorData }>('/api/generate-color', {
-      method: 'POST',
-      body: { slotType, contextId },
-    }),
-  );
+// Posting, templates
 export const postNow = (body: {
   slotType: string;
   color: ColorData | null;
@@ -75,16 +69,20 @@ export const postNow = (body: {
   slotId?: string;
 }) => orBody(apiFetch<DropResponse>('/api/post-now', { method: 'POST', body }));
 export const previewTemplate = (body: {
-  template: string;
+  /** Omitted: the campaign's own template (what it will post). */
+  template?: string;
   color?: ColorData | null;
   slotType?: string;
   contextId?: string;
 }) =>
   orBody(
-    apiFetch<{ previewText?: string; hashtags?: string[] }>('/api/template/preview', {
-      method: 'POST',
-      body,
-    }),
+    apiFetch<{ previewText?: string; hashtags?: string[]; color?: ColorData }>(
+      '/api/template/preview',
+      {
+        method: 'POST',
+        body,
+      },
+    ),
   );
 
 // Contexts (campaigns)
@@ -105,21 +103,10 @@ export const deleteContext = (id: string) =>
     method: 'DELETE',
     errorMessage: 'Failed to delete context',
   });
-export const syncContext = (context: TweetContext) =>
-  orNull(apiFetch<Json>(`/api/contexts/${context.id}`, { method: 'PUT', body: context }));
-export const activateContext = (id: string) =>
-  orNull(apiFetch<Json>(`/api/contexts/${id}/activate`, { method: 'POST' }));
 export const duplicateContext = (id: string) =>
   orNull(apiFetch<Json>(`/api/contexts/${id}/duplicate`, { method: 'POST' }));
 export const toggleContext = (id: string) =>
   orNull(apiFetch<Json>(`/api/contexts/${id}/toggle`, { method: 'POST' }));
-export const triggerContext = (id: string) =>
-  orBody(
-    apiFetch<DropResponse>(`/api/contexts/${id}/trigger`, {
-      method: 'POST',
-      body: { slotType: 'manual' },
-    }),
-  );
 export const clearContextHistory = (id: string) =>
   apiFetch<Json>(`/api/contexts/${id}/clear-history`, {
     method: 'POST',
@@ -139,7 +126,10 @@ export const verifyCredentials = () =>
   orBody(apiFetch<VerifyResult>('/api/twitter/verify', { method: 'POST' }));
 
 // Webhook (admin: the secret is only ever returned by these routes)
-export const getWebhookUrl = () => apiFetch<{ success: boolean; url: string }>('/api/webhook/url');
+export const getWebhookUrl = (contextId?: string) =>
+  apiFetch<{ success: boolean; url: string }>(
+    contextId ? `/api/webhook/url?contextId=${encodeURIComponent(contextId)}` : '/api/webhook/url',
+  );
 export const rotateWebhookSecret = () =>
   apiFetch<{ success: boolean; url: string }>('/api/settings/webhook-secret/rotate', {
     method: 'POST',
