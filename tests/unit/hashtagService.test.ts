@@ -1,0 +1,131 @@
+import { describe, expect, it, vi } from 'vitest';
+import { generateColor } from '../../server/colorEngine.js';
+import {
+  buildHashtagPrompt,
+  createHashtagService,
+  parseHashtagReply,
+} from '../../server/services/hashtagService.js';
+import type { TweetContext } from '../../shared/types.js';
+
+const color = { ...generateColor('morning'), colorPick: 'Sunset Topaz', name: 'Sunset Topaz' };
+
+const context = (extra: Partial<TweetContext> = {}) =>
+  ({
+    id: 'ctx_test',
+    template: '{color_pick} #eternal #colors',
+    hashtagEvolution: { enabled: true, maxTags: 3, keepSeedTags: false },
+    ...extra,
+  }) as TweetContext;
+
+/** Every dependency stubbed: nothing here can touch the network. */
+const makeService = (over: Partial<Parameters<typeof createHashtagService>[0]> = {}) => {
+  const generate = vi.fn(async () => '["Aurora","Daybreak","Hush"]');
+  const tryConsume = vi.fn(() => true);
+  const service = createHashtagService({
+    isConfigured: () => true,
+    tryConsume,
+    generate,
+    rng: () => 0.5,
+    ...over,
+  });
+  return { service, generate, tryConsume };
+};
+
+describe('parseHashtagReply', () => {
+  it('parses bare, fenced and chatty JSON arrays into normalised tags', () => {
+    expect(parseHashtagReply('["#Aurora","golden hour"]')).toEqual(['Aurora', 'GoldenHour']);
+    expect(parseHashtagReply('```json\n["Aurora"]\n```')).toEqual(['Aurora']);
+    expect(parseHashtagReply('Sure! ["Aurora", "x", 5]')).toEqual(['Aurora']);
+  });
+
+  it('returns [] for anything else', () => {
+    expect(parseHashtagReply('not json')).toEqual([]);
+    expect(parseHashtagReply('{"tags":["a"]}')).toEqual([]);
+    expect(parseHashtagReply('[')).toEqual([]);
+  });
+});
+
+describe('buildHashtagPrompt', () => {
+  it('lists the previous tags, the count and the tags to avoid', () => {
+    const p = buildHashtagPrompt(['eternal', 'colors'], 3, ['Old'], 'Sunset Topaz');
+    expect(p).toContain('Given these hashtags: #eternal #colors, suggest 3 new related');
+    expect(p).toContain('no repeats of: #Old');
+    expect(p).toContain('JSON array');
+  });
+});
+
+describe('hashtagService.next', () => {
+  it('uses Gemini when configured and the cap allows', async () => {
+    const { service, generate, tryConsume } = makeService();
+    const out = await service.next(context(), color);
+    expect(out).toEqual({ tags: ['Aurora', 'Daybreak', 'Hush'], source: 'gemini' });
+    expect(tryConsume).toHaveBeenCalledTimes(1);
+    expect(generate).toHaveBeenCalledTimes(1);
+    const prompt = (generate.mock.calls[0] as unknown as [string])[0];
+    expect(prompt).toContain('#eternal #colors');
+  });
+
+  it('keeps the seed tags first when keepSeedTags is on and drops recent repeats from Gemini', async () => {
+    const { service } = makeService();
+    const ctx = context({
+      hashtagEvolution: { enabled: true, maxTags: 3, keepSeedTags: true },
+      hashtagState: { current: ['Aurora'], recent: ['Aurora'] },
+    });
+    const out = await service.next(ctx, color);
+    expect(out.tags).toEqual(['eternal', 'colors', 'Daybreak']);
+  });
+
+  it('falls back to offline on invalid JSON', async () => {
+    const { service } = makeService({ generate: async () => 'I cannot do that' });
+    const out = await service.next(context(), color);
+    expect(out.source).toBe('offline');
+    expect(out.tags).toHaveLength(3);
+    expect(out.tags[0]).toBe('SunsetTopaz');
+  });
+
+  it('falls back to offline on an empty array, an error and a timeout', async () => {
+    for (const generate of [
+      async () => '[]',
+      async () => {
+        throw new Error('boom');
+      },
+      async () => {
+        throw Object.assign(new Error('timed out'), { name: 'TimeoutError' });
+      },
+    ]) {
+      const { service } = makeService({ generate });
+      expect((await service.next(context(), color)).source).toBe('offline');
+    }
+  });
+
+  it('falls back to offline when the daily cap is reached (no model call)', async () => {
+    const { service, generate } = makeService({ tryConsume: () => false });
+    const out = await service.next(context(), color);
+    expect(out.source).toBe('offline');
+    expect(generate).not.toHaveBeenCalled();
+  });
+
+  it('never calls Gemini when it is not configured', async () => {
+    const { service, generate, tryConsume } = makeService({ isConfigured: () => false });
+    expect((await service.next(context(), color)).source).toBe('offline');
+    expect(generate).not.toHaveBeenCalled();
+    expect(tryConsume).not.toHaveBeenCalled();
+  });
+
+  it('offline results never repeat recent tags and follow the previous tags', async () => {
+    const { service } = makeService({ isConfigured: () => false });
+    const recent = ['SunsetTopaz', 'memory', 'coral'];
+    const out = await service.next(
+      context({ hashtagState: { current: ['memory'], recent } }),
+      color,
+    );
+    const lower = out.tags.map((t) => t.toLowerCase());
+    for (const r of recent) expect(lower).not.toContain(r.toLowerCase());
+  });
+
+  it('uses the template override for the seed', async () => {
+    const { service, generate } = makeService();
+    await service.next(context(), color, { template: 'x #Poetry' });
+    expect((generate.mock.calls[0] as unknown as [string])[0]).toContain('#Poetry');
+  });
+});
