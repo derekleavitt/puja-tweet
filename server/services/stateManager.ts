@@ -85,7 +85,8 @@ export class StateManager {
     return this.state.contexts.find((c) => c.id === id);
   }
 
-  getActiveContext(): TweetContext {
+  /** Undefined only when there are no campaigns. */
+  getActiveContext(): TweetContext | undefined {
     return this.getContext(this.state.activeContextId) ?? this.state.contexts[0];
   }
 }

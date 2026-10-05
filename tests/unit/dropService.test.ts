@@ -16,7 +16,7 @@ const makeDrops = () =>
   });
 
 const configure = (patch: Record<string, unknown>) => {
-  const id = svc.contexts.getActiveContext().id;
+  const id = svc.contexts.requireActiveContext().id;
   svc.contexts.patchContext(id, { targetTweetId: '111', ...patch });
   return id;
 };

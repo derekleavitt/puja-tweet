@@ -18,8 +18,8 @@ export class SettingsService {
     private readonly contexts: ContextService,
   ) {}
 
-  /** Unknown ids are a 404 (never a silent fallback to the active campaign). */
-  private resolve(contextId?: string): TweetContext {
+  /** Unknown ids are a 404 (never a silent fallback to the active campaign); undefined = no campaigns. */
+  private resolve(contextId?: string): TweetContext | undefined {
     if (!contextId) return this.contexts.getActiveContext();
     const found = this.contexts.getContext(contextId);
     if (!found) throw new HttpError(404, `Context ${contextId} not found`);
@@ -72,7 +72,10 @@ export class SettingsService {
     if (newSettings.dryRun !== undefined) updates.dryRun = newSettings.dryRun;
     if (newSettings.template) updates.template = newSettings.template;
     if (newSettings.themePreference) updates.themePreference = newSettings.themePreference;
-    if (Object.keys(schedule).length > 0) updates.schedule = { ...active.schedule, ...schedule };
+    if (Object.keys(schedule).length > 0) updates.schedule = { ...active?.schedule, ...schedule };
+    const editsCampaign = Object.keys(updates).length > 0;
+    // Campaign fields need a campaign; the global switches work even with none.
+    if (editsCampaign && !active) this.contexts.requireActiveContext();
 
     if (typeof newSettings.globalDryRun === 'boolean') {
       this.sm.state.settings.globalDryRun = newSettings.globalDryRun;
@@ -83,7 +86,7 @@ export class SettingsService {
     this.sm.persist();
 
     // A global-only toggle never touches (or regenerates the queue of) any campaign.
-    if (Object.keys(updates).length > 0) this.contexts.updateContext(active.id, updates);
-    return this.getSettings(active.id);
+    if (editsCampaign && active) this.contexts.updateContext(active.id, updates);
+    return buildSettingsView(active && this.contexts.getContext(active.id), this.sm.state.settings);
   }
 }

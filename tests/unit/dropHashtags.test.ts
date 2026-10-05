@@ -20,7 +20,7 @@ const makeDrops = () =>
   });
 
 const enable = (patch: Record<string, unknown> = {}) => {
-  const id = svc.contexts.getActiveContext().id;
+  const id = svc.contexts.requireActiveContext().id;
   svc.contexts.patchContext(id, {
     targetTweetId: '111',
     hashtagEvolution: { enabled: true, maxTags: 3, keepSeedTags: false },
@@ -126,7 +126,7 @@ describe('dropService with evolving hashtags', () => {
   });
 
   it('leaves campaigns with evolution off completely untouched', async () => {
-    const id = svc.contexts.getActiveContext().id;
+    const id = svc.contexts.requireActiveContext().id;
     svc.contexts.patchContext(id, { targetTweetId: '111' });
     const out = await makeDrops().executeDrop({ color });
     expect(next).not.toHaveBeenCalled();

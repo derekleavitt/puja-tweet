@@ -143,7 +143,7 @@ describe('circuit breaker', () => {
 
   it('records the pause reason in the drop log (stubbed X 401)', async () => {
     const svc = await createServices(new MemoryStore());
-    const ctx = svc.contexts.getActiveContext();
+    const ctx = svc.contexts.requireActiveContext();
     svc.contexts.patchContext(ctx.id, { dryRun: false, enabled: true });
     const drops = createDropService({
       services: svc,

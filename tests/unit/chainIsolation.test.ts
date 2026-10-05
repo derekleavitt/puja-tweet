@@ -91,7 +91,7 @@ describe('new campaign target', () => {
     const { createServices } = await import('../../server/services/index.js');
     const { MemoryStore } = await import('../../server/store/MemoryStore.js');
     const svc = await createServices(new MemoryStore());
-    const active = svc.contexts.getActiveContext();
+    const active = svc.contexts.requireActiveContext();
     svc.contexts.patchContext(active.id, { targetTweetId: '5555555555' });
     svc.settings.updateSettings({ targetTweetId: '5555555555' });
     const fresh = svc.contexts.createContext({ name: 'second' });

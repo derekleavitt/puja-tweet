@@ -88,7 +88,11 @@ export async function runPostDrop(options: CliOptions, deps: PostDropDeps): Prom
     ? services.contexts.getContext(options.contextId)
     : services.contexts.getActiveContext();
   if (!context) {
-    console.error(`[PostDrop] Context "${options.contextId}" not found.`);
+    console.error(
+      options.contextId
+        ? `[PostDrop] Context "${options.contextId}" not found.`
+        : '[PostDrop] There are no campaigns: create one first.',
+    );
     return 1;
   }
   // The campaign's own X account (default: the env-token account).

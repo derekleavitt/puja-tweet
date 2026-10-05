@@ -91,6 +91,15 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
         </div>
       </div>
 
+      {contexts.length === 0 && (
+        <div
+          data-testid="campaigns-empty"
+          className="p-8 rounded-xl border border-dashed border-neutral-300 dark:border-neutral-700 text-center text-sm text-neutral-500 dark:text-neutral-400"
+        >
+          No campaigns yet. Use “Add Tweet Context” to create one.
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {contexts.map((ctx) => (
           <ContextCard
@@ -98,7 +107,6 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
             context={ctx}
             countdown={nextPosts.find((p) => p.contextId === ctx.id)?.countdownFormatted}
             globalDryRun={settings.globalDryRun !== false}
-            canDelete={contexts.length > 1}
             onUpdate={(updates) => onUpdateContext(ctx.id, updates)}
             onToggle={() => onToggleContext(ctx.id)}
             onPost={(opts) => onPostNow(ctx.id, opts)}

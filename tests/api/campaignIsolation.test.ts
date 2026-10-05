@@ -92,7 +92,7 @@ describe('POST /api/settings edits one campaign by id', () => {
     expect(ctx(A).schedule.intervalMinutes).toBe(1);
     expect(ctx(B).targetTweetId).toBe(bBefore.targetTweetId);
     // The real active campaign did not change
-    expect(services.contexts.getActiveContext().id).toBe(A);
+    expect(services.contexts.requireActiveContext().id).toBe(A);
   });
 
   it('without `contextId` edits the active campaign (legacy) and never another one', async () => {

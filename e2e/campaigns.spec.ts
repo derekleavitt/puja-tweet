@@ -5,7 +5,7 @@
  */
 
 import type { Page } from '@playwright/test';
-import { test, expect, openApp, campaignCard, PRIMARY } from './fixtures.js';
+import { test, expect, openApp, openTab, campaignCard, PRIMARY, TABS } from './fixtures.js';
 
 const NAME = 'E2E Campaign';
 const TWEET_ID = '1234567890123456789';
@@ -116,6 +116,37 @@ test('the card has a one-click 1-minute frequency', async ({ app }) => {
     })
     .toBe(1);
   await app.request.put(`/api/contexts/${primary.id}`, { data: { schedule: primary.schedule } });
+});
+
+test('every campaign can be deleted, and the empty screen survives a reload', async ({ app }) => {
+  const saved = (await (await app.request.get('/api/status')).json()).contexts as {
+    id: string;
+  }[];
+  try {
+    await openApp(app);
+    for (let left = saved.length; left > 0; left--) {
+      await app.getByTitle('Delete context').first().click();
+      await app.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click();
+      await expect(app.getByTestId('campaign-card')).toHaveCount(left - 1);
+    }
+    await expect(app.getByTestId('campaigns-empty')).toBeVisible();
+    await expect(app.getByText('0 campaigns', { exact: true })).toBeVisible();
+
+    // Every screen still renders, and the global switches still work with no campaign.
+    await app.reload();
+    await expect(app.getByTestId('campaigns-empty')).toBeVisible();
+    for (const tab of TABS) await openTab(app, tab);
+    await app.getByRole('button', { name: 'Paused' }).click();
+    await expect(app.getByRole('button', { name: 'Running' })).toBeVisible();
+    await app.getByRole('button', { name: 'Running' }).click();
+    await expect(app.getByRole('button', { name: 'Paused' })).toBeVisible();
+  } finally {
+    // Other specs rely on the primary campaign (by name and position): put the campaigns back.
+    const { contexts } = await (await app.request.get('/api/status')).json();
+    if (contexts.length === 0) {
+      for (const c of saved) await app.request.post('/api/contexts', { data: c });
+    }
+  }
 });
 
 // Clean up (also after a failure) so other specs never see a leftover test campaign.
