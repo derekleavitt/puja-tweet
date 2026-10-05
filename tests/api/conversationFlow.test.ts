@@ -190,7 +190,12 @@ describe('conversation flow: three accounts, real services, fake X and Gemini', 
     expect(first.token).toBe(speaker.accessToken);
     expect(first.authorId).toBe(speaker.userId);
     expect(first.inReplyTo).toBe(TARGET);
-    expect(first.text.endsWith(` @${preview.conversation.nextSpeakerHandle}`)).toBe(true);
+    const next = preview.conversation.nextSpeakerHandle;
+    // Addresses the next speaker, then tags everyone else in the cast (anyone may reply).
+    const others = users.map((u) => u.screenName).filter((h) => h !== speaker.screenName);
+    for (const h of others) expect(first.text).toMatch(new RegExp(`@${h}\\b`));
+    const cc = first.text.lastIndexOf(' cc ');
+    if (cc >= 0) expect(first.text.indexOf(`@${next}`)).toBeLessThan(cc);
     expect(first.text).not.toMatch(/@elonmusk/i);
     expect(checkTweetText(first.text).ok).toBe(true);
     expect(ctxOf(ctx.id).chainAnchor?.tweetId).toBe(first.id);

@@ -39,6 +39,9 @@ Design notes for developers are in [design/conversations.md](design/conversation
 - Every turn **ends by `@mentioning` the next speaker**. The next speaker is chosen before the
   current turn is written, so preview, queue and post all agree. This handoff is not decoration: X
   rejects a reply to a post that does not mention the replying account.
+- Every turn also **tags the rest of the cast** (`… @next cc @a @b`), so any participant can reply to
+  it. If the next speaker has to change after a turn was posted (you edited the cast, or an account
+  was removed), the replacement is already mentioned and X accepts the reply.
 - If the AI forgets the mention, the app adds it. Any other `@handle` the AI invents (a stranger, a
   celebrity) is turned into plain text so nobody gets notified by accident. Replies are kept within
   280 characters.
