@@ -6,7 +6,13 @@ import { DEFAULT_TWEET_TEMPLATE } from '../colorEngine.js';
 import { HttpError } from '../middleware/error.js';
 import { extractTweetId } from '../../shared/tweetId.js';
 import { createDefaultSettings, getDefaultTargetTweetId } from '../store/defaults.js';
-import { normaliseEvolution } from '../../shared/hashtags/index.js';
+import {
+  extractTemplateHashtags,
+  formatTagBlock,
+  migrateCampaignHashtags,
+  normaliseCampaignTags,
+  normaliseEvolution,
+} from '../../shared/hashtags/index.js';
 import type {
   HashtagState,
   PendingFire,
@@ -70,8 +76,20 @@ export class ContextService {
     let modified = false;
     for (const ctx of s.contexts) {
       if (sanitizeContextChain(ctx, s.logs)) modified = true;
+      if (this.migrateHashtags(ctx)) modified = true;
     }
     if (modified) this.sm.persist();
+  }
+
+  /** Once per campaign: moves the template's literal hashtags into `hashtags` (idempotent). */
+  private migrateHashtags(ctx: TweetContext): boolean {
+    if (!migrateCampaignHashtags(ctx)) return false;
+    if (ctx.hashtags?.length) {
+      console.log(
+        `[Context] Moved template hashtags of "${ctx.name}" (${ctx.id}) into its hashtags: ${formatTagBlock(ctx.hashtags)}`,
+      );
+    }
+    return true;
   }
 
   getContexts(): TweetContext[] {
@@ -98,6 +116,12 @@ export class ContextService {
   createContext(data: ContextInput): TweetContext {
     const s = this.sm.state;
     const id = data.id || `ctx_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    // Without explicit hashtags the template's literal tags become the campaign's hashtags.
+    const template = data.template?.trim() || DEFAULT_TWEET_TEMPLATE;
+    const tagged =
+      data.hashtags !== undefined
+        ? { template, hashtags: normaliseCampaignTags(data.hashtags) }
+        : extractTemplateHashtags(template);
     const newContext: TweetContext = {
       id,
       name: data.name?.trim() || `Context #${s.contexts.length + 1}`,
@@ -120,7 +144,8 @@ export class ContextService {
         humanizeJitterEnabled: data.schedule?.humanizeJitterEnabled ?? true,
         jitterPercentage: data.schedule?.jitterPercentage ?? 25,
       },
-      template: data.template?.trim() || DEFAULT_TWEET_TEMPLATE,
+      template: tagged.template,
+      hashtags: tagged.hashtags,
       themePreference: data.themePreference || 'dynamic',
       hashtagEvolution: normaliseEvolution(data.hashtagEvolution),
       // `chainAnchor` is never taken from input: a legacy anchor is only kept if a log proves it.
@@ -148,9 +173,10 @@ export class ContextService {
     if (!this.sm.getContext(id)) throw notFound(id);
     const input = parseContextUpdate(body);
     const current = this.sm.getContext(id);
-    const { hashtagEvolution, lastPostedTweetId, ...rest } = input;
+    const { hashtagEvolution, lastPostedTweetId, hashtags, ...rest } = input;
     return this.patchContext(id, {
       ...rest,
+      ...(hashtags !== undefined ? { hashtags: normaliseCampaignTags(hashtags) } : {}),
       // Clients can never set an anchor; an explicit null/'' is a "reset to root".
       ...('lastPostedTweetId' in input && !lastPostedTweetId ? { resetChain: true } : {}),
       ...(hashtagEvolution
@@ -281,6 +307,7 @@ export class ContextService {
       dryRun: source.dryRun,
       schedule: { ...source.schedule },
       template: source.template,
+      hashtags: source.hashtags ? [...source.hashtags] : undefined,
       themePreference: source.themePreference,
       hashtagEvolution: source.hashtagEvolution ? { ...source.hashtagEvolution } : undefined,
     });

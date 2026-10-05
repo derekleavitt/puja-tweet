@@ -6,6 +6,7 @@ import { ColorData, DEFAULT_TWEET_TEMPLATE, generateColor } from '../colorEngine
 import { substituteTemplate } from '../../shared/template/substitute.js';
 import { stripAgentTags } from '../../shared/template/agentTags.js';
 import type { QueueSlot, TweetContext } from '../../shared/types.js';
+import { appendTagBlock, dedupeHashtags } from '../../shared/hashtags/index.js';
 
 export const QUEUE_SLOTS_PER_CONTEXT = 14;
 
@@ -13,6 +14,7 @@ export const formatSlotPreviewText = (
   template: string,
   color: ColorData,
   slotLabel: string,
+  hashtags: readonly string[] = [],
 ): string => {
   const colorPick = color.colorPick || color.name;
   const weatherDesc = color.weatherDesc || 'warming crisp morning air';
@@ -24,7 +26,9 @@ export const formatSlotPreviewText = (
   });
   // AI text is only written when the post goes out; never show color/hex or the raw prompt here.
   const resolved = stripAgentTags(substituted);
-  return resolved.trim() || weatherTweet;
+  // The campaign's own tags are appended like at post time (evolved tags are only picked then).
+  const body = resolved.trim() ? dedupeHashtags(resolved, hashtags).text : '';
+  return body || hashtags.length ? appendTagBlock(body, hashtags) : weatherTweet;
 };
 
 const intervalSlotTime = (
@@ -106,7 +110,7 @@ export const createQueueSlotForContext = (
     color,
     contextId: ctx.id,
     contextName: ctx.name,
-    previewText: formatSlotPreviewText(ctx.template, color, timeSlot),
+    previewText: formatSlotPreviewText(ctx.template, color, timeSlot, ctx.hashtags ?? []),
     targetTweetId: ctx.targetTweetId,
     replyTargetMode: ctx.replyTargetMode || 'original_post',
   };

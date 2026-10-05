@@ -7,3 +7,5 @@ export * from './config.js';
 export * from './evolve.js';
 export * from './graph.js';
 export * from './normalise.js';
+export * from './agentText.js';
+export * from './campaignTags.js';
