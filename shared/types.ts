@@ -95,8 +95,66 @@ export interface ConversationState {
   turnCount: number; // Posted (live or simulated) turns in this run
   roundStartTurn?: number; // turnCount when the current round began (resuming a finished run)
   nextSpeakerAccountId: string; // Chosen BEFORE the turn is written
+  /** Covers turns 1..summaryThroughTurn (everything no longer in `turns`). */
   summary?: string;
   summaryThroughTurn?: number;
+  /**
+   * The run's own transcript buffer, independent of the shared (capped) post log: every posted
+   * turn after `summaryThroughTurn`, oldest first, bounded. Invariant: `summary` + `turns` cover
+   * turns 1..turnCount with no gap. Undefined on legacy state (seeded from the logs on first use).
+   */
+  turns?: ConversationTurnRecord[];
+}
+
+/** One posted (or simulated) conversation turn as kept on the campaign. */
+export interface ConversationTurnRecord {
+  turn: number;
+  accountId: string;
+  handle: string;
+  /** At most 300 characters. */
+  text: string;
+  tweetId?: string;
+  at: string; // ISO time
+}
+
+/** One successful live post of a single-mode campaign, kept for `<history>` agent prompts. */
+export interface RecentPost {
+  /** At most 300 characters. */
+  text: string;
+  tweetId?: string;
+  at: string; // ISO time
+  slotType?: 'morning' | 'evening' | 'manual';
+  colorName?: string;
+  colorHex?: string;
+}
+
+/** Server-owned retry state after a failed post (cleared by a success or a resume). */
+export interface RetryState {
+  /** Epoch ms of the next attempt (the scheduler fires the campaign again at this time). */
+  at: number;
+  /** Short human reason, e.g. "AI busy", "X server error", "last post failed". */
+  reason: string;
+  /** Transient failures (AI unavailable, X 5xx, network) never auto-pause the campaign. */
+  transient: boolean;
+  /** Consecutive transient failures (drives the exponential back-off). */
+  attempt: number;
+  /** Fixed-time campaigns: the slot being retried, and when it was first attempted. */
+  slotKey?: string;
+  since?: number;
+}
+
+/** Persisted before a post is sent to X and cleared with its result (crash detection). */
+export interface InFlightPost {
+  /** When the drop started (before the AI wrote the post). */
+  startedAt: number;
+  /** Set (and persisted) right before the request to X; absent = X was never called. */
+  sentAt?: number;
+  /** Process that sent it (a fresh marker from another process means "still posting"). */
+  bootId: string;
+  runId?: string;
+  turn?: number;
+  replyToTweetId?: string;
+  text?: string;
 }
 
 export interface TweetContext {
@@ -129,6 +187,18 @@ export interface TweetContext {
   lastPostedSlot?: string;
   /** Armed fixed-time slot waiting out its jitter; persisted so a restart still fires it once. */
   pendingFire?: PendingFire;
+  /**
+   * Server-owned: when the schedule (re)started (create, resume, schedule change, clear-history).
+   * Fixed times are never caught up from before it.
+   */
+  scheduleStartedAt?: number;
+  /** Server-owned: next retry after a failed post (see `RetryState`). */
+  retry?: RetryState;
+  /** Server-owned: a post that was sent to X and whose result is not recorded yet. */
+  inFlight?: InFlightPost;
+  /** Server-owned: last successful live posts (max 10, oldest first) for `<history>` prompts. */
+  recentPosts?: RecentPost[];
+  /** Persistent failures in a row (the breaker pauses at MAX_CONSECUTIVE_ERRORS). */
   consecutiveErrors?: number;
   /** Set when the circuit breaker disabled this campaign (cleared on resume). */
   autoPausedReason?: string;

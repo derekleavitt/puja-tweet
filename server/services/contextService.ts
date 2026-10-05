@@ -2,7 +2,7 @@
  * Tweet context (campaign) domain logic: CRUD, active context, chain anchors and post results.
  */
 
-import { DEFAULT_TWEET_TEMPLATE } from '../colorEngine.js';
+import { DEFAULT_TWEET_TEMPLATE, generateColor } from '../colorEngine.js';
 import { roundFinished } from '../../shared/conversationRound.js';
 import { HttpError } from '../middleware/error.js';
 import { extractTweetId } from '../../shared/tweetId.js';
@@ -18,7 +18,10 @@ import type {
   ConversationConfig,
   ConversationState,
   HashtagState,
+  InFlightPost,
   PendingFire,
+  PostLog,
+  RecentPost,
   TweetContext,
   TweetContextSchedule,
 } from '../../shared/types.js';
@@ -29,7 +32,9 @@ import {
   sanitizeContextChain,
   type EffectiveReplyTarget,
 } from './contextChain.js';
-import type { XErrorClass } from '../xErrors.js';
+import { isTransientFailure, transientReason, type XErrorClass } from '../xErrors.js';
+import { getXTimeoutMs } from '../timeouts.js';
+import { appendTurnRecord, clipStoredText, turnBufferOf } from './conversationTurn.js';
 import { accountProblem, effectiveAccountId } from './accountService.js';
 import { DEFAULT_ACCOUNT_ID } from '../../shared/types.js';
 import { buildPrimaryContext } from './primaryContext.js';
@@ -62,6 +67,29 @@ const maxConsecutiveErrors = (): number => {
   return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 5;
 };
 
+/** Back-off after a persistent error (and the cap of the transient back-off). */
+const MAX_RETRY_DELAY_MS = 15 * 60 * 1000;
+const MIN_RETRY_DELAY_MS = 60 * 1000;
+/** Successful live posts kept per single-mode campaign for `<history>` prompts. */
+export const RECENT_POSTS_MAX = 10;
+/**
+ * A sent-to-X marker older than this belongs to a crashed/killed process and is cleared:
+ * 3 X timeouts (a drop makes at most 3 X requests: post, chain recovery, quote fallback), >= 90 s.
+ */
+export const staleInFlightMs = (): number => Math.max(3 * getXTimeoutMs(), 90_000);
+/** Identifies this process in in-flight markers. */
+export const BOOT_ID = `boot_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+
+/**
+ * Delay before retrying after a transient failure: 1x, 2x, 4x... the campaign interval, at least
+ * one minute and at most 15 minutes (fixed-time campaigns use a 1-minute base).
+ */
+export const transientRetryDelayMs = (intervalMinutes: number, attempt: number): number => {
+  const base = Math.max(MIN_RETRY_DELAY_MS, intervalMinutes * 60 * 1000);
+  const factor = 2 ** Math.min(Math.max(attempt - 1, 0), 16);
+  return Math.min(MAX_RETRY_DELAY_MS, base * factor);
+};
+
 /** Opening line of the auto-pause reason when a conversation reached its turn limit. */
 const FINISHED_PREFIX = 'Conversation finished';
 
@@ -73,6 +101,15 @@ const forceConversationFields = (ctx: TweetContext) => {
   ctx.hashtags = [];
   ctx.hashtagEvolution = normaliseEvolution(ctx.hashtagEvolution, { enabled: false });
 };
+
+const recentPostFromLog = (l: PostLog): RecentPost => ({
+  text: clipStoredText(l.tweetText),
+  ...(l.tweetId ? { tweetId: l.tweetId } : {}),
+  at: l.timestamp,
+  slotType: l.slotType,
+  ...(l.color?.name ? { colorName: l.color.name } : {}),
+  ...(l.color?.hex ? { colorHex: l.color.hex } : {}),
+});
 
 const notFound = (id: string) => new HttpError(404, `Context ${id} not found`);
 
@@ -207,6 +244,7 @@ export class ContextService {
       hashtagEvolution: normaliseEvolution(data.hashtagEvolution),
       // `chainAnchor` is never taken from input: a legacy anchor is only kept if a log proves it.
       lastPostedTimestamp: data.lastPostedTimestamp || Date.now(), // never fire on create
+      scheduleStartedAt: Date.now(),
       currentJitterMs: data.currentJitterMs || 0,
       createdAt: data.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -307,12 +345,14 @@ export class ContextService {
         !conversation.participants.some((p) => p.accountId === kept.nextSpeakerAccountId)
       ) {
         // Never the account that spoke last (no one replies to themselves).
-        const lastSpeaker = s.logs.find(
-          (l) =>
-            l.contextId === id &&
-            l.conversationRunId === kept.runId &&
-            (l.status === 'success' || l.status === 'simulated'),
-        )?.accountId;
+        const lastSpeaker =
+          kept.turns?.[kept.turns.length - 1]?.accountId ||
+          s.logs.find(
+            (l) =>
+              l.contextId === id &&
+              l.conversationRunId === kept.runId &&
+              (l.status === 'success' || l.status === 'simulated'),
+          )?.accountId;
         conversationState = {
           ...kept,
           nextSpeakerAccountId: repickNextSpeaker(conversation, lastSpeaker),
@@ -332,6 +372,20 @@ export class ContextService {
       (updates.schedule?.mode !== undefined && updates.schedule.mode !== current.schedule.mode);
 
     const resumed = updates.enabled === true && !current.enabled;
+    // A change of what or where the campaign posts makes an old failure meaningless: drop the
+    // retry back-off and the breaker streak so the next due tick posts with the new setup.
+    const setupChanged =
+      targetChanged ||
+      accountChanged ||
+      modeChanged ||
+      (updates.template !== undefined && updates.template !== current.template) ||
+      (updates.conversation !== undefined &&
+        JSON.stringify([updates.conversation.participants, updates.conversation.sharedPrompt]) !==
+          JSON.stringify([
+            current.conversation?.participants,
+            current.conversation?.sharedPrompt,
+          ])) ||
+      !!resetChain;
     // A conversation can resume only when every participant is usable.
     const blocked = !resumed
       ? undefined
@@ -358,8 +412,16 @@ export class ContextService {
       ...fields,
       // Re-enabling restarts the interval from now and clears any circuit-breaker state.
       ...(resumed
-        ? { lastPostedTimestamp: Date.now(), consecutiveErrors: 0, autoPausedReason: undefined }
+        ? {
+            lastPostedTimestamp: Date.now(),
+            consecutiveErrors: 0,
+            autoPausedReason: undefined,
+            retry: undefined,
+            scheduleStartedAt: Date.now(),
+          }
         : {}),
+      ...(setupChanged && !resumed ? { consecutiveErrors: 0, retry: undefined } : {}),
+      ...(scheduleChanged && !resumed ? { scheduleStartedAt: Date.now() } : {}),
       id: current.id, // Never allow id to be overwritten
       accountId,
       targetTweetId,
@@ -392,11 +454,15 @@ export class ContextService {
     return updated;
   }
 
-  /** Starts the interval clock from `at` (legacy contexts stored with 0); no queue regeneration. */
+  /**
+   * Starts the interval clock from `at` (legacy contexts stored with 0); no queue regeneration.
+   * An explicit clock replaces any pending retry.
+   */
   setContextLastPostedTimestamp(contextId: string, at: number) {
     const ctx = this.sm.getContext(contextId);
     if (!ctx) return;
     ctx.lastPostedTimestamp = at;
+    ctx.retry = undefined;
     this.sm.persist();
   }
 
@@ -501,8 +567,16 @@ export class ContextService {
    */
   recordConversationTurn(
     id: string,
-    turn: { runId: string; turnNumber: number; nextSpeakerAccountId: string },
+    turn: {
+      runId: string;
+      turnNumber: number;
+      nextSpeakerAccountId: string;
+      speakerAccountId?: string;
+      speakerHandle?: string;
+      text?: string;
+    },
     status: 'success' | 'simulated' | 'error',
+    tweetId?: string,
   ): { applied: boolean; autoPausedReason?: string } {
     const ctx = this.sm.getContext(id);
     const state = ctx?.conversationState;
@@ -512,6 +586,16 @@ export class ContextService {
     if (turn.runId !== state.runId || turn.turnNumber !== state.turnCount + 1) {
       return { applied: false };
     }
+    // Legacy state: seed the buffer from whatever the log still has, then keep it on the campaign.
+    if (!state.turns) state.turns = turnBufferOf(state, () => this.sm.state.logs, id);
+    appendTurnRecord(state, {
+      turn: turn.turnNumber,
+      accountId: turn.speakerAccountId ?? '',
+      handle: turn.speakerHandle || 'unknown',
+      text: turn.text ?? '',
+      ...(tweetId && status === 'success' ? { tweetId } : {}),
+      at: new Date().toISOString(),
+    });
     state.turnCount += 1;
     state.nextSpeakerAccountId = turn.nextSpeakerAccountId;
     const max = ctx.conversation?.maxTurns;
@@ -569,6 +653,9 @@ export class ContextService {
     ctx.conversationState = initConversationState(validated.config, validated.handles);
     ctx.lastPostedTweetId = undefined;
     ctx.chainAnchor = undefined;
+    // A new run starts clean: no back-off or breaker streak from the old thread.
+    ctx.retry = undefined;
+    ctx.consecutiveErrors = 0;
     if (ctx.autoPausedReason?.startsWith(FINISHED_PREFIX)) ctx.autoPausedReason = undefined;
     ctx.updatedAt = new Date().toISOString();
     this.queue.clearAndRegenerateQueue(id);
@@ -584,16 +671,35 @@ export class ContextService {
     return resolveReplyTarget(context, this.sm.state.logs);
   }
 
+  /**
+   * Records one post attempt on the campaign (stats, breaker, retry back-off, chain anchor) and
+   * clears its in-flight marker. Called in the same synchronous step as the log append, so a save
+   * always carries both.
+   *
+   * Failures are split in two (see `isTransientFailure`):
+   *  - transient (AI unavailable, X 5xx, network/timeout): exponential back-off from the interval
+   *    (1x, 2x, 4x..., 1-15 min) and never an auto-pause; `consecutiveErrors` is left alone;
+   *  - persistent (everything else): a 15-minute back-off and the circuit breaker after
+   *    MAX_CONSECUTIVE_ERRORS. X throttling (429 / reply cooldown) keeps its own account cooldown
+   *    and never counts toward the breaker.
+   * A success (live or simulated) clears the streak and the retry.
+   */
   recordContextPostResult(
     contextId: string,
     status: 'success' | 'simulated' | 'error',
     postedTweetId?: string,
     engagementMode: 'reply' | 'quote' | 'standalone' = 'reply',
     failure?: { errorClass: XErrorClass; message?: string },
+    options: { startedAt?: number; slotKey?: string } = {},
   ): { autoPausedReason?: string } {
     const context = this.sm.getContext(contextId);
     if (!context) return {};
     let autoPausedReason: string | undefined;
+    const now = Date.now();
+    // The cadence is anchored to when the drop started, not when X answered: a slow AI call or
+    // post must not push a 1-minute campaign past the next scheduler tick.
+    const startedAt = Math.min(options.startedAt ?? now, now);
+    context.inFlight = undefined;
 
     if (!context.stats) {
       context.stats = { totalPosts: 0, successfulPosts: 0, simulatedPosts: 0, failedPosts: 0 };
@@ -603,24 +709,53 @@ export class ContextService {
     if (status === 'simulated') context.stats.simulatedPosts += 1;
     if (status === 'error') {
       context.stats.failedPosts += 1;
-      // Throttling (429 / reply cooldown) is handled by the global cooldown, not the breaker.
-      const throttled = failure?.errorClass === 'rate_limit' || failure?.errorClass === 'cooldown';
-      if (!throttled) context.consecutiveErrors = (context.consecutiveErrors || 0) + 1;
-      autoPausedReason = this.breakerReason(context, failure);
-      if (autoPausedReason) {
-        context.enabled = false;
-        context.autoPausedReason = autoPausedReason;
-        console.warn(`[Context] Auto-paused "${context.name}": ${autoPausedReason}`);
+      const intervalMinutes =
+        context.schedule.mode === 'interval' ? context.schedule.intervalMinutes || 60 : 1;
+      if (failure && isTransientFailure(failure.errorClass)) {
+        const prev = context.retry?.transient ? context.retry : undefined;
+        const attempt = (prev?.attempt ?? 0) + 1;
+        const slotKey = options.slotKey ?? prev?.slotKey;
+        // A fixed-time campaign retries only a scheduled slot (a failed manual post just fails).
+        context.retry =
+          context.schedule.mode === 'interval' || slotKey
+            ? {
+                at: now + transientRetryDelayMs(intervalMinutes, attempt),
+                reason: transientReason(failure.errorClass),
+                transient: true,
+                attempt,
+                ...(slotKey
+                  ? { slotKey, since: prev?.slotKey === slotKey ? (prev.since ?? now) : now }
+                  : {}),
+              }
+            : undefined;
+      } else {
+        // Throttling (429 / reply cooldown) is handled by the account cooldown, not the breaker.
+        const throttled =
+          failure?.errorClass === 'rate_limit' || failure?.errorClass === 'cooldown';
+        if (!throttled) context.consecutiveErrors = (context.consecutiveErrors || 0) + 1;
+        autoPausedReason = this.breakerReason(context, failure);
+        if (autoPausedReason) {
+          context.enabled = false;
+          context.autoPausedReason = autoPausedReason;
+          console.warn(`[Context] Auto-paused "${context.name}": ${autoPausedReason}`);
+        }
+        // Safety anti-hammer backoff: at least 15 minutes (or one interval, when longer) so an X
+        // reply cooldown has time to clear. Fixed-time campaigns simply wait for their next slot.
+        context.retry =
+          context.schedule.mode === 'interval'
+            ? {
+                at: now + Math.max(MAX_RETRY_DELAY_MS, intervalMinutes * 60 * 1000),
+                reason: throttled ? 'X throttled the account' : 'last post failed',
+                transient: false,
+                attempt: 0,
+              }
+            : undefined;
       }
-      // Safety anti-hammer backoff: after an error (such as an X reply cooldown), back off
-      // by at least 15 minutes so the developer account has time to clear the cooldown
-      const intervalMs = (context.schedule.intervalMinutes || 15) * 60 * 1000;
-      const minRetryDelayMs = 15 * 60 * 1000;
-      context.lastPostedTimestamp =
-        intervalMs < minRetryDelayMs ? Date.now() + (minRetryDelayMs - intervalMs) : Date.now();
+      context.lastPostedTimestamp = startedAt;
     } else {
       context.consecutiveErrors = 0;
-      context.lastPostedTimestamp = Date.now();
+      context.retry = undefined;
+      context.lastPostedTimestamp = startedAt;
     }
 
     // The anchor moves only on this campaign's own genuine in-thread reply; errors, simulations,
@@ -641,6 +776,124 @@ export class ContextService {
     generateJitterForContext(context);
     this.sm.persist();
     return { autoPausedReason };
+  }
+
+  /** Remembers a successful live single-mode post for `<history>` prompts (last 10, on the campaign). */
+  rememberPost(contextId: string, post: RecentPost) {
+    const ctx = this.sm.getContext(contextId);
+    if (!ctx) return;
+    const posts = ctx.recentPosts ?? this.recentPostsFromLogs(contextId);
+    ctx.recentPosts = [...posts, { ...post, text: clipStoredText(post.text) }].slice(
+      -RECENT_POSTS_MAX,
+    );
+    this.sm.persist();
+  }
+
+  /**
+   * The campaign's series history (oldest first). Legacy campaigns without `recentPosts` are seeded
+   * once from whatever successful posts the shared, capped log still has.
+   */
+  getRecentPosts(contextId: string): RecentPost[] | undefined {
+    const ctx = this.sm.getContext(contextId);
+    if (!ctx) return undefined;
+    if (!ctx.recentPosts) {
+      ctx.recentPosts = this.recentPostsFromLogs(contextId);
+      this.sm.persist();
+    }
+    return ctx.recentPosts;
+  }
+
+  private recentPostsFromLogs(contextId: string): RecentPost[] {
+    return this.sm.state.logs
+      .filter((l) => l.contextId === contextId && l.status === 'success')
+      .slice(-RECENT_POSTS_MAX)
+      .map((l) => recentPostFromLog(l));
+  }
+
+  /** Drops a pending retry (obsolete fixed-slot retry); the normal schedule applies again. */
+  clearRetry(contextId: string) {
+    const ctx = this.sm.getContext(contextId);
+    if (!ctx?.retry) return;
+    ctx.retry = undefined;
+    this.sm.persist();
+  }
+
+  /**
+   * Persists the "drop in progress" marker at the start of a drop (cleared by
+   * `recordContextPostResult`); `markSent` stamps it right before the request to X.
+   */
+  markInFlight(contextId: string, startedAt = Date.now()) {
+    const ctx = this.sm.getContext(contextId);
+    if (!ctx) return;
+    ctx.inFlight = { startedAt, bootId: BOOT_ID };
+    this.sm.persist();
+  }
+
+  /** Stamps the marker with what is about to be sent to X, and when. */
+  markSent(
+    contextId: string,
+    sent: Pick<InFlightPost, 'runId' | 'turn' | 'replyToTweetId' | 'text'>,
+  ) {
+    const ctx = this.sm.getContext(contextId);
+    if (!ctx) return;
+    ctx.inFlight = {
+      ...(ctx.inFlight ?? { startedAt: Date.now(), bootId: BOOT_ID }),
+      ...sent,
+      sentAt: Date.now(),
+    };
+    this.sm.persist();
+  }
+
+  /** Drops this drop's marker without recording a result (it ended before a result was recorded). */
+  clearInFlight(contextId: string, startedAt?: number) {
+    const ctx = this.sm.getContext(contextId);
+    if (!ctx?.inFlight) return;
+    if (startedAt !== undefined && ctx.inFlight.startedAt !== startedAt) return;
+    ctx.inFlight = undefined;
+    this.sm.persist();
+  }
+
+  /**
+   * True while another process may still be posting this campaign (a fresh sent-to-X marker it
+   * wrote). Otherwise a leftover marker is cleared and the campaign continues:
+   *  - never sent to X (no `sentAt`: the drop died while the AI was writing): cleared silently;
+   *  - sent, but the result was never recorded (stale, or left by this process): an "interrupted"
+   *    log entry keeps the history honest and the same turn/post is attempted again
+   *    (see docs/campaign-isolation.md §7).
+   */
+  checkInFlight(contextId: string, isOwnDropRunning: boolean, now = Date.now()): boolean {
+    const ctx = this.sm.getContext(contextId);
+    const marker = ctx?.inFlight;
+    if (!ctx || !marker) return false;
+    if (isOwnDropRunning) return true;
+    if (marker.sentAt === undefined) {
+      ctx.inFlight = undefined;
+      this.sm.persist();
+      return false;
+    }
+    if (marker.bootId !== BOOT_ID && now - marker.sentAt < staleInFlightMs()) return true;
+    ctx.inFlight = undefined;
+    const log: PostLog = {
+      id: `log_${now}_${Math.random().toString(36).substring(2, 6)}`,
+      timestamp: new Date(now).toISOString(),
+      slotType: 'manual',
+      targetTweetId: ctx.targetTweetId,
+      replyToTweetId: marker.replyToTweetId,
+      color: generateColor('morning'),
+      tweetText: marker.text ?? '',
+      status: 'error',
+      errorMessage:
+        'Interrupted (restart while posting): the result was not recorded. If X accepted it, the ' +
+        'same post may appear twice; the campaign continues from its last recorded post.',
+      contextId: ctx.id,
+      contextName: ctx.name,
+      ...(marker.runId ? { conversationRunId: marker.runId, turn: marker.turn } : {}),
+    };
+    const logs = this.sm.state.logs;
+    logs.push(log);
+    console.warn(`[Context] Cleared an interrupted post of "${ctx.name}" (sent ${marker.sentAt}).`);
+    this.sm.persist();
+    return false;
   }
 
   /**

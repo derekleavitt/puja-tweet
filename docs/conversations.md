@@ -43,8 +43,9 @@ Design notes for developers are in [design/conversations.md](design/conversation
   celebrity) is turned into plain text so nobody gets notified by accident. Replies are kept within
   280 characters.
 - Each reply goes to the previous turn's tweet, so the whole run forms one thread.
-- Long conversations stay affordable: the last 15 turns are sent word for word and older ones are
-  folded into a short summary.
+- Long conversations stay affordable: the last 15 to 20 turns are sent word for word and older
+  ones are folded into a short summary. The transcript is stored on the campaign itself, so it never
+  loses turns when the shared log (capped at `MAX_LOGS` entries across all campaigns) is trimmed.
 - Hashtags are off, and a dry run advances the conversation (turns and transcript) without posting.
 
 ## Restart
@@ -61,7 +62,8 @@ whether the campaign is enabled: resume it if it was paused.
 | It reaches the turn limit | Pauses with "Conversation finished (N turns)". **Resume** continues the same thread for another N turns; **Restart** begins a new thread. |
 | A participant is removed | Pauses with "Participant @x removed...". Resuming is refused until the cast is fixed. |
 | A participant's tokens are revoked (X answers 401) | The campaign auto-pauses. Verify or reconnect the account. |
-| 5 failures in a row | The circuit breaker pauses it. After each failure it also backs off for 15 minutes. |
+| 5 persistent failures in a row | The circuit breaker pauses it. After each one it also backs off for 15 minutes. |
+| AI busy / timed out, X 5xx, network error | Never pauses. It retries after 1×, 2×, 4×… the interval (at least 1 minute, at most 15); the card shows "Retrying in 2m (AI busy)". The first success resets everything. |
 
 A failed turn (X error, AI down) changes nothing: the same account tries again next time, and the
 thread keeps pointing at the last tweet that was really posted. If the next speaker is on cooldown or
@@ -84,7 +86,8 @@ disconnected, the conversation waits for them; it never skips them. The card nam
 | --- | --- |
 | X answers **403** (reply not allowed, "not mentioned") | The account being replied as was not mentioned in the post it replies to. Check the opening reply mentions the first speaker, and that handles are current. A renamed handle breaks mentions until you **Verify** the account. |
 | "Verify @handle first" | A participant has no known handle. Open Settings and Verify that account. |
-| "AI unavailable" or no new turn | Gemini failed for every model, or the daily Gemini cap is used up. Nothing was posted and nothing changed; it retries after the back-off. Check the key and the cap. |
+| "AI unavailable" or no new turn | Gemini failed for every model, or the daily Gemini cap is used up. Nothing was posted and nothing changed; it retries with a growing back-off (capped at 15 minutes) and is never paused for it. Check the key and the cap. |
+| A log entry "Interrupted (restart while posting)" | The server restarted after sending a turn to X but before saving the result. The same turn is written again on the next tick; if X had accepted the first one, it appears twice in the thread (at most once per restart). |
 | "Conversation moved on, refresh the preview" | Another post (a tick or a second tab) happened after you previewed. Preview again. |
 | "A drop for this campaign is already running" | A post is in flight. Wait a moment and retry. |
 | Opening post rejected on save | It must contain the first speaker's `@handle`. |

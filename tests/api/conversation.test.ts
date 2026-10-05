@@ -323,7 +323,9 @@ describe('conversation scheduling', () => {
     });
     const log = services.logs.getLogs().find((l) => l.contextId === c.id)!;
     expect(log).toMatchObject({ status: 'error', accountId: ids[1], turn: 1 });
-    expect(ctxOf(c.id).consecutiveErrors).toBe(1);
+    // AI unavailable is transient: a short back-off, never a breaker count.
+    expect(ctxOf(c.id).consecutiveErrors ?? 0).toBe(0);
+    expect(ctxOf(c.id).retry).toMatchObject({ transient: true, attempt: 1, reason: 'AI busy' });
   });
 
   it('a concurrent tick-style drop and post-now yield one post and one 409', async () => {

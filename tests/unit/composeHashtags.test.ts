@@ -232,9 +232,11 @@ describe('Gemini unavailable', () => {
     process.env.GEMINI_API_KEY = '';
     const ctx = campaign({ template: AI_ONLY, ...evolving() });
     await expect(compose(ctx)).rejects.toBeInstanceOf(AgentUnavailableError);
-    await expect(makeDrops().executeDrop({ contextId: ctx.id, color })).rejects.toBeInstanceOf(
-      AgentUnavailableError,
-    );
+    // The drop fails visibly: an error log entry, X never called.
+    const out = await makeDrops().executeDrop({ contextId: ctx.id, color });
+    expect(out.success).toBe(false);
+    expect(out.log).toMatchObject({ status: 'error', tweetText: '' });
+    expect(out.log.errorMessage).toMatch(/not configured/);
     expect(post).not.toHaveBeenCalled();
     expect(svc.contexts.getContext(ctx.id)?.hashtagState).toBeUndefined();
   });

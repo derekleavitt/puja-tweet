@@ -25,7 +25,7 @@ Errors: `{ "success": false, "error": "<message>" }` with a real HTTP status (40
 | POST | `/api/twitter/verify` | Verify credentials; failure is `{ valid:false, message }` |
 | POST | `/api/generate-color` | Body `{ slotType?, color?, contextId?, template? }` |
 | POST | `/api/template/preview` | Body `{ template?, hashtags?, color?, slotType?, contextId? }` (`template`/`hashtags` preview unsaved edits; 400 when `hashtags` is not a string array); returns `previewText`, `accountId`, `accountHandle`, `breakdown` (see [Evolving hashtags](#evolving-hashtags)) and, when the campaign evolves hashtags, `hashtags` (the tags used, without `#`). For a conversation campaign it returns instead `previewText`, `charCount`, `replyToTweetId`, `lastPostedTweetId`, `isFirstInChain`, `accountId`/`accountHandle` (the speaker) and `conversation: { runId, turnNumber, speakerAccountId, speakerHandle, nextSpeakerAccountId, nextSpeakerHandle, summaryUsed, transcriptLength }` (no color, breakdown or hashtags) |
-| POST | `/api/post-now` | Body `{ contextId?, slotType?, color?, forceLive?, text?, hashtags?, slotId? }`; 404 unknown `contextId`. `text` is posted verbatim; send the preview's `hashtags` with it so the post does not re-roll them. The response carries `hashtags` when evolution is on. For a conversation campaign, send `text` with `conversation: { runId, turnNumber, speakerAccountId, nextSpeakerAccountId }` from the preview: a stale turn is a 409 ("Conversation moved on, refresh the preview"), text without the next speaker's @handle is a 400; without `text` the turn is composed fresh. Only one drop per campaign runs at a time (409 "A drop for this campaign is already running") |
+| POST | `/api/post-now` | Body `{ contextId?, slotType?, color?, forceLive?, text?, hashtags?, slotId? }`; 404 unknown `contextId`. A failed post (X error, or an AI-only template whose AI is unavailable) answers 200 with `success: false` and its error log entry, like every other failure. `text` is posted verbatim; send the preview's `hashtags` with it so the post does not re-roll them. The response carries `hashtags` when evolution is on. For a conversation campaign, send `text` with `conversation: { runId, turnNumber, speakerAccountId, nextSpeakerAccountId }` from the preview: a stale turn is a 409 ("Conversation moved on, refresh the preview"), text without the next speaker's @handle is a 400; without `text` the turn is composed fresh. Only one drop per campaign runs at a time (409 "A drop for this campaign is already running") |
 | ALL | `/api/cron/trigger`, `/api/webhook/trigger` | Secret via `?secret=`, `x-cron-secret` or body; `contextId`/`slot`/`forceLive`; 404 unknown `contextId`; without `contextId` the active campaign is posted |
 | GET | `/api/webhook/url` | The trigger URL; `?contextId=` pins it to one campaign (404 unknown) |
 | GET | `/api/queue` | Optional `?contextId=`; each slot carries `accountHandle` |
@@ -122,3 +122,19 @@ curl -X POST -H "x-cron-secret: $CRON_SECRET" https://YOUR-SERVICE-URL/api/cron/
 ```
 
 See [campaign-isolation.md](./campaign-isolation.md) for which state is global and which is per campaign.
+
+## Server-owned campaign fields (recovery)
+
+Read-only on `TweetContext` (stripped from client bodies). Details:
+[campaign-isolation.md §7](./campaign-isolation.md#7-recovery-and-history-durability).
+
+| Field | Notes |
+| --- | --- |
+| `retry` | `{ at, reason, transient, attempt, slotKey?, since? }`: next attempt after a failure (`reason` e.g. `AI busy`, `X server error`, `network error`, `last post failed`). Cleared by a success or a resume. The countdown (`secondsUntil`) and `blockedReason` ("Retrying in 2m (AI busy, attempt 3)") use it |
+| `inFlight` | `{ startedAt, bootId, sentAt?, runId?, turn?, replyToTweetId?, text? }` while a drop runs (`sentAt` once it is sent to X); `blockedReason` "Posting now…" while another process's sent post is pending |
+| `scheduleStartedAt` | When the schedule (re)started (create, resume, schedule change, clear-history); fixed times are never caught up from before it |
+| `recentPosts` | Last 10 successful live posts `{ text, tweetId?, at, slotType?, colorName?, colorHex? }` (single mode `<history>` memory) |
+| `conversationState.turns` | Turns after `summaryThroughTurn` `{ turn, accountId, handle, text, tweetId?, at }` (at most 40) |
+| `consecutiveErrors` | Persistent failures in a row only (transient ones never count) |
+
+`XErrorClass` gained `server_error` (X 5xx) and `ai_unavailable`.

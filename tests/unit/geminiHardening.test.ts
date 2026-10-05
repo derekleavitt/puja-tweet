@@ -140,7 +140,7 @@ describe('template agent', () => {
       mk('x', 'A', 'error'),
       mk('a', 'A', 'success'),
     ];
-    expect(getSeriesHistory('A').map((l) => l.id)).toEqual(['a', 'c']);
+    expect(getSeriesHistory('A').map((l) => l.tweetText)).toEqual(['a', 'c']);
     expect(getSeriesHistory('Z')).toEqual([]);
     expect(getSeriesHistory()).toEqual([]);
   });

@@ -97,10 +97,11 @@ export class RateLimitService {
     this.sm.persist();
   }
 
-  recordLivePostTimestamp(accountId?: string) {
+  /** `at` = when the post was sent (defaults to now). */
+  recordLivePostTimestamp(accountId?: string, at = Date.now()) {
     const s = this.sm.state;
-    if (isDefault(accountId)) s.lastGlobalLivePostTimestamp = Date.now();
-    else s.lastLivePostByAccount = { ...s.lastLivePostByAccount, [accountId!]: Date.now() };
+    if (isDefault(accountId)) s.lastGlobalLivePostTimestamp = at;
+    else s.lastLivePostByAccount = { ...s.lastLivePostByAccount, [accountId!]: at };
   }
 
   /** Time since this account's last live post (anti-burst spacing is per account). */

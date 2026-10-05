@@ -212,11 +212,12 @@ describe('errors, back-off and auto-pause stay with the failing campaign', () =>
   });
 
   it('the 15-minute error back-off moves only the failing 1-minute campaign clock', async () => {
-    post.mockImplementation(failWith(500) as never);
+    post.mockImplementation(failWith(400) as never); // persistent (not a transient 5xx)
     due(C, -100);
     const cBefore = ctx(C).lastPostedTimestamp;
     await scheduler.tick(); // A fails
-    expect(ctx(A).lastPostedTimestamp).toBe(now + 14 * MIN);
+    expect(ctx(A).retry).toMatchObject({ at: now + 15 * MIN, transient: false });
+    expect(scheduler.getNextScheduledPost(A)!.secondsUntil).toBe(15 * 60);
     expect(ctx(A).consecutiveErrors).toBe(1);
     expect(ctx(C).lastPostedTimestamp).toBe(cBefore);
     expect(ctx(C).consecutiveErrors ?? 0).toBe(0);

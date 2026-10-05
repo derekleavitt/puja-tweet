@@ -20,7 +20,8 @@ describe('classifyXError', () => {
     ],
     [400, { detail: 'Tweet text is too long' }, 'text_invalid'],
     [undefined, undefined, 'network'],
-    [500, {}, 'unknown'],
+    [500, {}, 'server_error'],
+    [503, { title: 'Service Unavailable' }, 'server_error'],
   ])('status %s %j -> %s', (status, body, expected) => {
     expect(classifyXError(status, body)).toBe(expected);
   });
