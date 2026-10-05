@@ -6,7 +6,6 @@
 import type { BotSettings, TweetContext, TweetContextSchedule } from '../../shared/types.js';
 import { HttpError } from '../middleware/error.js';
 import type { ContextService } from './contextService.js';
-import type { ContextUpdateInput } from './contextSchema.js';
 import { buildSettingsView } from './settingsMirror.js';
 import type { StateManager } from './stateManager.js';
 
@@ -57,7 +56,8 @@ export class SettingsService {
     if (newSettings.jitterPercentage !== undefined)
       schedule.jitterPercentage = newSettings.jitterPercentage;
 
-    const updates: ContextUpdateInput = {};
+    // Built as a client-style body: `updateContext` validates it like a PUT /api/contexts/:id.
+    const updates: Record<string, unknown> = {};
     if (newSettings.targetTweetId) updates.targetTweetId = newSettings.targetTweetId;
     if (newSettings.replyTargetMode) updates.replyTargetMode = newSettings.replyTargetMode;
     if (newSettings.engagementMode) updates.engagementMode = newSettings.engagementMode;
@@ -66,7 +66,7 @@ export class SettingsService {
     // The chain anchor is server-owned: only an explicit reset (null / '') is honoured
     // (`updateContext` ignores any string value).
     if ('lastPostedTweetId' in newSettings && !newSettings.lastPostedTweetId) {
-      updates.lastPostedTweetId = undefined;
+      updates.lastPostedTweetId = null;
     }
     if (newSettings.schedulerEnabled !== undefined) updates.enabled = newSettings.schedulerEnabled;
     if (newSettings.dryRun !== undefined) updates.dryRun = newSettings.dryRun;
@@ -80,8 +80,10 @@ export class SettingsService {
     if (typeof newSettings.globalPaused === 'boolean') {
       this.sm.state.settings.globalPaused = newSettings.globalPaused;
     }
+    this.sm.persist();
 
-    this.contexts.updateContext(active.id, updates);
+    // A global-only toggle never touches (or regenerates the queue of) any campaign.
+    if (Object.keys(updates).length > 0) this.contexts.updateContext(active.id, updates);
     return this.getSettings(active.id);
   }
 }
