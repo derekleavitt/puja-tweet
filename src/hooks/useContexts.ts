@@ -10,6 +10,8 @@ import {
   duplicateContext,
   toggleContext,
   clearContextHistory,
+  restartConversation,
+  type RestartConversationBody,
 } from '../api/endpoints.js';
 import { PostLog, TweetContext } from '../types.js';
 
@@ -64,7 +66,13 @@ export function useContexts({ setLogs, refresh, fetchHistory }: UseContextsDeps)
     }
   };
 
+  const handleRestartConversation = async (id: string, body: RestartConversationBody) => {
+    await restartConversation(id, body);
+    await refresh();
+  };
+
   return {
+    handleRestartConversation,
     handleCreateContext,
     handleUpdateContext,
     handleDeleteContext,

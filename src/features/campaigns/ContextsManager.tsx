@@ -8,6 +8,7 @@ import React, { useState } from 'react';
 import { Layers, Plus } from 'lucide-react';
 import { BotSettings, ContextNextPost, DropResponse, TweetContext } from '../../types.js';
 import { PostNowOptions } from '../../hooks/usePosting.js';
+import type { RestartConversationBody } from '../../api/endpoints.js';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog.js';
 import { ContextCard } from './ContextCard.js';
 import { ContextFormModal } from './ContextFormModal.js';
@@ -23,6 +24,7 @@ interface ContextsManagerProps {
   onDuplicateContext: (id: string) => Promise<void>;
   onToggleContext: (id: string) => Promise<void>;
   onClearContextHistory?: (id: string) => Promise<void>;
+  onRestartConversation: (id: string, body: RestartConversationBody) => Promise<void>;
   /** Manual post for one campaign (asks for confirmation when it would go live). */
   onPostNow: (contextId: string, opts?: PostNowOptions) => Promise<DropResponse | undefined>;
 }
@@ -39,6 +41,7 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
   onDuplicateContext,
   onToggleContext,
   onClearContextHistory,
+  onRestartConversation,
   onPostNow,
 }) => {
   const [pending, setPending] = useState<PendingConfirm>(null);
@@ -99,6 +102,7 @@ export const ContextsManager: React.FC<ContextsManagerProps> = ({
             onUpdate={(updates) => onUpdateContext(ctx.id, updates)}
             onToggle={() => onToggleContext(ctx.id)}
             onPost={(opts) => onPostNow(ctx.id, opts)}
+            onRestart={(body) => onRestartConversation(ctx.id, body)}
             onEdit={() => form.openEdit(ctx)}
             onDuplicate={() => onDuplicateContext(ctx.id)}
             onRequestClearHistory={

@@ -6,12 +6,18 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { previewTemplate } from '../../api/endpoints.js';
-import { ColorData, DropTextBreakdown, TweetContext } from '../../types.js';
+import { previewTemplate, type ConversationPreviewInfo } from '../../api/endpoints.js';
+import { ColorData, DropTextBreakdown, TweetContext, XAccountInfo } from '../../types.js';
 import { errorMessage } from '../../lib/errors.js';
 
 /** Color palette the preview draws from (only offered when the template uses a color token). */
 export type PreviewSlot = 'morning' | 'evening' | 'manual';
+
+/** "@handle" of an account, falling back to its label or id while the handle is unknown. */
+export const speakerLabel = (accounts: XAccountInfo[] | undefined, id: string): string => {
+  const account = (accounts ?? []).find((a) => a.id === id);
+  return account?.handle ? `@${account.handle}` : (account?.label ?? id);
+};
 
 export interface CampaignPreviewData {
   text: string;
@@ -20,6 +26,9 @@ export interface CampaignPreviewData {
   color?: ColorData;
   /** How the text was put together (tag block, AI hashtag clean-up). */
   breakdown?: DropTextBreakdown;
+  /** Conversation turns: the tweet being replied to and the turn this text was written for. */
+  replyToTweetId?: string;
+  conversation?: ConversationPreviewInfo;
 }
 
 export function useCampaignPreview(context: TweetContext, open: boolean) {
@@ -36,6 +45,7 @@ export function useCampaignPreview(context: TweetContext, open: boolean) {
     context.schedule?.timezone,
     JSON.stringify(context.hashtagEvolution ?? null),
     (context.hashtagState?.current ?? []).join(','),
+    JSON.stringify(context.conversationState ?? null),
   ].join('|');
 
   const load = useCallback(async () => {
@@ -54,6 +64,8 @@ export function useCampaignPreview(context: TweetContext, open: boolean) {
           hashtags: data.hashtags,
           color: data.color,
           breakdown: data.breakdown,
+          replyToTweetId: data.replyToTweetId,
+          conversation: data.conversation,
         });
       } else {
         setPreview(null);

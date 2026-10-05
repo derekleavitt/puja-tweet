@@ -12,7 +12,8 @@ import { PostNowOptions } from '../../hooks/usePosting.js';
 import { hasAgentTag } from '../../../shared/template/agentTags.js';
 import { templateUsesColor } from '../../lib/templateTokens.js';
 import { AiUnavailableBadge } from '../../components/AiUnavailableBadge.js';
-import { useCampaignPreview } from './useCampaignPreview.js';
+import { useServerInfo } from '../../context/serverInfo.js';
+import { speakerLabel, useCampaignPreview } from './useCampaignPreview.js';
 import { PreviewColorSlots } from './PreviewColorSlots.js';
 import { PostResultToast } from './PostResultToast.js';
 import { PreviewBreakdown } from './PreviewBreakdown.js';
@@ -45,7 +46,21 @@ export const CampaignPreview: React.FC<CampaignPreviewProps> = ({
   const { slot, pickSlot, preview, loading, error, reload } = useCampaignPreview(context, true);
   const [posting, setPosting] = useState(false);
   const [result, setResult] = useState<DropResponse | null>(null);
-  const evolving = context.hashtagEvolution?.enabled === true;
+  const { accounts } = useServerInfo();
+  const turn = preview?.conversation;
+  const isConversation = context.mode === 'conversation';
+  const speaker = turn
+    ? turn.speakerHandle
+      ? `@${turn.speakerHandle}`
+      : speakerLabel(accounts, turn.speakerAccountId)
+    : '';
+  const nextSpeaker = turn
+    ? turn.nextSpeakerHandle
+      ? `@${turn.nextSpeakerHandle}`
+      : speakerLabel(accounts, turn.nextSpeakerAccountId)
+    : '';
+  const [notice, setNotice] = useState<string | null>(null);
+  const evolving = !isConversation && context.hashtagEvolution?.enabled === true;
   const text = preview?.text ?? '';
   const overLimit = text.length > 280;
 
@@ -53,15 +68,36 @@ export const CampaignPreview: React.FC<CampaignPreviewProps> = ({
     if (!preview) return;
     setPosting(true);
     setResult(null);
+    setNotice(null);
     try {
       // Exactly what is shown: text + the hashtags it used + its color (BUG-3 contract).
-      const res = await onPost({
-        text: preview.text,
-        hashtags: preview.hashtags,
-        color: preview.color,
-        slotType: slot,
-      });
-      if (res) setResult(res);
+      // A conversation turn also echoes the turn it was written for, so a stale post is refused.
+      const res = await onPost(
+        isConversation && turn
+          ? {
+              text: preview.text,
+              slotType: slot,
+              speakerHandle: turn.speakerHandle,
+              conversation: {
+                runId: turn.runId,
+                turnNumber: turn.turnNumber,
+                speakerAccountId: turn.speakerAccountId,
+                nextSpeakerAccountId: turn.nextSpeakerAccountId,
+              },
+            }
+          : {
+              text: preview.text,
+              hashtags: preview.hashtags,
+              color: preview.color,
+              slotType: slot,
+            },
+      );
+      if (res && 'conflict' in res && res.conflict) {
+        setNotice('The conversation moved on — preview refreshed');
+        await reload();
+      } else if (res) {
+        setResult(res);
+      }
     } finally {
       setPosting(false);
     }
@@ -74,8 +110,17 @@ export const CampaignPreview: React.FC<CampaignPreviewProps> = ({
     >
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="font-semibold text-neutral-800 dark:text-neutral-200">Next tweet</span>
-          {hasAgentTag(context.template) && <AiUnavailableBadge />}
+          <span
+            data-testid="preview-title"
+            className="font-semibold text-neutral-800 dark:text-neutral-200"
+          >
+            {isConversation && turn
+              ? `Turn ${turn.turnNumber} · ${speaker} → ${nextSpeaker}`
+              : isConversation
+                ? 'Next turn'
+                : 'Next tweet'}
+          </span>
+          {(isConversation || hasAgentTag(context.template)) && <AiUnavailableBadge />}
           {evolving && (
             <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-teal-100 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 inline-flex items-center gap-1">
               <Hash className="w-2.5 h-2.5" />
@@ -109,11 +154,17 @@ export const CampaignPreview: React.FC<CampaignPreviewProps> = ({
         </div>
       </div>
 
-      {templateUsesColor(context.template) && (
+      {!isConversation && templateUsesColor(context.template) && (
         <PreviewColorSlots selected={slot} disabled={loading} onPick={pickSlot} />
       )}
 
-      <div className="text-[11px] text-neutral-500 font-mono">{destination(context)}</div>
+      <div data-testid="preview-destination" className="text-[11px] text-neutral-500 font-mono">
+        {isConversation
+          ? turn
+            ? `Reply to #${preview?.replyToTweetId ?? context.targetTweetId} as ${speaker}`
+            : ''
+          : destination(context)}
+      </div>
 
       <div
         data-testid="tweet-preview-text"
@@ -122,8 +173,13 @@ export const CampaignPreview: React.FC<CampaignPreviewProps> = ({
         {preview ? preview.text : loading ? 'Rendering preview…' : ''}
       </div>
       {error && <p className="text-[11px] text-red-600 dark:text-red-400">{error}</p>}
+      {notice && (
+        <p data-testid="preview-notice" className="text-[11px] text-amber-700 dark:text-amber-400">
+          {notice}
+        </p>
+      )}
 
-      {preview?.hashtags && preview.hashtags.length > 0 && (
+      {!isConversation && preview?.hashtags && preview.hashtags.length > 0 && (
         <div data-testid="preview-hashtags" className="flex items-center gap-1 flex-wrap">
           <span className="text-[10px] uppercase font-mono text-neutral-400">Hashtags:</span>
           {preview.hashtags.map((tag) => (
@@ -137,7 +193,7 @@ export const CampaignPreview: React.FC<CampaignPreviewProps> = ({
         </div>
       )}
 
-      <PreviewBreakdown breakdown={preview?.breakdown} />
+      {!isConversation && <PreviewBreakdown breakdown={preview?.breakdown} />}
 
       <button
         type="button"
