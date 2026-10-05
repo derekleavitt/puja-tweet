@@ -7,6 +7,8 @@
  * for poetic, evocative generation.
  */
 
+import { templateUsesColor } from '../shared/template/colorTokens.js';
+import { HttpError } from './middleware/error.js';
 import type { ColorData, PostLog } from '../shared/types.js';
 import { services } from './services/index.js';
 import { formatTimeInZone } from '../shared/time.js';
@@ -21,21 +23,22 @@ import { getGeminiTimeoutMs } from './timeouts.js';
 import { getGeminiModels, isGeminiConfigured, tryConsumeGeminiCall } from './geminiConfig.js';
 import {
   AGENT_TARGET_LENGTH,
-  truncateAtWordBoundary,
+  trimToCompleteSentence,
   weightedTweetLength,
 } from '../shared/tweetLength.js';
 import { errorMessage } from './errorMessage.js';
 
 export const POETRY_AGENT_SYSTEM_INSTRUCTION = `You are a world-class literary poet and creative writer specializing in atmospheric, earthy, and profound short-form poetry and expressions, channeling voices like Pablo Neruda, Mary Oliver, Octavio Paz, and Federico García Lorca.
 
-Your mission is to generate the exact body of a tweet based on the color, mood, and any previous series history provided.
+Your mission is to generate the exact body of a tweet from the user's directive and any previous series history provided (and the drop color, only when one is given).
 
 STRICT CONSTRAINTS:
 1. Output ONLY the exact tweet body.
 2. NEVER include conversational filler, preamble ("Here is a poem:"), explanations, or surrounding quotation marks.
-3. Length: Strictly under 240 characters to fit Twitter/X limits seamlessly.
+3. Length: Strictly under 240 characters to fit Twitter/X limits seamlessly. Always end on a complete sentence.
 4. If series history is provided, consider what has already been said in the series and let this drop build on, harmonize with, or poignantly contrast the arc of the series thus far.
-5. Inhabit the requested style deeply (e.g., Pablo Neruda's visceral metaphors, earthy resonance, intimate cosmic scope).`;
+5. Inhabit the requested style deeply (e.g., Pablo Neruda's visceral metaphors, earthy resonance, intimate cosmic scope).
+6. Never prefix the tweet with a color name, hex code, label, or "Name (#HEX) —" header.`;
 
 export interface ResolveTemplateOptions {
   slotLabel?: string;
@@ -74,7 +77,7 @@ export function getSeriesHistory(
 /**
  * Format series history into a readable timeline for the agent
  */
-export function formatHistoryForPrompt(history: PostLog[]): string {
+export function formatHistoryForPrompt(history: PostLog[], includeColor = true): string {
   if (history.length === 0) {
     return 'No previous tweets in this series yet. This is the debut/opening drop.';
   }
@@ -83,6 +86,7 @@ export function formatHistoryForPrompt(history: PostLog[]): string {
     .map((log, idx) => {
       const date = log.timestamp ? log.timestamp.split('T')[0] : 'Past';
       const slot = log.slotType || 'drop';
+      if (!includeColor) return `[Entry ${idx + 1}] (${date} - ${slot}):\n"${log.tweetText}"`;
       const colName = log.color?.name || 'Color';
       const hex = log.color?.hex || '';
       return `[Entry ${idx + 1}] (${date} - ${slot} | ${hex} ${colName}):\n"${log.tweetText}"`;
@@ -105,6 +109,18 @@ export function cleanAgentOutput(raw: string): string {
     .trim();
 }
 
+/** Thrown when an AI-only (no color tokens) template cannot be generated; the drop fails visibly instead of posting color filler. */
+export class AgentUnavailableError extends HttpError {
+  constructor(message: string) {
+    super(503, message);
+  }
+}
+
+/** Removes a leading "Sunset Copper (#C03F0B) —" style header the model may echo. */
+export function stripColorHeader(text: string): string {
+  return text.replace(/^[^\n()#]{2,40}\(#[0-9a-f]{3,8}\)\s*[—–:-]\s*/i, '').trim();
+}
+
 /**
  * Call Gemini AI to generate poetic tweet content
  */
@@ -113,21 +129,25 @@ export async function generatePoeticAgentText(
   color: ColorData,
   history: PostLog[] | null,
   slotLabel?: string,
+  includeColor = true,
 ): Promise<string> {
   const timeTag = slotLabel || formatTimeInZone(new Date());
   const resolvedPrompt = substituteVariables(userPrompt, color, timeTag);
 
-  let contents = `CURRENT DROP COLOR & CONTEXT:
+  // Templates without color tokens get no color context at all, so the model can't echo it.
+  let contents = includeColor
+    ? `CURRENT DROP COLOR & CONTEXT:
 - Color Name: ${color.colorPick || color.name}
 - Hex Code: ${color.hex}
 - RGB: (${color.rgb.r}, ${color.rgb.g}, ${color.rgb.b})
 - Mood & Atmospheric Impression: ${color.mood}
 - Weather / Sky Condition: ${color.weatherDesc}
-- Drop Time Slot: ${timeTag} (${color.slotType})\n\n`;
+- Drop Time Slot: ${timeTag} (${color.slotType})\n\n`
+    : `CURRENT CONTEXT:\n- Time: ${timeTag}\n\n`;
 
   if (history !== null) {
     contents += `TWEET SERIES HISTORY TO BUILD UPON:
-${formatHistoryForPrompt(history)}\n\n`;
+${formatHistoryForPrompt(history, includeColor)}\n\n`;
   }
 
   contents += `USER DIRECTIVE FOR THIS TWEET:
@@ -136,7 +156,11 @@ ${resolvedPrompt}
 Remember: Output ONLY the exact tweet text (no quotes, no intro, under 240 chars).`;
 
   const fallback = `${color.colorPick} (${color.hex}) — ${color.mood}`;
-  if (!isGeminiConfigured()) return fallback;
+  if (!isGeminiConfigured()) {
+    if (!includeColor)
+      throw new AgentUnavailableError('AI generation is not configured (GEMINI_API_KEY).');
+    return fallback;
+  }
 
   const callModel = async (model: string, prompt: string): Promise<string> => {
     if (!tryConsumeGeminiCall()) throw new Error('GEMINI_MAX_CALLS_PER_DAY reached');
@@ -149,7 +173,8 @@ Remember: Output ONLY the exact tweet text (no quotes, no intro, under 240 chars
         abortSignal: AbortSignal.timeout(getGeminiTimeoutMs()),
       },
     });
-    return cleanAgentOutput(response.text ?? '');
+    const cleaned = cleanAgentOutput(response.text ?? '');
+    return includeColor ? cleaned : stripColorHeader(cleaned);
   };
 
   for (const model of getGeminiModels()) {
@@ -166,7 +191,7 @@ Remember: Output ONLY the exact tweet text (no quotes, no intro, under 240 chars
         } catch {
           // keep first draft; truncated below
         }
-        text = truncateAtWordBoundary(text, AGENT_TARGET_LENGTH);
+        text = trimToCompleteSentence(text, AGENT_TARGET_LENGTH);
       }
       if (text) return text;
     } catch (err) {
@@ -178,7 +203,9 @@ Remember: Output ONLY the exact tweet text (no quotes, no intro, under 240 chars
     }
   }
 
-  // Graceful fallback to rich poetic mood if all models fail
+  // A color template falls back to its color mood; a non-color template must not post color text.
+  if (!includeColor)
+    throw new AgentUnavailableError('AI generation failed for every configured model.');
   return fallback;
 }
 
@@ -201,6 +228,7 @@ export async function resolveTemplateText(
   }
 
   let processed = template;
+  const includeColor = templateUsesColor(template);
 
   // 1. Process combined history + agent tags
   const combinedHistoryAgentRegex = new RegExp(COMBINED_HISTORY_AGENT_REGEX);
@@ -211,7 +239,13 @@ export async function resolveTemplateText(
     const prompt = (match[1] || match[2] || match[3] || '').trim();
     const history = getSeriesHistory(options.contextId, options.targetTweetId);
 
-    const generated = await generatePoeticAgentText(prompt, color, history, options.slotLabel);
+    const generated = await generatePoeticAgentText(
+      prompt,
+      color,
+      history,
+      options.slotLabel,
+      includeColor,
+    );
 
     processed = processed.replace(fullMatch, () => generated);
   }
@@ -224,7 +258,13 @@ export async function resolveTemplateText(
     const fullMatch = match[0];
     const prompt = match[1].trim();
 
-    const generated = await generatePoeticAgentText(prompt, color, null, options.slotLabel);
+    const generated = await generatePoeticAgentText(
+      prompt,
+      color,
+      null,
+      options.slotLabel,
+      includeColor,
+    );
 
     processed = processed.replace(fullMatch, () => generated);
   }

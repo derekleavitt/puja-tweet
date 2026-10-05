@@ -4,7 +4,7 @@
 
 import { Router, type Request } from 'express';
 import type { AppDeps } from '../app.js';
-import { toHttpError } from '../middleware/error.js';
+import { HttpError, toHttpError } from '../middleware/error.js';
 import { secretsMatch } from '../middleware/secret.js';
 
 export const createWebhookRouter = ({ services, drops }: AppDeps) => {
@@ -49,11 +49,20 @@ export const createWebhookRouter = ({ services, drops }: AppDeps) => {
   });
 
   // Admin routes: the secret is only ever returned here (never in /status or /settings).
-  const buildUrl = (req: Request) =>
-    `${req.protocol}://${req.get('host')}/api/cron/trigger?secret=${encodeURIComponent(services.credentials.getWebhookSecret())}`;
+  // With `?contextId=` the URL pins the campaign, so an external cron can never post "whatever
+  // campaign happens to be active in the UI" (404 for an unknown id).
+  const buildUrl = (req: Request, contextId?: string) => {
+    const secret = encodeURIComponent(services.credentials.getWebhookSecret());
+    const pin = contextId ? `&contextId=${encodeURIComponent(contextId)}` : '';
+    return `${req.protocol}://${req.get('host')}/api/cron/trigger?secret=${secret}${pin}`;
+  };
 
-  router.get('/webhook/url', (req, res) => {
-    res.json({ success: true, url: buildUrl(req) });
+  router.get('/webhook/url', (req, res, next) => {
+    const contextId = typeof req.query.contextId === 'string' ? req.query.contextId : undefined;
+    if (contextId && !services.contexts.getContext(contextId)) {
+      return next(new HttpError(404, `Context ${contextId} not found`));
+    }
+    res.json({ success: true, url: buildUrl(req, contextId) });
   });
 
   router.post('/settings/webhook-secret/rotate', (req, res) => {

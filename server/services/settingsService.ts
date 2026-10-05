@@ -1,11 +1,16 @@
 /**
- * Legacy global settings view, backed by the active context.
+ * Legacy global settings view, backed by one campaign (the active one unless an id is given).
+ * The two real global switches (`globalDryRun`, `globalPaused`) are the only stored settings.
  */
 
 import type { BotSettings, TweetContext, TweetContextSchedule } from '../../shared/types.js';
+import { HttpError } from '../middleware/error.js';
 import type { ContextService } from './contextService.js';
 import { buildSettingsView } from './settingsMirror.js';
 import type { StateManager } from './stateManager.js';
+
+/** The campaign-level fields of the legacy settings body, plus the campaign they apply to. */
+export type SettingsUpdate = Partial<BotSettings> & { contextId?: string };
 
 export class SettingsService {
   constructor(
@@ -13,8 +18,16 @@ export class SettingsService {
     private readonly contexts: ContextService,
   ) {}
 
-  getSettings(): BotSettings {
-    return buildSettingsView(this.contexts.getActiveContext(), this.sm.state.settings);
+  /** Unknown ids are a 404 (never a silent fallback to the active campaign). */
+  private resolve(contextId?: string): TweetContext {
+    if (!contextId) return this.contexts.getActiveContext();
+    const found = this.contexts.getContext(contextId);
+    if (!found) throw new HttpError(404, `Context ${contextId} not found`);
+    return found;
+  }
+
+  getSettings(contextId?: string): BotSettings {
+    return buildSettingsView(this.resolve(contextId), this.sm.state.settings);
   }
 
   /** Global dry-run overrides every campaign and every path; unset (legacy stores) means on. */
@@ -27,8 +40,12 @@ export class SettingsService {
     return this.sm.state.settings.globalPaused !== false;
   }
 
-  updateSettings(newSettings: Partial<BotSettings>): BotSettings {
-    const active = this.contexts.getActiveContext();
+  /**
+   * Applies the campaign-level fields to `newSettings.contextId` (default: the active campaign) and
+   * the global switches to the global state. Never touches any other campaign.
+   */
+  updateSettings(newSettings: SettingsUpdate): BotSettings {
+    const active = this.resolve(newSettings.contextId);
     const schedule: Partial<TweetContextSchedule> = {};
     if (newSettings.intervalMode) schedule.mode = newSettings.intervalMode;
     if (newSettings.intervalMinutes) schedule.intervalMinutes = newSettings.intervalMinutes;
@@ -39,14 +56,18 @@ export class SettingsService {
     if (newSettings.jitterPercentage !== undefined)
       schedule.jitterPercentage = newSettings.jitterPercentage;
 
-    const updates: Partial<TweetContext> = {};
+    // Built as a client-style body: `updateContext` validates it like a PUT /api/contexts/:id.
+    const updates: Record<string, unknown> = {};
     if (newSettings.targetTweetId) updates.targetTweetId = newSettings.targetTweetId;
     if (newSettings.replyTargetMode) updates.replyTargetMode = newSettings.replyTargetMode;
     if (newSettings.engagementMode) updates.engagementMode = newSettings.engagementMode;
     if (newSettings.autoFallbackToQuote !== undefined)
       updates.autoFallbackToQuote = newSettings.autoFallbackToQuote;
-    if (newSettings.lastPostedTweetId !== undefined)
-      updates.lastPostedTweetId = newSettings.lastPostedTweetId;
+    // The chain anchor is server-owned: only an explicit reset (null / '') is honoured
+    // (`updateContext` ignores any string value).
+    if ('lastPostedTweetId' in newSettings && !newSettings.lastPostedTweetId) {
+      updates.lastPostedTweetId = null;
+    }
     if (newSettings.schedulerEnabled !== undefined) updates.enabled = newSettings.schedulerEnabled;
     if (newSettings.dryRun !== undefined) updates.dryRun = newSettings.dryRun;
     if (newSettings.template) updates.template = newSettings.template;
@@ -59,8 +80,10 @@ export class SettingsService {
     if (typeof newSettings.globalPaused === 'boolean') {
       this.sm.state.settings.globalPaused = newSettings.globalPaused;
     }
+    this.sm.persist();
 
-    this.contexts.updateContext(active.id, updates);
-    return this.getSettings();
+    // A global-only toggle never touches (or regenerates the queue of) any campaign.
+    if (Object.keys(updates).length > 0) this.contexts.updateContext(active.id, updates);
+    return this.getSettings(active.id);
   }
 }

@@ -24,6 +24,24 @@ export function weightedTweetLength(text: string): number {
 }
 
 /** Truncate at a word boundary so the weighted length is <= max (adds an ellipsis when cut). */
+/**
+ * Shortens text to `max` weighted chars, preferring to end on a complete sentence so a tweet never
+ * stops mid-thought. Falls back to a word boundary + "…" only when no sentence end fills at least
+ * 30% of the limit.
+ */
+export function trimToCompleteSentence(text: string, max = AGENT_TARGET_LENGTH): string {
+  if (weightedTweetLength(text) <= max) return text;
+  const cut = truncateAtWordBoundary(text, max + 1).replace(/…$/, '');
+  const ends = [...cut.matchAll(/[.!?…](?=["'”’)\]]*(\s|$))/g)];
+  const last = ends.length ? ends[ends.length - 1] : undefined;
+  if (last && last.index !== undefined) {
+    const sentence = cut.slice(0, last.index + 1).trim();
+    if (weightedTweetLength(sentence) >= max * 0.3 && weightedTweetLength(sentence) <= max)
+      return sentence;
+  }
+  return truncateAtWordBoundary(text, max);
+}
+
 export function truncateAtWordBoundary(text: string, max = AGENT_TARGET_LENGTH): string {
   if (weightedTweetLength(text) <= max) return text;
   const budget = max - 1;

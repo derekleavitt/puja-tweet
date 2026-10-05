@@ -1,85 +1,85 @@
 /**
  * Pure helpers for a context's reply chain and jitter (no state, no persistence).
+ *
+ * Chain anchors are verified against the campaign's own `chainAnchor` provenance (written only by
+ * `recordContextPostResult` for this campaign's own live in-thread reply on its own target), never
+ * against the shared post log alone: logs are capped (MAX_LOGS) across all campaigns, so a paused
+ * campaign's anchor log can be trimmed while other campaigns keep posting. Logs are only used as
+ * extra pollution evidence when a matching entry still exists.
  */
 
-import type { PostLog, TweetContext } from '../../shared/types.js';
+import type { ChainAnchor, PostLog, TweetContext } from '../../shared/types.js';
+
+const isNumericId = (id: string | undefined): id is string => !!id && /^\d+$/.test(id);
 
 const isQuoteLike = (l: PostLog) =>
   l.engagementMode === 'quote' || l.engagementMode === 'standalone' || !!l.quoteTweetId;
 
+/** A log entry proving that `tweetId` was this campaign's own live in-thread reply on `target`. */
+const isProvingLog = (l: PostLog, ctxId: string, target: string, tweetId: string) =>
+  l.tweetId === tweetId &&
+  l.contextId === ctxId &&
+  l.targetTweetId === target &&
+  l.status === 'success' &&
+  !isQuoteLike(l);
+
+/** A log entry that contradicts the anchor (another campaign's tweet, a quote, a failure…). */
+const isContradictingLog = (l: PostLog, ctxId: string, target: string) =>
+  l.contextId !== ctxId || l.targetTweetId !== target || l.status !== 'success' || isQuoteLike(l);
+
 /**
- * Removes cross-campaign or quote-tweet chain pollution from a context (mutates it).
- * Returns true when anything changed.
+ * The verified anchor of `ctx`, or undefined when there is none (chain restarts at the root).
+ * Verification order:
+ *  1. `chainAnchor` provenance must exist, match `lastPostedTweetId` and the current target.
+ *  2. If the shared log still has that tweet, it must not contradict the provenance.
+ */
+export const verifiedChainAnchor = (
+  ctx: Pick<TweetContext, 'id' | 'targetTweetId' | 'lastPostedTweetId' | 'chainAnchor'>,
+  logs: PostLog[],
+): ChainAnchor | undefined => {
+  const anchor = ctx.chainAnchor;
+  const tweetId = ctx.lastPostedTweetId;
+  if (!anchor || !isNumericId(tweetId) || anchor.tweetId !== tweetId) return undefined;
+  if (anchor.targetTweetId !== ctx.targetTweetId) return undefined;
+  const matchingLog = logs.find((l) => l.tweetId === tweetId);
+  if (matchingLog && isContradictingLog(matchingLog, ctx.id, ctx.targetTweetId)) return undefined;
+  return anchor;
+};
+
+/**
+ * Repairs a context's chain state (mutates it). Returns true when anything changed.
+ *  - A legacy anchor (`lastPostedTweetId` without `chainAnchor`) is upgraded to provenance when a
+ *    log still proves it; otherwise it is unverified and dropped (the chain restarts at the root).
+ *  - An anchor whose provenance is stale (other target) or contradicted by the log is dropped.
  */
 export const sanitizeContextChain = (ctx: TweetContext, logs: PostLog[]): boolean => {
-  let modified = false;
+  const tweetId = ctx.lastPostedTweetId;
+  if (!tweetId && !ctx.chainAnchor) return false;
 
-  const quoteTweetIds = new Set(
-    logs
-      .filter((l) => isQuoteLike(l))
-      .map((l) => l.tweetId)
-      .filter(Boolean),
-  );
-
-  if (ctx.lastPostedTweetId) {
-    const matchingLog = logs.find((l) => l.tweetId === ctx.lastPostedTweetId);
-    const isPolluted =
-      !/^\d+$/.test(ctx.lastPostedTweetId) ||
-      quoteTweetIds.has(ctx.lastPostedTweetId) ||
-      (matchingLog &&
-        (matchingLog.engagementMode === 'quote' ||
-          matchingLog.engagementMode === 'standalone' ||
-          (matchingLog.contextId && matchingLog.contextId !== ctx.id) ||
-          (matchingLog.targetTweetId && matchingLog.targetTweetId !== ctx.targetTweetId) ||
-          (matchingLog.replyToTweetId && quoteTweetIds.has(matchingLog.replyToTweetId))));
-
-    if (isPolluted) {
-      const validReplyLogs = logs.filter(
-        (l) =>
-          l.contextId === ctx.id &&
-          l.targetTweetId === ctx.targetTweetId &&
-          l.status === 'success' &&
-          l.engagementMode !== 'quote' &&
-          l.engagementMode !== 'standalone' &&
-          !l.quoteTweetId &&
-          l.tweetId &&
-          /^\d+$/.test(l.tweetId) &&
-          (!l.replyToTweetId || !quoteTweetIds.has(l.replyToTweetId)),
-      );
-      ctx.lastPostedTweetId = validReplyLogs[validReplyLogs.length - 1]?.tweetId || undefined;
-      modified = true;
+  if (!ctx.chainAnchor && isNumericId(tweetId)) {
+    const proof = logs.find((l) => isProvingLog(l, ctx.id, ctx.targetTweetId, tweetId));
+    if (proof) {
+      ctx.chainAnchor = { tweetId, targetTweetId: ctx.targetTweetId, postedAt: proof.timestamp };
+      return true;
     }
   }
+  if (verifiedChainAnchor(ctx, logs)) return false;
 
-  return modified;
+  ctx.lastPostedTweetId = undefined;
+  ctx.chainAnchor = undefined;
+  return true;
 };
 
 /**
  * The most recent tweet ID posted by us for this context, strictly verified to belong to
- * the context's reply chain (not a quote/standalone post).
+ * the context's own reply chain on its current target.
  */
 export const resolveLastPostedTweetId = (
   context: TweetContext | undefined,
   logs: PostLog[],
 ): string | undefined => {
   if (!context || context.replyTargetMode !== 'last_comment') return undefined;
-  const candidateId = context.lastPostedTweetId;
-  if (!candidateId || !/^\d+$/.test(candidateId)) return undefined;
-
-  // Only trust an anchor we can prove is this campaign's own in-thread reply on its own target.
-  // An anchor with no matching log (imported, aged out of history, or written by another
-  // campaign) must never be followed: that is how one campaign ended up replying to another's thread.
-  const matchingLog = logs.find((l) => l.tweetId === candidateId);
-  if (
-    !matchingLog ||
-    matchingLog.contextId !== context.id ||
-    matchingLog.targetTweetId !== context.targetTweetId ||
-    matchingLog.status !== 'success' ||
-    isQuoteLike(matchingLog)
-  ) {
-    return undefined;
-  }
-  return candidateId;
+  return verifiedChainAnchor(context, logs)?.tweetId;
 };
 
 export interface EffectiveReplyTarget {

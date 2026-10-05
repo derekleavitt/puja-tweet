@@ -5,7 +5,7 @@
 import { DEFAULT_TWEET_TEMPLATE } from '../colorEngine.js';
 import { HttpError } from '../middleware/error.js';
 import { extractTweetId } from '../../shared/tweetId.js';
-import { getDefaultTargetTweetId } from '../store/defaults.js';
+import { createDefaultSettings, getDefaultTargetTweetId } from '../store/defaults.js';
 import { normaliseEvolution } from '../../shared/hashtags/index.js';
 import type {
   HashtagState,
@@ -24,13 +24,14 @@ import type { XErrorClass } from '../xErrors.js';
 import { buildPrimaryContext } from './primaryContext.js';
 import { parseContextUpdate } from './contextSchema.js';
 import type { QueueService } from './queueService.js';
-import { syncActiveContextToSettings } from './settingsMirror.js';
 import type { StateManager } from './stateManager.js';
 
 const cleanTweetId = (input: string): string => extractTweetId(input) ?? input.trim();
 
-export type ContextPatch = Partial<Omit<TweetContext, 'schedule'>> & {
+export type ContextPatch = Partial<Omit<TweetContext, 'schedule' | 'chainAnchor'>> & {
   schedule?: Partial<TweetContextSchedule>;
+  /** Explicit "reset to root": drops the chain anchor. The only way a client can touch it. */
+  resetChain?: boolean;
 };
 
 /** Create/update input: `hashtagEvolution` may be partial (gaps are filled from defaults). */
@@ -88,9 +89,8 @@ export class ContextService {
   setActiveContextId(id: string): TweetContext {
     const found = this.sm.getContext(id);
     if (!found) return this.getActiveContext();
+    // Switching the active campaign changes nothing on any campaign (no settings mirror).
     this.sm.state.activeContextId = id;
-    this.sm.state.settings.activeContextId = id;
-    syncActiveContextToSettings(this.sm.state.settings, found);
     this.sm.persist();
     return found;
   }
@@ -116,13 +116,14 @@ export class ContextService {
         mode: data.schedule?.mode || 'interval',
         intervalMinutes: data.schedule?.intervalMinutes || 60,
         scheduleTimes: data.schedule?.scheduleTimes || ['06:00', '18:00'],
-        timezone: data.schedule?.timezone || s.settings.timezone || 'America/Denver',
+        timezone: data.schedule?.timezone || createDefaultSettings().timezone,
         humanizeJitterEnabled: data.schedule?.humanizeJitterEnabled ?? true,
         jitterPercentage: data.schedule?.jitterPercentage ?? 25,
       },
       template: data.template?.trim() || DEFAULT_TWEET_TEMPLATE,
       themePreference: data.themePreference || 'dynamic',
       hashtagEvolution: normaliseEvolution(data.hashtagEvolution),
+      // `chainAnchor` is never taken from input: a legacy anchor is only kept if a log proves it.
       lastPostedTimestamp: data.lastPostedTimestamp || Date.now(), // never fire on create
       currentJitterMs: data.currentJitterMs || 0,
       createdAt: data.createdAt || new Date().toISOString(),
@@ -147,9 +148,11 @@ export class ContextService {
     if (!this.sm.getContext(id)) throw notFound(id);
     const input = parseContextUpdate(body);
     const current = this.sm.getContext(id);
-    const { hashtagEvolution, ...rest } = input;
+    const { hashtagEvolution, lastPostedTweetId, ...rest } = input;
     return this.patchContext(id, {
       ...rest,
+      // Clients can never set an anchor; an explicit null/'' is a "reset to root".
+      ...('lastPostedTweetId' in input && !lastPostedTweetId ? { resetChain: true } : {}),
       ...(hashtagEvolution
         ? { hashtagEvolution: normaliseEvolution(current?.hashtagEvolution, hashtagEvolution) }
         : {}),
@@ -172,6 +175,7 @@ export class ContextService {
     if (idx === -1) throw notFound(id);
 
     const current = s.contexts[idx];
+    const { resetChain, ...fields } = updates;
     const targetTweetId = updates.targetTweetId
       ? cleanTweetId(updates.targetTweetId)
       : current.targetTweetId;
@@ -188,9 +192,12 @@ export class ContextService {
 
     const resumed = updates.enabled === true && !current.enabled;
 
+    // The chain anchor is server-owned: only a target change or an explicit reset moves it.
+    // A client-sent `lastPostedTweetId` (e.g. the edit form echoing a stale value) is ignored.
+    const keepChain = !targetChanged && !resetChain;
     const updated: TweetContext = {
       ...current,
-      ...updates,
+      ...fields,
       // Re-enabling restarts the interval from now and clears any circuit-breaker state.
       ...(resumed
         ? { lastPostedTimestamp: Date.now(), consecutiveErrors: 0, autoPausedReason: undefined }
@@ -200,11 +207,8 @@ export class ContextService {
       replyTargetMode: updates.replyTargetMode ?? (current.replyTargetMode || 'original_post'),
       engagementMode: updates.engagementMode ?? (current.engagementMode || 'reply'),
       autoFallbackToQuote: updates.autoFallbackToQuote ?? current.autoFallbackToQuote ?? false,
-      lastPostedTweetId: targetChanged
-        ? updates.lastPostedTweetId || undefined
-        : 'lastPostedTweetId' in updates
-          ? updates.lastPostedTweetId || undefined
-          : current.lastPostedTweetId,
+      lastPostedTweetId: keepChain ? current.lastPostedTweetId : undefined,
+      chainAnchor: keepChain ? current.chainAnchor : undefined,
       schedule: mergedSchedule,
       updatedAt: new Date().toISOString(),
     };
@@ -213,7 +217,6 @@ export class ContextService {
     if (scheduleChanged) generateJitterForContext(updated);
 
     s.contexts[idx] = updated;
-    if (s.activeContextId === id) syncActiveContextToSettings(s.settings, updated);
 
     // Any save/edit of a campaign clears its queue and regenerates based on the new settings
     this.queue.clearAndRegenerateQueue(id);
@@ -258,10 +261,7 @@ export class ContextService {
 
     s.contexts.splice(idx, 1);
     s.queue = s.queue.filter((q) => q.contextId !== id);
-    if (s.activeContextId === id) {
-      s.activeContextId = s.contexts[0].id;
-      syncActiveContextToSettings(s.settings, s.contexts[0]);
-    }
+    if (s.activeContextId === id) s.activeContextId = s.contexts[0].id;
     this.sm.persist();
     return true;
   }
@@ -276,12 +276,13 @@ export class ContextService {
       replyTargetMode: source.replyTargetMode || 'original_post',
       engagementMode: source.engagementMode || 'reply',
       autoFallbackToQuote: source.autoFallbackToQuote ?? false,
-      lastPostedTweetId: undefined, // Fresh copy starts clean
+      lastPostedTweetId: undefined, // Fresh copy starts clean (no chain anchor, no hashtag state)
       enabled: false, // Start paused
       dryRun: source.dryRun,
       schedule: { ...source.schedule },
       template: source.template,
       themePreference: source.themePreference,
+      hashtagEvolution: source.hashtagEvolution ? { ...source.hashtagEvolution } : undefined,
     });
   }
 
@@ -295,9 +296,7 @@ export class ContextService {
     const current = this.sm.getContext(id);
     if (!current) throw notFound(id);
     current.lastPostedTweetId = undefined;
-    if (this.sm.state.activeContextId === id) {
-      this.sm.state.settings.lastPostedTweetId = undefined;
-    }
+    current.chainAnchor = undefined;
     this.queue.clearAndRegenerateQueue(id);
     this.sm.persist();
     return current;
@@ -308,9 +307,7 @@ export class ContextService {
     const current = this.sm.getContext(id);
     if (!current) throw notFound(id);
     current.lastPostedTweetId = undefined;
-    if (this.sm.state.activeContextId === id) {
-      this.sm.state.settings.lastPostedTweetId = undefined;
-    }
+    current.chainAnchor = undefined;
     this.sm.persist();
     return current;
   }
@@ -362,7 +359,8 @@ export class ContextService {
       context.lastPostedTimestamp = Date.now();
     }
 
-    // Only update lastPostedTweetId if this was a genuine in-thread reply
+    // The anchor moves only on this campaign's own genuine in-thread reply; errors, simulations,
+    // quotes and standalone posts never touch it. Provenance is stored on the campaign itself.
     if (
       postedTweetId &&
       status === 'success' &&
@@ -370,9 +368,11 @@ export class ContextService {
       /^\d+$/.test(postedTweetId)
     ) {
       context.lastPostedTweetId = postedTweetId;
-      if (this.sm.state.activeContextId === contextId) {
-        this.sm.state.settings.lastPostedTweetId = postedTweetId;
-      }
+      context.chainAnchor = {
+        tweetId: postedTweetId,
+        targetTweetId: context.targetTweetId,
+        postedAt: new Date().toISOString(),
+      };
     }
     generateJitterForContext(context);
     this.sm.persist();

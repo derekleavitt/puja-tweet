@@ -43,6 +43,17 @@ export interface HashtagState {
   recent: string[]; // Last ~40 tags used, so they are not repeated
 }
 
+/**
+ * Provenance of a campaign's reply-chain anchor. Written only by the server when THIS campaign
+ * posted a live in-thread reply on THIS target, so the chain can be verified without the shared
+ * (capped) post log. An anchor without provenance is never followed.
+ */
+export interface ChainAnchor {
+  tweetId: string; // Our own reply the next drop replies to
+  targetTweetId: string; // The root post the chain belongs to
+  postedAt: string; // ISO timestamp of that reply
+}
+
 export interface TweetContext {
   id: string; // Unique context ID e.g. 'ctx_default', 'ctx_1790623000'
   name: string; // Context title e.g. 'Primary Eternal Colors'
@@ -51,7 +62,8 @@ export interface TweetContext {
   replyTargetMode?: 'original_post' | 'last_comment'; // 'original_post' = reply to root post; 'last_comment' = cascading reply to last comment made by us
   engagementMode?: 'reply' | 'quote' | 'standalone'; // 'reply' = comment thread, 'quote' = Quote Tweet (embeds post), 'standalone' = timeline post
   autoFallbackToQuote?: boolean; // Default false. If true, a reply X refuses (cooldown / reply-restricted 403) is retried once as a quote of targetTweetId
-  lastPostedTweetId?: string; // Latest tweet ID generated and posted in this campaign
+  lastPostedTweetId?: string; // Latest tweet ID generated and posted in this campaign (= chainAnchor.tweetId)
+  chainAnchor?: ChainAnchor; // Server-owned proof of `lastPostedTweetId` (never accepted from clients)
   enabled: boolean; // Whether automatic scheduling is active for this context
   dryRun?: boolean; // Dry-run simulation vs live posting on X
   schedule: TweetContextSchedule;

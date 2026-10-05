@@ -6,6 +6,9 @@
 import { saveSettings } from '../api/endpoints.js';
 import { BotSettings, QueueSlot } from '../types.js';
 
+/** A settings save always names the campaign it edits (the one the caller rendered). */
+export type SettingsSave = Partial<BotSettings> & { contextId?: string };
+
 interface UseSettingsDeps {
   settings: BotSettings;
   setSettings: (settings: BotSettings) => void;
@@ -14,9 +17,13 @@ interface UseSettingsDeps {
 }
 
 export function useSettings({ settings, setSettings, setQueue, refresh }: UseSettingsDeps) {
-  // Save settings (persisted by the server, which also clears/regenerates queue)
-  const handleSaveSettings = async (newSettingsPartial: Partial<BotSettings>) => {
-    const data = await saveSettings(newSettingsPartial);
+  // Save settings (persisted by the server, which also clears/regenerates queue).
+  // Campaign fields go to the campaign the caller saw (`contextId`), never "whatever is active now".
+  const handleSaveSettings = async (newSettingsPartial: SettingsSave) => {
+    const data = await saveSettings({
+      contextId: settings.activeContextId,
+      ...newSettingsPartial,
+    });
     if (data?.settings) {
       setSettings(data.settings);
       if (Array.isArray(data.queue)) {

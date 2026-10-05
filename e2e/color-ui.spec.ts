@@ -70,18 +70,19 @@ test('non-color campaign shows no color UI; color campaign still posts its color
   await expectNoColorUi(app);
 
   // Color campaign: the re-roll is back and the generated color is in the posted text
-  const colors: { name: string; colorPick?: string }[] = [];
-  app.on('response', async (r: Response) => {
-    if (r.url().endsWith('/api/generate-color')) colors.push((await r.json()).color);
-  });
   await openTab(app, 'Studio');
   await app.locator('header select').selectOption(primaryId);
   await expect(app.getByText('Color:', { exact: true })).toBeVisible();
   const preview = app.getByTestId('tweet-preview-text');
   const before = await preview.innerText();
-  await app.getByRole('button', { name: 'Evening', exact: true }).click();
+  // Wait for the very response this click triggers (a listener could record it after the preview
+  // already updated, which made this flaky on slow/cold runs).
+  const [colorResponse] = await Promise.all([
+    app.waitForResponse((r: Response) => r.url().endsWith('/api/generate-color')),
+    app.getByRole('button', { name: 'Evening', exact: true }).click(),
+  ]);
+  const color: { name: string; colorPick?: string } = (await colorResponse.json()).color;
   await expect(preview).not.toHaveText(before);
-  const color = colors.at(-1)!;
   await expect(preview).toContainText(color.colorPick || color.name);
   const previewed = await preview.innerText();
   await app.getByRole('button', { name: 'Simulate Post to X' }).click();
