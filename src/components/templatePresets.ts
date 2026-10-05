@@ -32,14 +32,13 @@ export const TEMPLATE_PRESETS = [
 export const AGENT_SNIPPETS = [
   {
     label: '+ <agent>...</agent>',
-    snippet: '<agent>Write a poetic expression for {color_pick}</agent>',
+    snippet: '<agent>Write a short poetic expression</agent>',
     className:
       'bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/60 dark:hover:bg-purple-900 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-800',
   },
   {
     label: '+ <history><agent>...</agent></history>',
-    snippet:
-      '<history><agent>Consider prior tweets and write a poem for {color_pick}</agent></history>',
+    snippet: '<history><agent>Consider prior tweets and write a short poem</agent></history>',
     className:
       'bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 dark:hover:bg-amber-900 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-800',
   },
