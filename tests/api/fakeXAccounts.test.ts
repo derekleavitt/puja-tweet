@@ -53,7 +53,9 @@ const connectViaApi = async (app: App, user: FakeUser, mode: 'redirect' | 'pin')
   );
   expect(start.status).toBe(200);
   const authorize = new URL(start.body.authorizeUrl);
-  expect(`${authorize.origin}${authorize.pathname}`).toBe('https://api.x.com/oauth/authorize');
+  expect(`${authorize.origin}${authorize.pathname}`).toBe(
+    'https://api.twitter.com/oauth/authorize',
+  );
   expect(authorize.searchParams.has('force_login')).toBe(false);
   const oauthToken = authorize.searchParams.get('oauth_token')!;
 

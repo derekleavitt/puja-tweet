@@ -21,6 +21,8 @@ export const OAUTH_CALLBACK_PATH = '/oauth/x/callback';
 export interface PendingPin {
   oauthToken: string;
   authorizeUrl: string;
+  /** The same authorize step on X's other host (fallback when the first one loops on login). */
+  altAuthorizeUrl?: string;
 }
 
 export function useAccounts(refresh: () => Promise<void> | void) {
@@ -53,7 +55,11 @@ export function useAccounts(refresh: () => Promise<void> | void) {
   const startPin = () =>
     run('connect', async () => {
       const r = await startAccountConnect({ mode: 'pin' });
-      setPendingPin({ oauthToken: r.oauthToken, authorizeUrl: r.authorizeUrl });
+      setPendingPin({
+        oauthToken: r.oauthToken,
+        authorizeUrl: r.authorizeUrl,
+        altAuthorizeUrl: r.altAuthorizeUrl,
+      });
     });
 
   const submitPin = (pin: string) =>

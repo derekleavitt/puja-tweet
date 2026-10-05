@@ -35,8 +35,23 @@ export const PinConnect: React.FC<PinConnectProps> = ({ pending, busy, onSubmit,
         >
           Open X to authorize <ExternalLink className="w-3 h-3" />
         </a>{' '}
-        while signed in to x.com as the account you want to add. 2. Enter the PIN X shows:
+        and sign in as the account you want to add, then press Authorize app. 2. Enter the PIN X
+        shows:
       </p>
+      {pending.altAuthorizeUrl && (
+        <p className="text-[11px] text-neutral-500">
+          X keeps showing its login screen instead of Authorize app?{' '}
+          <a
+            href={pending.altAuthorizeUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-600 dark:text-blue-400 underline"
+          >
+            Try X&apos;s other authorize page
+          </a>{' '}
+          (same PIN step).
+        </p>
+      )}
       <div className="flex items-center gap-2">
         <input
           aria-label="PIN from X"
