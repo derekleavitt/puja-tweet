@@ -6,7 +6,13 @@ import { DEFAULT_TWEET_TEMPLATE } from '../colorEngine.js';
 import { HttpError } from '../middleware/error.js';
 import { extractTweetId } from '../../shared/tweetId.js';
 import { getDefaultTargetTweetId } from '../store/defaults.js';
-import type { PendingFire, TweetContext, TweetContextSchedule } from '../../shared/types.js';
+import { normaliseEvolution } from '../../shared/hashtags/index.js';
+import type {
+  HashtagState,
+  PendingFire,
+  TweetContext,
+  TweetContextSchedule,
+} from '../../shared/types.js';
 import {
   generateJitterForContext,
   resolveLastPostedTweetId,
@@ -25,6 +31,11 @@ const cleanTweetId = (input: string): string => extractTweetId(input) ?? input.t
 
 export type ContextPatch = Partial<Omit<TweetContext, 'schedule'>> & {
   schedule?: Partial<TweetContextSchedule>;
+};
+
+/** Create/update input: `hashtagEvolution` may be partial (gaps are filled from defaults). */
+type ContextInput = Omit<ContextPatch, 'hashtagEvolution'> & {
+  hashtagEvolution?: Partial<NonNullable<TweetContext['hashtagEvolution']>>;
 };
 
 /** Consecutive errors before a campaign auto-pauses (env MAX_CONSECUTIVE_ERRORS, default 5). */
@@ -84,11 +95,7 @@ export class ContextService {
     return found;
   }
 
-  createContext(
-    data: Partial<Omit<TweetContext, 'schedule'>> & {
-      schedule?: Partial<TweetContext['schedule']>;
-    },
-  ): TweetContext {
+  createContext(data: ContextInput): TweetContext {
     const s = this.sm.state;
     const id = data.id || `ctx_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const newContext: TweetContext = {
@@ -114,6 +121,7 @@ export class ContextService {
       },
       template: data.template?.trim() || DEFAULT_TWEET_TEMPLATE,
       themePreference: data.themePreference || 'dynamic',
+      hashtagEvolution: normaliseEvolution(data.hashtagEvolution),
       lastPostedTimestamp: data.lastPostedTimestamp || Date.now(), // never fire on create
       currentJitterMs: data.currentJitterMs || 0,
       createdAt: data.createdAt || new Date().toISOString(),
@@ -136,7 +144,24 @@ export class ContextService {
    */
   updateContext(id: string, body: unknown): TweetContext {
     if (!this.sm.getContext(id)) throw notFound(id);
-    return this.patchContext(id, parseContextUpdate(body));
+    const input = parseContextUpdate(body);
+    const current = this.sm.getContext(id);
+    const { hashtagEvolution, ...rest } = input;
+    return this.patchContext(id, {
+      ...rest,
+      ...(hashtagEvolution
+        ? { hashtagEvolution: normaliseEvolution(current?.hashtagEvolution, hashtagEvolution) }
+        : {}),
+    });
+  }
+
+  /** Server-owned bookkeeping: stores the evolved hashtags of a successful post (no queue reset). */
+  setHashtagState(id: string, state: HashtagState): TweetContext {
+    const current = this.sm.getContext(id);
+    if (!current) throw notFound(id);
+    current.hashtagState = state;
+    this.sm.persist();
+    return current;
   }
 
   /** Internal update for trusted callers (scheduler bookkeeping); no field whitelist. */

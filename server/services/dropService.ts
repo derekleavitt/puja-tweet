@@ -12,6 +12,9 @@ import { HttpError } from '../middleware/error.js';
 import { resolveTemplateText } from '../templateAgent.js';
 import { postColorTweet } from '../twitterClient.js';
 import { classifyXError } from '../xErrors.js';
+import { composeDropText, isEvolutionEnabled, nextHashtagState, usedHashtags } from './dropText.js';
+import type { ComposeOptions } from './dropText.js';
+import { hashtagService, type HashtagService } from './hashtagService.js';
 import { services, type Services } from './index.js';
 
 export interface ExecuteDropOptions {
@@ -27,6 +30,8 @@ export interface ExecuteDropOptions {
   forceDryRun?: boolean;
   /** Exact text to post (e.g. the previewed text); skips template resolution. Still length-checked. */
   text?: string;
+  /** Evolved hashtags the previewed `text` used (from the preview response); avoids re-rolling. */
+  hashtags?: string[];
   source?: 'scheduler' | 'webhook' | 'manual' | 'cli';
 }
 
@@ -37,6 +42,8 @@ export interface DropDeps {
   >;
   postColorTweet: typeof postColorTweet;
   resolveTemplateText: typeof resolveTemplateText;
+  /** Evolving-hashtag generator; defaults to the Gemini-with-offline-fallback service. */
+  hashtags?: Pick<HashtagService, 'next'>;
 }
 
 type TweetResult = Awaited<ReturnType<typeof postColorTweet>>;
@@ -57,6 +64,14 @@ const classify = (r: TweetResult) =>
 
 export const createDropService = (deps: DropDeps) => {
   const s = deps.services;
+  const hashtags = deps.hashtags ?? hashtagService;
+
+  /** Builds the drop text (template + evolved hashtags); shared by the preview route and posting. */
+  const composeText = (context: TweetContext, color: ColorData, options: ComposeOptions = {}) =>
+    composeDropText({ resolveTemplateText: deps.resolveTemplateText, hashtags }, context, color, {
+      ...options,
+      slotLabel: options.slotLabel ?? formatTimeInZone(new Date(), context.schedule?.timezone),
+    });
 
   const describeMode = (
     context: TweetContext,
@@ -155,13 +170,11 @@ export const createDropService = (deps: DropDeps) => {
     const color: ColorData =
       options.color ||
       s.queue.popNextQueueSlot(slotType === 'morning' ? 'morning' : 'evening', context.id);
-    const text =
-      options.text ??
-      (await deps.resolveTemplateText(context.template, color, {
-        slotLabel: formatTimeInZone(new Date(), context.schedule?.timezone),
-        contextId: context.id,
-        targetTweetId: context.targetTweetId,
-      }));
+    const composed =
+      options.text !== undefined
+        ? { text: options.text, hashtags: options.hashtags }
+        : await composeText(context, color);
+    const text = composed.text;
     const textCheck = checkTweetText(text);
     if (!textCheck.ok) {
       throw new HttpError(400, `Tweet text invalid (${textCheck.length}/280 weighted chars)`);
@@ -241,10 +254,24 @@ export const createDropService = (deps: DropDeps) => {
     } as const;
     s.logs.addLog(logEntry);
 
-    return { success: res.success, result: res, log: logEntry, context };
+    // Evolving hashtags advance only after a posted (live or simulated) drop, never on failure.
+    let usedTags: string[] | undefined;
+    if (isEvolutionEnabled(context)) {
+      usedTags = usedHashtags(context, text, composed.hashtags);
+      const next = res.success ? nextHashtagState(context, usedTags) : undefined;
+      if (next) s.contexts.setHashtagState(context.id, next);
+    }
+
+    return {
+      success: res.success,
+      result: res,
+      log: logEntry,
+      context,
+      ...(usedTags ? { hashtags: usedTags } : {}),
+    };
   };
 
-  return { executeDrop };
+  return { executeDrop, composeText };
 };
 
 export type DropService = ReturnType<typeof createDropService>;

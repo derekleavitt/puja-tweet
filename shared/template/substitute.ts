@@ -18,6 +18,9 @@ export const TEMPLATE_TOKENS = [
   '{swatch_bar}',
 ] as const;
 
+/** The hashtags {weather_tweet} appends; the hashtag evolver treats them as the template's seed. */
+export const WEATHER_TWEET_TAGS = '#eternal #colors';
+
 export interface SubstituteOptions {
   /** Label for {time_tag}/{time_slot}; defaults to the current time in the default timezone (h:mm A). */
   slotLabel?: string;
@@ -34,7 +37,7 @@ export function substituteTemplate(
   const colorPick = color.colorPick || color.name;
   const fallback = options.fallbackWeatherDesc ?? 'atmospheric stillness';
   const weatherDesc = color.weatherDesc || (typeof fallback === 'function' ? fallback() : fallback);
-  const weatherTweet = `${colorPick} ${weatherDesc} #eternal #colors`;
+  const weatherTweet = `${colorPick} ${weatherDesc} ${WEATHER_TWEET_TAGS}`;
 
   return template
     .replace(/{weather_tweet}/g, weatherTweet)

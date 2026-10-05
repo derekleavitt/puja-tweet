@@ -38,7 +38,7 @@ export function usePosting({ activeContextId, addLog, refresh }: UsePostingDeps)
     customColor?: ColorData,
     slotType: 'morning' | 'evening' | 'manual' = 'manual',
     contextId?: string,
-    opts?: { text?: string; slotId?: string },
+    opts?: { text?: string; hashtags?: string[]; slotId?: string },
   ) => {
     setIsPosting(true);
     setLastPostedResult(null);
@@ -49,6 +49,7 @@ export function usePosting({ activeContextId, addLog, refresh }: UsePostingDeps)
         color: customColor || color,
         contextId: contextId || activeContextId,
         ...(opts?.text ? { text: opts.text } : {}),
+        ...(opts?.text && opts.hashtags ? { hashtags: opts.hashtags } : {}),
         ...(opts?.slotId ? { slotId: opts.slotId } : {}),
       });
       setLastPostedResult(data);

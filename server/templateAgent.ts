@@ -7,7 +7,6 @@
  * for poetic, evocative generation.
  */
 
-import { GoogleGenAI } from '@google/genai';
 import type { ColorData, PostLog } from '../shared/types.js';
 import { services } from './services/index.js';
 import { formatTimeInZone } from '../shared/time.js';
@@ -17,28 +16,15 @@ import {
   STANDALONE_AGENT_REGEX,
   stripHistoryTags,
 } from '../shared/template/agentTags.js';
+import { getGeminiClient } from './geminiClient.js';
 import { getGeminiTimeoutMs } from './timeouts.js';
-import {
-  getGeminiModels,
-  getGeminiUserAgent,
-  isGeminiConfigured,
-  tryConsumeGeminiCall,
-} from './geminiConfig.js';
+import { getGeminiModels, isGeminiConfigured, tryConsumeGeminiCall } from './geminiConfig.js';
 import {
   AGENT_TARGET_LENGTH,
   truncateAtWordBoundary,
   weightedTweetLength,
 } from '../shared/tweetLength.js';
 import { errorMessage } from './errorMessage.js';
-
-let aiClient: GoogleGenAI | null = null;
-function getClient(): GoogleGenAI {
-  aiClient ??= new GoogleGenAI({
-    apiKey: process.env.GEMINI_API_KEY,
-    httpOptions: { headers: { 'User-Agent': getGeminiUserAgent() } },
-  });
-  return aiClient;
-}
 
 export const POETRY_AGENT_SYSTEM_INSTRUCTION = `You are a world-class literary poet and creative writer specializing in atmospheric, earthy, and profound short-form poetry and expressions, channeling voices like Pablo Neruda, Mary Oliver, Octavio Paz, and Federico García Lorca.
 
@@ -154,7 +140,7 @@ Remember: Output ONLY the exact tweet text (no quotes, no intro, under 240 chars
 
   const callModel = async (model: string, prompt: string): Promise<string> => {
     if (!tryConsumeGeminiCall()) throw new Error('GEMINI_MAX_CALLS_PER_DAY reached');
-    const response = await getClient().models.generateContent({
+    const response = await getGeminiClient().models.generateContent({
       model,
       contents: prompt,
       config: {
