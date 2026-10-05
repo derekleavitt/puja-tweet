@@ -321,7 +321,11 @@ export class AccountService {
     this.state.accounts = this.state.accounts.filter((a) => a.id !== id);
     if (this.state.accountCooldowns) delete this.state.accountCooldowns[id];
     if (this.state.lastLivePostByAccount) delete this.state.lastLivePostByAccount[id];
-    const pausedCampaigns = this.pauseCampaignsOf(id, accountPauseReason(account.handle));
+    const pausedCampaigns = this.pauseCampaignsOf(
+      id,
+      accountPauseReason(account.handle),
+      `Participant ${account.handle ? `@${account.handle}` : 'account'} removed or disconnected — fix the cast and resume`,
+    );
     this.sm.persist();
     return { pausedCampaigns };
   }
@@ -340,10 +344,19 @@ export class AccountService {
     this.sm.persist();
   }
 
-  private pauseCampaignsOf(id: string, reason: string): string[] {
+  /** `participantReason` names a conversation campaign's own wording when `id` is in its cast. */
+  private pauseCampaignsOf(id: string, singleReason: string, participantReason: string): string[] {
     const paused: string[] = [];
     for (const ctx of this.state.contexts) {
-      if (ctx.accountId !== id) continue;
+      const reason =
+        ctx.mode === 'conversation'
+          ? ctx.conversation?.participants.some((p) => p.accountId === id)
+            ? participantReason
+            : undefined
+          : ctx.accountId === id
+            ? singleReason
+            : undefined;
+      if (!reason) continue;
       paused.push(ctx.name);
       if (!ctx.enabled) {
         ctx.autoPausedReason = ctx.autoPausedReason || reason;

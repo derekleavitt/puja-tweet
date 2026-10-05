@@ -124,6 +124,27 @@ export const createContextsRouter = ({ services, scheduler, drops }: AppDeps) =>
     }
   });
 
+  router.post('/contexts/:id/conversation/restart', (req, res, next) => {
+    try {
+      const body = req.body ?? {};
+      const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
+      const updated = services.contexts.restartConversation(req.params.id, {
+        targetTweetId: str(body.targetTweetId) ?? '',
+        openingPost: str(body.openingPost) ?? '',
+        openerHandle: str(body.openerHandle),
+        firstSpeakerAccountId: str(body.firstSpeakerAccountId),
+      });
+      res.json({
+        success: true,
+        context: updated,
+        contexts: services.contexts.getContexts(),
+        queue: services.queue.getQueue(),
+      });
+    } catch (err) {
+      next(toHttpError(err, 400));
+    }
+  });
+
   router.post('/contexts/:id/clear-history', (req, res, next) => {
     try {
       const result = services.logs.clearContextHistory(req.params.id);

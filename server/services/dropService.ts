@@ -5,7 +5,7 @@
  * It knows nothing about timers; X and Gemini are injected so tests can stub them.
  */
 
-import type { ColorData, TweetContext } from '../../shared/types.js';
+import type { ColorData, PostLog, TweetContext } from '../../shared/types.js';
 import { formatTimeInZone, hourInZone, slotTypeForHour } from '../../shared/time.js';
 import { checkTweetText } from '../../shared/tweetLength.js';
 import { HttpError } from '../middleware/error.js';
@@ -16,7 +16,9 @@ import { DEFAULT_ACCOUNT_ID } from '../../shared/types.js';
 import { composeDropText, isEvolutionEnabled, nextHashtagState, usedHashtags } from './dropText.js';
 import type { ComposeOptions } from './dropText.js';
 import { hashtagService, type HashtagService } from './hashtagService.js';
+import { buildTurn, type ConversationTurn } from './conversationService.js';
 import { services, type Services } from './index.js';
+import { generateColor } from '../colorEngine.js';
 
 export interface ExecuteDropOptions {
   contextId?: string;
@@ -33,6 +35,16 @@ export interface ExecuteDropOptions {
   text?: string;
   /** Evolved hashtags the previewed `text` used (from the preview response); avoids re-rolling. */
   hashtags?: string[];
+  /**
+   * Conversation campaigns with `text`: the preview's turn, echoed back so a stale preview is
+   * refused (409) instead of posting out of order.
+   */
+  conversation?: {
+    runId: string;
+    turnNumber: number;
+    speakerAccountId: string;
+    nextSpeakerAccountId: string;
+  };
   source?: 'scheduler' | 'webhook' | 'manual' | 'cli';
 }
 
@@ -46,6 +58,14 @@ export interface DropDeps {
 
 type TweetResult = Awaited<ReturnType<typeof postColorTweet>>;
 type Creds = TwitterCredentials;
+
+export interface DropResult {
+  success: boolean;
+  result: TweetResult;
+  log: PostLog;
+  context: TweetContext;
+  hashtags?: string[];
+}
 
 /** Rate-limit / cooldown responses: set the posting account's cooldown. */
 const isCooldown = (r: TweetResult) =>
@@ -155,8 +175,168 @@ export const createDropService = (deps: DropDeps) => {
     if (!isDryRun && res.success) s.rateLimit.recordLivePostTimestamp(accountId);
   };
 
+  /** Campaigns with a drop in progress: one drop per campaign at a time (tick vs. post-now race). */
+  const inFlight = new Set<string>();
+
+  /** The text must address the next speaker (X only lets an app reply when mentioned). */
+  const mentions = (text: string, handle: string) =>
+    new RegExp(`(^|[^\\w])@${handle}\\b`, 'i').test(text);
+
+  /** One conversation turn: the speaker's own account posts, then the shared state advances. */
+  const executeConversationDrop = async (
+    options: ExecuteDropOptions,
+    context: TweetContext,
+    source: string,
+  ): Promise<DropResult> => {
+    const state = context.conversationState;
+    if (!context.conversation || !state) {
+      throw new HttpError(400, `"${context.name}" has no conversation state.`);
+    }
+    const isDryRun =
+      s.settings.isGlobalDryRun() ||
+      !!options.forceDryRun ||
+      (options.forceLive ? false : (context.dryRun ?? false));
+    const slotType = options.slotType || 'manual';
+    const chainInfo = s.contexts.getEffectiveReplyTargetId(context);
+
+    let turn: ConversationTurn | undefined;
+    let turnError: unknown;
+    if (options.text !== undefined) {
+      const echo = options.conversation;
+      if (!echo) throw new HttpError(400, 'conversation turn details are required with text');
+      if (
+        echo.runId !== state.runId ||
+        echo.turnNumber !== state.turnCount + 1 ||
+        echo.speakerAccountId !== state.nextSpeakerAccountId
+      ) {
+        throw new HttpError(409, 'Conversation moved on, refresh the preview');
+      }
+      const cast = context.conversation.participants.map((p) => p.accountId);
+      if (
+        !cast.includes(echo.nextSpeakerAccountId) ||
+        echo.nextSpeakerAccountId === echo.speakerAccountId
+      ) {
+        throw new HttpError(400, 'nextSpeakerAccountId must be another participant');
+      }
+      const nextHandle = s.accounts.handleOf(echo.nextSpeakerAccountId);
+      if (!nextHandle) throw new HttpError(400, 'Verify the next speaker account first');
+      if (!mentions(options.text, nextHandle)) {
+        throw new HttpError(400, `The reply must mention @${nextHandle} (the next speaker)`);
+      }
+      turn = {
+        runId: state.runId,
+        turnNumber: echo.turnNumber,
+        speakerAccountId: echo.speakerAccountId,
+        speakerHandle: s.accounts.handleOf(echo.speakerAccountId) ?? '',
+        nextSpeakerAccountId: echo.nextSpeakerAccountId,
+        nextSpeakerHandle: nextHandle,
+        text: options.text,
+        replyToTweetId: chainInfo.targetTweetId,
+        summaryUsed: false,
+        transcriptLength: 0,
+      };
+    } else {
+      try {
+        turn = await buildTurn(context);
+      } catch (err) {
+        turnError = err;
+      }
+    }
+
+    const speakerAccountId = turn?.speakerAccountId ?? state.nextSpeakerAccountId;
+    const accountHandle = s.accounts.handleOf(speakerAccountId);
+    const accountCreds = s.accounts.getCredentialsForAccount(speakerAccountId);
+    const creds: Creds = accountCreds ?? {};
+    const accountFailure = !turnError && !isDryRun && !accountCreds;
+    const text = turn?.text ?? '';
+    if (turn) {
+      const check = checkTweetText(text);
+      if (!check.ok) {
+        throw new HttpError(400, `Tweet text invalid (${check.length}/280 weighted chars)`);
+      }
+    }
+
+    console.log(
+      `[Drop] Executing conversation turn ${turn?.turnNumber ?? state.turnCount + 1} for context ` +
+        `"${context.name}" (${context.id}), source: ${source}, ` +
+        `mode: ${isDryRun ? 'DRY-RUN' : 'LIVE X'}${s.settings.isGlobalDryRun() ? ' (global dry-run)' : ''}` +
+        `, speaker: ${accountHandle ? `@${accountHandle}` : speakerAccountId}`,
+    );
+
+    const replyToTweetId = turn?.replyToTweetId;
+    let res: TweetResult = turnError
+      ? {
+          success: false,
+          error: turnError instanceof Error ? turnError.message : 'Conversation turn failed',
+        }
+      : accountFailure
+        ? { success: false, error: s.accounts.problem(speakerAccountId) ?? 'X account unavailable' }
+        : await deps.postColorTweet(
+            creds,
+            { text, replyToTweetId, engagementMode: 'reply', accountHandle },
+            isDryRun,
+          );
+    if (!turnError && !accountFailure && !res.success && !chainInfo.isFirstInChain) {
+      res = await recoverChain(context, res, text, replyToTweetId, creds, isDryRun, accountHandle);
+    }
+    // A failed AI turn never reached X, so it must not touch the speaker's X telemetry.
+    if (!turnError) recordTelemetry(res, isDryRun, speakerAccountId);
+
+    const status = res.success ? (res.simulated ? 'simulated' : 'success') : 'error';
+    const errorClass: XErrorClass | undefined = res.success
+      ? undefined
+      : turnError
+        ? 'unknown'
+        : accountFailure
+          ? 'account'
+          : classify(res);
+    const failure = errorClass ? { errorClass, message: res.error } : undefined;
+    if (errorClass === 'auth' && !isDryRun) s.accounts.markRevoked(speakerAccountId, res.error);
+    const posted = s.contexts.recordContextPostResult(
+      context.id,
+      status,
+      res.tweetId,
+      'reply',
+      failure,
+    );
+    let autoPausedReason = posted.autoPausedReason;
+    if (turn && status !== 'error') {
+      autoPausedReason =
+        s.contexts.recordConversationTurn(context.id, turn, status).autoPausedReason ??
+        autoPausedReason;
+    }
+    const errorMessage =
+      autoPausedReason && res.error
+        ? `${res.error} [Campaign auto-paused: ${autoPausedReason}]`
+        : res.error;
+    const logEntry = {
+      id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      timestamp: new Date().toISOString(),
+      slotType,
+      targetTweetId: context.targetTweetId,
+      replyToTweetId: res.replyTo || replyToTweetId,
+      engagementMode: 'reply',
+      color: generateColor(slotType === 'morning' ? 'morning' : 'evening'),
+      tweetText: text,
+      tweetId: res.tweetId,
+      tweetUrl: res.url,
+      status,
+      errorMessage,
+      contextId: context.id,
+      contextName: context.name,
+      accountId: speakerAccountId,
+      ...(accountHandle ? { accountHandle } : {}),
+      conversationRunId: state.runId,
+      turn: turn?.turnNumber ?? state.turnCount + 1,
+      nextSpeakerAccountId: turn?.nextSpeakerAccountId,
+    } as const;
+    s.logs.addLog(logEntry);
+
+    return { success: res.success, result: res, log: logEntry, context };
+  };
+
   /** Execute a drop for a specific context or the active context. */
-  const executeDrop = async (options: ExecuteDropOptions = {}) => {
+  const executeDrop = async (options: ExecuteDropOptions = {}): Promise<DropResult> => {
     const source = options.source || 'manual';
     // Global pause stops every scheduled path; manual posting is still allowed.
     if (source !== 'manual' && !options.forceDryRun && s.settings.isGlobalPaused()) {
@@ -167,7 +347,25 @@ export const createDropService = (deps: DropDeps) => {
       throw new HttpError(404, `Context ${options.contextId} not found`);
     }
     const context: TweetContext = requested || s.contexts.getActiveContext();
+    if (inFlight.has(context.id)) {
+      throw new HttpError(409, 'A drop for this campaign is already running');
+    }
+    inFlight.add(context.id);
+    try {
+      if (context.mode === 'conversation') {
+        return await executeConversationDrop(options, context, source);
+      }
+      return await executeSingleDrop(options, context, source);
+    } finally {
+      inFlight.delete(context.id);
+    }
+  };
 
+  const executeSingleDrop = async (
+    options: ExecuteDropOptions,
+    context: TweetContext,
+    source: string,
+  ): Promise<DropResult> => {
     const isMorning = options.slotType
       ? options.slotType === 'morning'
       : slotTypeForHour(hourInZone(new Date(), context.schedule?.timezone)) === 'morning';

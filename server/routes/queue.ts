@@ -13,7 +13,15 @@ export const withAccountHandles = (
 ): QueueSlot[] =>
   slots.map((slot) => {
     const ctx = slot.contextId ? services.contexts.getContext(slot.contextId) : undefined;
-    const accountHandle = ctx ? services.accounts.handleOf(ctx.accountId) : undefined;
+    // A conversation slot is signed by its speaker (only the first slot has one).
+    const accountHandle =
+      ctx?.mode === 'conversation'
+        ? slot.speakerAccountId
+          ? services.accounts.handleOf(slot.speakerAccountId)
+          : undefined
+        : ctx
+          ? services.accounts.handleOf(ctx.accountId)
+          : undefined;
     return accountHandle ? { ...slot, accountHandle } : slot;
   });
 
