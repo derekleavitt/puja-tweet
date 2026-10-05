@@ -11,7 +11,7 @@ Errors: `{ "success": false, "error": "<message>" }` with a real HTTP status (40
 | GET | `/api/contexts` | Contexts, active id, next posts |
 | POST | `/api/contexts` | Create a context (400 on invalid body or an unknown `accountId`). Optional `hashtagEvolution` config, see [Evolving hashtags](#evolving-hashtags) |
 | PUT | `/api/contexts/:id` | Update (404 unknown id); `hashtagEvolution` merges over the stored config. The chain anchor is server-owned: a `lastPostedTweetId` string is ignored, `null`/`''` resets the chain (as does a new `targetTweetId` or a new `accountId`). An unknown `accountId` is a 400; resuming (`enabled: true`) a campaign whose account is removed or revoked is a 400 |
-| DELETE | `/api/contexts/:id` | Delete (404 unknown id, 400 if last context) |
+| DELETE | `/api/contexts/:id` | Delete (404 unknown id). The last one can be deleted too: the store stays empty across restarts (only a brand-new store gets the default campaign), and calls that fall back to the active campaign (no `contextId` on post-now, preview, webhook, queue regenerate, campaign fields on `/api/settings`) answer 404 until one is created |
 | POST | `/api/contexts/:id/activate` | 404 unknown id |
 | POST | `/api/contexts/:id/toggle` | 404 unknown id |
 | POST | `/api/contexts/:id/duplicate` | 404 unknown id |

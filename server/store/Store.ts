@@ -43,7 +43,13 @@ export interface AccountCooldown {
 export interface BotState {
   settings: BotSettings;
   contexts: TweetContext[];
+  /** '' when there are no campaigns. */
   activeContextId: string;
+  /**
+   * True once the first-run primary campaign was created (or the store already had campaigns), so
+   * a store the owner emptied on purpose stays empty after a restart.
+   */
+  campaignsSeeded?: boolean;
   logs: PostLog[];
   queue: QueueSlot[];
   credentials: TwitterCredentials;

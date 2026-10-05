@@ -48,8 +48,9 @@ export const normalizeState = (raw: unknown): BotState => {
   const data = raw as Partial<BotState>;
 
   if (data.settings) state.settings = { ...state.settings, ...data.settings };
-  if (Array.isArray(data.contexts) && data.contexts.length > 0) state.contexts = data.contexts;
-  if (data.activeContextId) state.activeContextId = data.activeContextId;
+  if (Array.isArray(data.contexts)) state.contexts = data.contexts;
+  if (typeof data.activeContextId === 'string') state.activeContextId = data.activeContextId;
+  if (data.campaignsSeeded === true) state.campaignsSeeded = true;
   if (Array.isArray(data.logs)) state.logs = data.logs;
   if (Array.isArray(data.queue)) state.queue = data.queue;
   if (data.credentials) state.credentials = data.credentials;

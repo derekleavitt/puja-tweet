@@ -436,7 +436,7 @@ export const createDropService = (deps: DropDeps) => {
     if (options.contextId && !requested) {
       throw new HttpError(404, `Context ${options.contextId} not found`);
     }
-    const context: TweetContext = requested || s.contexts.getActiveContext();
+    const context: TweetContext = requested || s.contexts.requireActiveContext();
     if (inFlight.has(context.id)) {
       throw new HttpError(409, 'A drop for this campaign is already running');
     }

@@ -33,12 +33,16 @@ export const createQueueRouter = ({ services }: AppDeps) => {
     res.json({ queue: withAccountHandles(services, services.queue.getQueue(contextId)) });
   });
 
-  router.post('/queue/regenerate', (req, res) => {
-    const contextId = req.body?.contextId || req.query?.contextId;
-    const queue = services.queue.clearAndRegenerateQueue(
-      contextId ? String(contextId) : services.contexts.getActiveContext().id,
-    );
-    res.json({ success: true, queue });
+  router.post('/queue/regenerate', (req, res, next) => {
+    try {
+      const contextId = req.body?.contextId || req.query?.contextId;
+      const queue = services.queue.clearAndRegenerateQueue(
+        contextId ? String(contextId) : services.contexts.requireActiveContext().id,
+      );
+      res.json({ success: true, queue });
+    } catch (err) {
+      next(err);
+    }
   });
 
   router.post('/queue/reroll', (req, res) => {

@@ -21,7 +21,7 @@ export const createContextsRouter = ({ services, scheduler, drops }: AppDeps) =>
   router.get('/contexts', (_req, res) => {
     res.json({
       contexts: services.contexts.getContexts(),
-      activeContextId: services.contexts.getActiveContext().id,
+      activeContextId: services.contexts.getActiveContext()?.id ?? '',
       nextPosts: scheduler.getAllNextScheduledPosts(),
     });
   });
@@ -60,7 +60,7 @@ export const createContextsRouter = ({ services, scheduler, drops }: AppDeps) =>
       res.json({
         success: ok,
         contexts: services.contexts.getContexts(),
-        activeContextId: services.contexts.getActiveContext().id,
+        activeContextId: services.contexts.getActiveContext()?.id ?? '',
         queue: services.queue.getQueue(),
       });
     } catch (err) {
@@ -75,7 +75,7 @@ export const createContextsRouter = ({ services, scheduler, drops }: AppDeps) =>
         success: true,
         activeContext: active,
         contexts: services.contexts.getContexts(),
-        queue: services.queue.getQueue(active.id),
+        queue: services.queue.getQueue(active?.id),
       });
     } catch (err) {
       next(toHttpError(err, 400));

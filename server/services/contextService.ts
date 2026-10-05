@@ -149,13 +149,21 @@ export class ContextService {
     });
   }
 
-  /** Boot-time: creates the primary context on first run and repairs polluted chains. */
+  /**
+   * Boot-time: creates the primary context on first run only (a store the owner emptied stays
+   * empty) and repairs polluted chains.
+   */
   ensureDefaultContext() {
     const s = this.sm.state;
     if (s.contexts.length === 0) {
+      if (s.campaignsSeeded) {
+        s.activeContextId = '';
+        return;
+      }
       const primary = buildPrimaryContext(s);
       s.contexts.push(primary);
       s.activeContextId = primary.id;
+      s.campaignsSeeded = true;
       this.sm.persist();
       return;
     }
@@ -164,6 +172,10 @@ export class ContextService {
       s.activeContextId = s.contexts[0].id;
     }
     let modified = false;
+    if (!s.campaignsSeeded) {
+      s.campaignsSeeded = true;
+      modified = true;
+    }
     for (const ctx of s.contexts) {
       if (sanitizeContextChain(ctx, s.logs)) modified = true;
       if (this.migrateHashtags(ctx)) modified = true;
@@ -190,11 +202,19 @@ export class ContextService {
     return this.sm.getContext(id);
   }
 
-  getActiveContext(): TweetContext {
+  /** Undefined only when there are no campaigns. */
+  getActiveContext(): TweetContext | undefined {
     return this.sm.getActiveContext();
   }
 
-  setActiveContextId(id: string): TweetContext {
+  /** The active campaign, or a 404 when there are none (paths that need one to act on). */
+  requireActiveContext(): TweetContext {
+    const active = this.getActiveContext();
+    if (!active) throw new HttpError(404, 'There are no campaigns: create one first.');
+    return active;
+  }
+
+  setActiveContextId(id: string): TweetContext | undefined {
     const found = this.sm.getContext(id);
     if (!found) return this.getActiveContext();
     // Switching the active campaign changes nothing on any campaign (no settings mirror).
@@ -484,18 +504,13 @@ export class ContextService {
 
   deleteContext(id: string): boolean {
     const s = this.sm.state;
-    if (s.contexts.length <= 1) {
-      throw new HttpError(
-        400,
-        'Cannot delete the only tweet context. At least one context must remain.',
-      );
-    }
     const idx = s.contexts.findIndex((c) => c.id === id);
     if (idx === -1) return false;
 
+    // Deleting the last campaign is allowed: the store stays empty (see `ensureDefaultContext`).
     s.contexts.splice(idx, 1);
     s.queue = s.queue.filter((q) => q.contextId !== id);
-    if (s.activeContextId === id) s.activeContextId = s.contexts[0].id;
+    if (s.activeContextId === id) s.activeContextId = s.contexts[0]?.id ?? '';
     this.sm.persist();
     return true;
   }

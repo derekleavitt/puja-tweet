@@ -26,7 +26,6 @@ interface ContextCardProps {
   countdown?: string;
   /** The global dry run is on (overrides this campaign's own switch). */
   globalDryRun: boolean;
-  canDelete: boolean;
   onUpdate: (updates: Partial<TweetContext>) => Promise<void>;
   onToggle: () => void;
   onPost: (opts: PostNowOptions) => Promise<DropResponse | undefined>;
@@ -204,7 +203,6 @@ export const ContextCard: React.FC<ContextCardProps> = (props) => {
 
       <CardActions
         previewOpen={previewOpen}
-        canDelete={props.canDelete}
         onTogglePreview={() => setPreviewOpen((open) => !open)}
         onEdit={props.onEdit}
         onDuplicate={props.onDuplicate}

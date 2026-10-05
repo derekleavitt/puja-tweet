@@ -50,9 +50,8 @@ export function useBotStatus() {
           accounts: data.accounts ?? [],
         });
         setAccountCooldowns(data.accountCooldowns ?? {});
-        if (data.contexts && data.contexts.length > 0) {
-          setContexts(data.contexts);
-        }
+        // An empty list is real: every campaign can be deleted.
+        if (Array.isArray(data.contexts)) setContexts(data.contexts);
         if (data.allNextPosts) {
           setAllNextPosts(data.allNextPosts);
         }
