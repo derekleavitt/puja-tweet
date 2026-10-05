@@ -36,7 +36,12 @@ color engine.
 | --- | --- | --- |
 | Countdown, frequency select, target link, pause link | KEEP | No color-centric content |
 
-## Studio (`src/features/studio/*`)
+## Studio (`src/features/studio/*`) — removed
+
+> The Studio was later removed entirely: each campaign card has a "Preview & post" panel
+> (`src/features/campaigns/CampaignPreview.tsx`) with the same preview text, evolved hashtags,
+> AI badge and Post action. Its color re-roll stays CONDITIONAL (`templateUsesColor`). The table
+> below is the historical audit.
 
 | Element | Class | Notes |
 | --- | --- | --- |
@@ -128,13 +133,8 @@ product's default content, not UI chrome, and it has no screenshots: KEEP.
 
 ## API endpoints
 
-No endpoint becomes unused by the UI:
-
-- `POST /api/generate-color` is still called (initial load, campaign switch, Studio color re-roll):
-  the Studio preview and `post-now` need a color so that color templates post exactly what the
-  preview shows. Skipping it for non-color templates would make `post-now` pop a queue slot for
-  its color instead, which changes behaviour, so it is kept for every template.
-- `POST /api/queue/reroll` is still called, but only for slots whose campaign template uses a color
-  token.
-
-All endpoints and payloads are unchanged.
+After the Studio removal the UI no longer calls `POST /api/generate-color`: the campaign preview
+asks `POST /api/template/preview` (which generates the color server-side and returns it), and
+"Post now" sends that color back with the previewed `text` + `hashtags`, so color templates still
+post exactly what the preview shows. `POST /api/queue/reroll` is still called, only for slots whose
+campaign template uses a color token. The endpoints themselves are unchanged.
