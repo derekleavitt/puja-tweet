@@ -37,8 +37,14 @@ A snapshot for picking the project back up locally (Claude Code CLI on your own 
   Basic is about 100 per day per account.
 - **Not built yet:** a "Generate personas" helper, hashtags every Nth conversation turn, and an AI
   that picks the next speaker.
-- **Held drafts:** an older backlog regroom ("Backlog v2") and a docs-drift pass were drafted but
-  held at the owner's request. They were never merged.
+
+## Branches on GitHub
+
+| Branch | What it is | Status |
+| --- | --- | --- |
+| `main` | Everything above; this is what's deployed. | Use this. |
+| `held-docs-v2` | Two old docs commits that were held at the owner's request and never merged: a "Backlog v2" regroom of `BACKLOG.md` and a docs-drift pass. Both predate the multi-account, conversation and recovery work, so parts are stale. | Reference only. Cherry-pick what's useful or delete the branch. |
+| `claude/inspiring-bardeen-fhi8x3` | The cloud session's working branch. Every change on it is merged into `main` through its PRs (the last is #25). | Safe to delete. |
 
 ## Working locally
 
