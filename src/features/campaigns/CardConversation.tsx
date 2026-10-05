@@ -1,10 +1,11 @@
 /**
  * X ChromaBot - CardConversation
  * Conversation-mode body of a campaign card: the cast, whose turn is next, the shared prompt and
- * Restart (prominent when the conversation finished).
+ * Restart (prominent when the conversation finished; Resume continues it for another round).
  */
 
 import React, { useState } from 'react';
+import { roundTurns } from '../../../shared/conversationRound.js';
 import { RotateCcw } from 'lucide-react';
 import type { TweetContext } from '../../types.js';
 import type { RestartConversationBody } from '../../api/endpoints.js';
@@ -28,7 +29,12 @@ export const CardConversation: React.FC<CardConversationProps> = ({ context, onR
   const cast = (conv?.participants ?? []).map((p) => speakerLabel(accounts, p.accountId));
   const turn = (state?.turnCount ?? 0) + 1;
   const max = conv?.maxTurns;
-  const turnLabel = max ? `Turn ${turn}/${max}` : `Turn ${turn}`;
+  const resumedRound = (state?.roundStartTurn ?? 0) > 0;
+  const turnLabel = !max
+    ? `Turn ${turn}`
+    : resumedRound
+      ? `Turn ${turn} (${roundTurns(state) + 1}/${max} this round)`
+      : `Turn ${turn}/${max}`;
 
   return (
     <div data-testid="card-conversation" className="space-y-2 text-xs">
@@ -62,7 +68,8 @@ export const CardConversation: React.FC<CardConversationProps> = ({ context, onR
           data-testid="conversation-finished"
           className="p-2 rounded-lg text-[11px] bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800"
         >
-          {context.autoPausedReason}
+          {context.autoPausedReason?.replace(/\.$/, '')}. Resume to continue this thread for{' '}
+          {max ?? 'more'} more turns, or Restart to begin a new thread.
         </p>
       )}
       <button

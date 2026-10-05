@@ -49,7 +49,7 @@ Design notes for developers are in [design/conversations.md](design/conversation
 
 ## Restart
 
-Use **Restart** on the campaign card (it appears when a conversation has finished) to begin again.
+Use **Restart** on the campaign card to begin a new thread. To keep going in the same thread after a fixed number of turns, just **Resume** the campaign: it continues for another N turns (a new round), with the full history.
 Give it a new opening reply URL and text, and optionally a first speaker. The turn count goes back
 to 0 and the AI starts with a clean transcript. Old posts stay in the logs. Restart does not change
 whether the campaign is enabled: resume it if it was paused.
@@ -58,7 +58,7 @@ whether the campaign is enabled: resume it if it was paused.
 
 | Event | Effect |
 | --- | --- |
-| It reaches the turn limit | Pauses with "Conversation finished (N turns)". Restart to continue. |
+| It reaches the turn limit | Pauses with "Conversation finished (N turns)". **Resume** continues the same thread for another N turns; **Restart** begins a new thread. |
 | A participant is removed | Pauses with "Participant @x removed...". Resuming is refused until the cast is fixed. |
 | A participant's tokens are revoked (X answers 401) | The campaign auto-pauses. Verify or reconnect the account. |
 | 5 failures in a row | The circuit breaker pauses it. After each failure it also backs off for 15 minutes. |

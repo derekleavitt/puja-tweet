@@ -268,7 +268,7 @@ test('finished conversation shows the reason and Restart posts the new opening',
   await openApp(app);
   const card = campaignCard(app, NAME);
   await expect(card.getByTestId('conversation-finished')).toHaveText(
-    'Conversation finished (20 turns).',
+    'Conversation finished (20 turns). Resume to continue this thread for 20 more turns, or Restart to begin a new thread.',
   );
   await card.getByRole('button', { name: 'Restart' }).click();
   const modal = app.getByRole('dialog', { name: 'Restart conversation' });
