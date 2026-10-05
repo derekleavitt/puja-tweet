@@ -1,8 +1,8 @@
 # CLAUDE.md
 
 X ChromaBot (`puja-tweet`) posts scheduled replies to X (Twitter) from several of the owner's
-accounts. It covers color drops, AI poetry, and multi-account "conversation" threads. Start with
-`docs/handoff.md` for the current state; `README.md` has a docs index.
+accounts. It covers color drops, AI poetry, and multi-account "conversation" threads. Production
+state, logs and known limits are in `docs/deploy.md`; `README.md` has a docs index.
 
 ## Commands
 
