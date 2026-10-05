@@ -21,7 +21,6 @@ interface TemplateEditorProps {
   required?: boolean;
 }
 
-const HIGHLIGHTED_TOKENS: readonly string[] = ['{color_pick}', '{weather_desc}', '{weather_tweet}'];
 const LABEL = 'text-[11px] font-semibold text-neutral-500';
 
 export const TemplateEditor: React.FC<TemplateEditorProps> = ({
@@ -107,11 +106,7 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
               type="button"
               key={token}
               onClick={() => append(token)}
-              className={`px-2 py-0.5 text-xs font-mono rounded transition-colors cursor-pointer ${
-                HIGHLIGHTED_TOKENS.includes(token)
-                  ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
-                  : 'bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200'
-              }`}
+              className="px-2 py-0.5 text-xs font-mono rounded transition-colors cursor-pointer bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200"
             >
               + {token}
             </button>
