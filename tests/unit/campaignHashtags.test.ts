@@ -70,7 +70,7 @@ describe('boot migration in ContextService', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     const store = new MemoryStore();
     const first = await createServices(store);
-    const id = first.contexts.getActiveContext().id;
+    const id = first.contexts.requireActiveContext().id;
     // Simulate a pre-migration campaign (as stored before this release).
     const raw = first.contexts.getContext(id) as TweetContext;
     raw.template = 'Amber {color_pick} #eternal #colors';

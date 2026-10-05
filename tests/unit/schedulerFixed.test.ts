@@ -11,7 +11,7 @@ afterEach(() => {
 });
 
 function setup(times: string[], jitterMs: number) {
-  const ctx = services.contexts.patchContext(services.contexts.getActiveContext().id, {
+  const ctx = services.contexts.patchContext(services.contexts.requireActiveContext().id, {
     enabled: true,
     schedule: {
       mode: 'fixed_times',
@@ -107,7 +107,7 @@ describe('pending jittered fire across a restart (BUG-1)', () => {
   it('persists pendingFire through the store', async () => {
     const store = new MemoryStore();
     const first = await createServices(store);
-    const id = first.contexts.getActiveContext().id;
+    const id = first.contexts.requireActiveContext().id;
     const pending = {
       slotKey: '2026-10-31-18:00',
       slotType: 'evening' as const,

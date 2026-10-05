@@ -33,7 +33,7 @@ describe('services over MemoryStore', () => {
   describe('contextService', () => {
     it('creates the primary context, queue and webhook secret on first boot', async () => {
       expect(svc.contexts.getContexts().map((c) => c.id)).toEqual(['ctx_primary']);
-      expect(svc.contexts.getActiveContext().id).toBe('ctx_primary');
+      expect(svc.contexts.requireActiveContext().id).toBe('ctx_primary');
       expect(svc.queue.getQueue()).toHaveLength(14);
       expect(svc.credentials.getWebhookSecret()).toHaveLength(64);
       await svc.flush();
@@ -107,14 +107,39 @@ describe('services over MemoryStore', () => {
       expect(after[0].contextName).toBe('A2');
     });
 
-    it('refuses to delete the last context, and moves the active context on delete', () => {
-      expect(() => svc.contexts.deleteContext('ctx_primary')).toThrow(/only tweet context/);
+    it('moves the active context on delete', () => {
       const second = svc.contexts.createContext({ name: 'Two', targetTweetId: TWEET });
       svc.contexts.setActiveContextId(second.id);
       expect(svc.contexts.deleteContext(second.id)).toBe(true);
-      expect(svc.contexts.getActiveContext().id).toBe('ctx_primary');
-      svc.contexts.createContext({ name: 'Three', targetTweetId: TWEET });
+      expect(svc.contexts.requireActiveContext().id).toBe('ctx_primary');
       expect(svc.contexts.deleteContext('ctx_missing')).toBe(false);
+    });
+
+    it('deletes the last context and stays empty after a restart', async () => {
+      expect(svc.contexts.deleteContext('ctx_primary')).toBe(true);
+      expect(svc.contexts.getContexts()).toEqual([]);
+      expect(svc.contexts.getActiveContext()).toBeUndefined();
+      expect(() => svc.contexts.requireActiveContext()).toThrow(/no campaigns/);
+      expect(svc.queue.getQueue()).toEqual([]);
+      // The global switches still work, and the settings view falls back to the defaults.
+      const view = svc.settings.updateSettings({ globalPaused: false });
+      expect(view.globalPaused).toBe(false);
+      expect(view.activeContextId).toBe('');
+      expect(view).not.toHaveProperty('webhookSecret');
+      expect(() => svc.settings.updateSettings({ template: 'x' })).toThrow(/no campaigns/);
+      await svc.flush();
+
+      const restarted = await createServices(store);
+      expect(restarted.contexts.getContexts()).toEqual([]);
+      expect(restarted.settings.getSettings().globalPaused).toBe(false);
+    });
+
+    it('still seeds the primary context on a store that predates the seeded flag', async () => {
+      const legacy = new MemoryStore();
+      await legacy.save({ ...(await legacy.load()), contexts: [] });
+      expect((await createServices(legacy)).contexts.getContexts().map((c) => c.id)).toEqual([
+        'ctx_primary',
+      ]);
     });
 
     it('duplicates paused with a clean chain, and toggles', () => {
@@ -286,7 +311,7 @@ describe('services over MemoryStore', () => {
       expect(updated.template).toBe('Hello {color_pick}');
       expect(updated.dryRun).toBe(true);
       expect(updated.intervalMinutes).toBe(30);
-      const active = svc.contexts.getActiveContext();
+      const active = svc.contexts.requireActiveContext();
       expect(active.template).toBe('Hello {color_pick}');
       expect(active.schedule.intervalMinutes).toBe(30);
       expect(updated).not.toHaveProperty('webhookSecret');

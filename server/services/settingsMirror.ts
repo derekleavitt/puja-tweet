@@ -7,8 +7,27 @@
 
 import type { BotSettings, TweetContext } from '../../shared/types.js';
 
-/** The public settings view of `active` (never includes the webhook secret). */
-export const buildSettingsView = (active: TweetContext, stored: BotSettings): BotSettings => ({
+/**
+ * The public settings view of `active` (never includes the webhook secret). Without any campaign it
+ * is the stored first-run defaults plus the global switches.
+ */
+export const buildSettingsView = (
+  active: TweetContext | undefined,
+  stored: BotSettings,
+): BotSettings => {
+  if (!active) {
+    const { webhookSecret: _secret, ...rest } = stored;
+    return {
+      ...rest,
+      globalDryRun: stored.globalDryRun !== false,
+      globalPaused: stored.globalPaused !== false,
+      activeContextId: '',
+    };
+  }
+  return campaignView(active, stored);
+};
+
+const campaignView = (active: TweetContext, stored: BotSettings): BotSettings => ({
   targetTweetId: active.targetTweetId,
   replyTargetMode: active.replyTargetMode || 'original_post',
   engagementMode: active.engagementMode || 'reply',

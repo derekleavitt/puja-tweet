@@ -38,7 +38,7 @@ export const createDropsRouter = ({ services, drops }: AppDeps) => {
   /** Unknown ids are a 404 (never a silent fallback); no id means the active context. */
   const resolveContext = (contextId: unknown) => {
     if (contextId === undefined || contextId === null || contextId === '') {
-      return services.contexts.getActiveContext();
+      return services.contexts.requireActiveContext();
     }
     const found =
       typeof contextId === 'string' ? services.contexts.getContext(contextId) : undefined;

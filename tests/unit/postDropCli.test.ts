@@ -89,7 +89,7 @@ describe('post-drop CLI over dropService', () => {
 
   it('--live with the switches off posts live using the campaign engagement mode', async () => {
     openSwitches();
-    const id = svc.contexts.getActiveContext().id;
+    const id = svc.contexts.requireActiveContext().id;
     svc.contexts.patchContext(id, { engagementMode: 'quote', targetTweetId: '111' });
     expect(await run(['--live', '--slot', 'morning'])).toBe(0);
     expect(post.mock.calls[0][1]).toMatchObject({ quoteTweetId: '111', engagementMode: 'quote' });

@@ -9,7 +9,6 @@ import { Edit2, Copy, Trash2, Eye, EyeOff, History } from 'lucide-react';
 
 interface CardActionsProps {
   previewOpen: boolean;
-  canDelete: boolean;
   onTogglePreview: () => void;
   onEdit: () => void;
   onDuplicate: () => void;
@@ -49,15 +48,13 @@ export const CardActions: React.FC<CardActionsProps> = (props) => (
           <History className="w-3.5 h-3.5" />
         </button>
       )}
-      {props.canDelete && (
-        <button
-          onClick={props.onRequestDelete}
-          className="p-1.5 text-neutral-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-md transition-colors cursor-pointer"
-          title="Delete context"
-        >
-          <Trash2 className="w-3.5 h-3.5" />
-        </button>
-      )}
+      <button
+        onClick={props.onRequestDelete}
+        className="p-1.5 text-neutral-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-md transition-colors cursor-pointer"
+        title="Delete context"
+      >
+        <Trash2 className="w-3.5 h-3.5" />
+      </button>
     </div>
   </div>
 );
