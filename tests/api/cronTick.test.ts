@@ -86,6 +86,8 @@ describe('POST /api/cron/tick auth', () => {
 
 describe('POST /api/cron/tick behaviour', () => {
   it('runs one tick, awaits the drop and reports fired/skipped/durationMs', async () => {
+    // Live mode: the anti-burst spacing only gates drops that would really reach X.
+    services.settings.updateSettings({ globalDryRun: false });
     const [due] = dueContexts(2);
     let finished = false;
     const exec = vi

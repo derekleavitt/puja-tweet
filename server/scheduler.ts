@@ -82,9 +82,14 @@ class SchedulerService {
     return Number.isFinite(n) && n > 0 ? n : 120_000;
   }
 
-  /** Anti-burst + cooldown gate, evaluated right before every live drop. */
-  private canFireNow(): boolean {
+  /**
+   * Anti-burst + cooldown gate, evaluated right before every drop. The X-account gates (cooldown,
+   * live spacing) only apply to drops that will really reach X: a simulated campaign is never
+   * delayed by another campaign's live post.
+   */
+  private canFireNow(context: TweetContext): boolean {
     if (this.dropsLeft <= 0) return false; // MAX_DROPS_PER_TICK: stays due for the next tick
+    if (services.settings.isGlobalDryRun() || context.dryRun) return true;
     if (services.rateLimit.getCooldownState().isThrottled) return false;
     return services.rateLimit.getTimeSinceLastLivePostMs() >= MIN_LIVE_SPACING_MS;
   }
@@ -190,7 +195,7 @@ class SchedulerService {
         return;
       }
       if (now - lastPosted >= effectiveRequiredMs - DUE_TOLERANCE_MS) {
-        if (!this.canFireNow()) return; // anti-burst: wait for the next tick
+        if (!this.canFireNow(context)) return; // anti-burst: wait for the next tick
         console.log(
           `[Scheduler] Context "${context.name}" interval reached ` +
             `(${intervalMinutes}m base + ${Math.round(jitterMs / 1000)}s jitter). Firing drop...`,
@@ -211,7 +216,7 @@ class SchedulerService {
         this.setPending(context, undefined);
         return;
       }
-      if (!this.canFireNow()) return;
+      if (!this.canFireNow(context)) return;
       this.setPending(context, undefined);
       await this.fireFixedSlot(context, pending.slotKey, pending.slotType, pending.matchedTime);
       return;
@@ -222,7 +227,7 @@ class SchedulerService {
 
     const slotType = slotTypeForHour(match.parts.hour);
     const jitterMs = schedule.humanizeJitterEnabled ? context.currentJitterMs || 0 : 0;
-    if (jitterMs > 0 || !this.canFireNow()) {
+    if (jitterMs > 0 || !this.canFireNow(context)) {
       this.setPending(context, {
         slotKey: match.slotKey,
         slotType,
