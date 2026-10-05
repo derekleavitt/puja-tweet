@@ -3,6 +3,8 @@
  */
 
 import type { CooldownState, RateLimitHeaders, RateLimitTelemetry } from '../../shared/types.js';
+import { DEFAULT_ACCOUNT_ID } from '../../shared/types.js';
+import type { AccountCooldown } from '../store/Store.js';
 import type { StateManager } from './stateManager.js';
 
 type Tier = RateLimitTelemetry['tierDetected'];
@@ -23,53 +25,114 @@ const detectTier = (
   return { tierDetected: 'Pay-Per-Use ($0.015/tweet)', estimatedDailyCap: 10000 };
 };
 
+/** Cooldown / live-post bookkeeping is per X account; the default account keeps the old scalars. */
+const isDefault = (accountId?: string) => !accountId || accountId === DEFAULT_ACCOUNT_ID;
+
 export class RateLimitService {
   constructor(private readonly sm: StateManager) {}
 
-  getCooldownState(): CooldownState {
+  private cooldownOf(accountId?: string): AccountCooldown {
     const s = this.sm.state;
+    if (isDefault(accountId)) {
+      return {
+        untilMs: s.cooldownUntilMs,
+        reason: s.cooldownReason,
+        lastThrottledAt: s.lastThrottledAt,
+      };
+    }
+    return s.accountCooldowns?.[accountId!] ?? { untilMs: 0, reason: '', lastThrottledAt: '' };
+  }
+
+  /** X cooldown of one account (the default account when omitted). */
+  getCooldownState(accountId?: string): CooldownState {
+    const c = this.cooldownOf(accountId);
     const now = Date.now();
-    const isThrottled = s.cooldownUntilMs > now;
+    const isThrottled = c.untilMs > now;
     return {
       isThrottled,
-      throttledUntil: s.cooldownUntilMs,
-      secondsRemaining: isThrottled ? Math.ceil((s.cooldownUntilMs - now) / 1000) : 0,
-      reason: isThrottled ? s.cooldownReason : undefined,
-      lastThrottledAt: s.lastThrottledAt || undefined,
+      throttledUntil: c.untilMs,
+      secondsRemaining: isThrottled ? Math.ceil((c.untilMs - now) / 1000) : 0,
+      reason: isThrottled ? c.reason : undefined,
+      lastThrottledAt: c.lastThrottledAt || undefined,
     };
   }
 
-  setGlobalCooldown(durationMinutes: number, reason: string) {
+  /** Cooldown of the default account and of every connected account, keyed by account id. */
+  getAllCooldownStates(): Record<string, CooldownState> {
+    const ids = [DEFAULT_ACCOUNT_ID, ...this.sm.state.accounts.map((a) => a.id)];
+    return Object.fromEntries(ids.map((id) => [id, this.getCooldownState(id)]));
+  }
+
+  /** Starts an X cooldown for one account: only that account's campaigns wait it out. */
+  setCooldown(durationMinutes: number, reason: string, accountId?: string) {
     const s = this.sm.state;
-    s.cooldownUntilMs = Date.now() + durationMinutes * 60 * 1000;
-    s.cooldownReason = reason;
-    s.lastThrottledAt = new Date().toISOString();
-    console.log(`[RateLimit] Set global X API cooldown for ${durationMinutes} minutes: ${reason}`);
+    const entry: AccountCooldown = {
+      untilMs: Date.now() + durationMinutes * 60 * 1000,
+      reason,
+      lastThrottledAt: new Date().toISOString(),
+    };
+    if (isDefault(accountId)) {
+      s.cooldownUntilMs = entry.untilMs;
+      s.cooldownReason = entry.reason;
+      s.lastThrottledAt = entry.lastThrottledAt;
+    } else {
+      s.accountCooldowns = { ...s.accountCooldowns, [accountId!]: entry };
+    }
+    console.log(
+      `[RateLimit] Set X API cooldown for ${durationMinutes} minutes (${accountId || DEFAULT_ACCOUNT_ID}): ${reason}`,
+    );
     this.sm.persist();
   }
 
-  clearGlobalCooldown() {
-    this.sm.state.cooldownUntilMs = 0;
-    this.sm.state.cooldownReason = '';
-    console.log(`[RateLimit] Cleared global X API cooldown.`);
+  /** Clears one account's cooldown, or every account's when omitted. */
+  clearCooldown(accountId?: string) {
+    const s = this.sm.state;
+    if (!accountId || isDefault(accountId)) {
+      s.cooldownUntilMs = 0;
+      s.cooldownReason = '';
+    }
+    if (!accountId) s.accountCooldowns = {};
+    else if (!isDefault(accountId) && s.accountCooldowns) delete s.accountCooldowns[accountId];
+    console.log(`[RateLimit] Cleared X API cooldown (${accountId || 'all accounts'}).`);
     this.sm.persist();
   }
 
-  recordLivePostTimestamp() {
-    this.sm.state.lastGlobalLivePostTimestamp = Date.now();
+  recordLivePostTimestamp(accountId?: string) {
+    const s = this.sm.state;
+    if (isDefault(accountId)) s.lastGlobalLivePostTimestamp = Date.now();
+    else s.lastLivePostByAccount = { ...s.lastLivePostByAccount, [accountId!]: Date.now() };
   }
 
-  getTimeSinceLastLivePostMs(): number {
-    const last = this.sm.state.lastGlobalLivePostTimestamp;
+  /** Time since this account's last live post (anti-burst spacing is per account). */
+  getTimeSinceLastLivePostMs(accountId?: string): number {
+    const s = this.sm.state;
+    const last = isDefault(accountId)
+      ? s.lastGlobalLivePostTimestamp
+      : s.lastLivePostByAccount?.[accountId!];
     return last ? Date.now() - last : Infinity;
   }
 
-  updateRateLimitTelemetry(headers?: RateLimitHeaders) {
+  updateRateLimitTelemetry(headers?: RateLimitHeaders, accountId?: string) {
     if (headers && (headers.limit !== undefined || headers.remaining !== undefined)) {
       this.sm.state.lastCapturedRateLimitHeaders = headers;
       this.sm.state.lastRateLimitCaptureTimestamp = Date.now();
+      this.sm.state.lastRateLimitAccountId = isDefault(accountId) ? undefined : accountId;
       this.sm.persist();
     }
+  }
+
+  /**
+   * Seconds until X's rate window resets when the last captured headers (which are per user) came
+   * from this account and say the window is used up; 0 otherwise. Never blocks another account.
+   */
+  getWindowExhaustedSeconds(accountId?: string): number {
+    const s = this.sm.state;
+    const headers = s.lastCapturedRateLimitHeaders;
+    const owner = s.lastRateLimitAccountId;
+    const same = isDefault(accountId) ? isDefault(owner) : owner === accountId;
+    if (!same || !headers || headers.remaining === undefined || headers.remaining > 0) return 0;
+    if (headers.reset === undefined) return 0;
+    return Math.max(0, Math.ceil(headers.reset - Date.now() / 1000));
   }
 
   getRateLimitTelemetry(): RateLimitTelemetry {

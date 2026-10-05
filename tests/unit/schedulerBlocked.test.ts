@@ -15,7 +15,7 @@ const oneMinuteCampaign = (lastPostedAgoMs: number) => {
 
 beforeEach(() => {
   services.settings.updateSettings({ globalPaused: false, globalDryRun: true });
-  services.rateLimit.clearGlobalCooldown();
+  services.rateLimit.clearCooldown();
   vi.spyOn(console, 'log').mockImplementation(() => {});
 });
 
@@ -39,7 +39,7 @@ describe('scheduler blocked reasons', () => {
 
   it('explains an active cooldown', () => {
     const ctx = oneMinuteCampaign(0);
-    services.rateLimit.setGlobalCooldown(15, 'reply cooldown');
+    services.rateLimit.setCooldown(15, 'reply cooldown');
     expect(scheduler.getBlockedReason(ctx)).toMatch(/X cooldown: 15m left/);
   });
 

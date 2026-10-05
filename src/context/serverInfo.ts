@@ -5,12 +5,15 @@
  */
 
 import { createContext, useContext } from 'react';
+import type { XAccountInfo } from '../types.js';
 
 export interface ServerInfo {
   /** Server default target tweet (env TARGET_TWEET_ID); empty when unset. */
   defaultTargetTweetId: string;
   /** undefined until the first status response; false when GEMINI_API_KEY is not set. */
   geminiConfigured?: boolean;
+  /** X accounts campaigns can post as (default first); empty until the first status response. */
+  accounts?: XAccountInfo[];
 }
 
 export const ServerInfoContext = createContext<ServerInfo>({ defaultTargetTweetId: '' });

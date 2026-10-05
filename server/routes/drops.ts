@@ -5,7 +5,7 @@
 import { Router } from 'express';
 import type { AppDeps } from '../app.js';
 import { generateColor } from '../colorEngine.js';
-import type { ColorData } from '../../shared/types.js';
+import { DEFAULT_ACCOUNT_ID, type ColorData } from '../../shared/types.js';
 import { HttpError, toHttpError } from '../middleware/error.js';
 import { normaliseTags } from '../../shared/hashtags/index.js';
 import { formatTimeInZone } from '../../shared/time.js';
@@ -57,6 +57,9 @@ export const createDropsRouter = ({ services, drops }: AppDeps) => {
         breakdown,
         charCount: previewText.length,
         targetTweetId: context.targetTweetId,
+        // The account the post goes out as (default account when the campaign has none).
+        accountId: context.accountId || DEFAULT_ACCOUNT_ID,
+        accountHandle: services.accounts.handleOf(context.accountId) ?? '',
         replyToTweetId: replyInfo.targetTweetId,
         replyTargetMode: context.replyTargetMode || 'original_post',
         lastPostedTweetId: context.lastPostedTweetId,

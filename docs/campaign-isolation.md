@@ -15,14 +15,24 @@ could leak one campaign's values into another, and records the decisions and fix
 | Field / state                                                       | Where                                                                      | Why global                                                   |
 | :------------------------------------------------------------------ | :------------------------------------------------------------------------- | :----------------------------------------------------------- |
 | Owner auth (`AUTHORIZED_EMAILS`, Firebase token)                    | `server/middleware/auth.ts`                                                | One owner                                                    |
-| X credentials, webhook secret                                       | `credentialService.ts`                                                     | One X account                                                |
+| X app consumer key/secret, webhook secret                           | `credentialService.ts`                                                     | One X developer app                                          |
 | `settings.globalDryRun`, `settings.globalPaused`                    | `settingsService.ts`                                                       | Master safety switches, override every campaign              |
-| `cooldownUntilMs` / `cooldownReason` / `lastThrottledAt`            | `rateLimitService.setGlobalCooldown` (set from any campaign's 429)         | X throttles the account, not the campaign                    |
-| `lastGlobalLivePostTimestamp` + `MIN_LIVE_SPACING_MS` (50 s)        | `rateLimitService`, `scheduler.canFireNow`                                 | Account-level anti-burst (see §4)                            |
 | `lastCapturedRateLimitHeaders`, `postsLast24Hours`, tier detection  | `rateLimitService.getRateLimitTelemetry`                                   | Account quota telemetry                                      |
 | `geminiUsage` daily cap                                             | `geminiUsageService`                                                       | One Gemini key                                               |
 | `MAX_DROPS_PER_TICK`, tick lock, watchdog                           | `scheduler.ts`                                                             | Process-level                                                |
 | Post log array (`logs`, capped by `MAX_LOGS`)                       | `logService`                                                               | Shared store; every entry is tagged with `contextId`         |
+
+### Per X account (multi-account, see [accounts.md](accounts.md))
+
+Each campaign posts as one account (`accountId`, undefined = default `acct_env`). Shared by every
+campaign on the **same** account, independent between accounts:
+
+| Field / state | Where | Why per account |
+| :-- | :-- | :-- |
+| User access token + secret (`BotState.accounts[].encrypted`; env for `acct_env`) | `accountService.getCredentialsForAccount` | X identity |
+| Cooldown: `accountCooldowns[id]` (the default account keeps `cooldownUntilMs` / `cooldownReason` / `lastThrottledAt`) | `rateLimitService.setCooldown(…, accountId)` from that account's 429 / reply cooldown | X throttles the account, not the campaign or the app |
+| 50 s live spacing: `lastLivePostByAccount[id]` (default: `lastGlobalLivePostTimestamp`) | `rateLimitService`, `scheduler.canFireNow` | Account-level anti-burst (see §4) |
+| Account status (`revoked` after a live 401) | `accountService.markRevoked` | The account's tokens stopped working |
 | `/api/status.stats`, `latestLog`                                    | `routes/status.ts`                                                         | Whole-bot counters (per-campaign stats live on the campaign) |
 | `activeContextId`                                                   | `state.activeContextId`                                                    | UI selection only: which campaign the Studio/Settings show   |
 
@@ -86,8 +96,9 @@ Requirements and where each is guaranteed (tests in `tests/unit/multiCampaignIso
    campaigns posting (anchor verified by provenance, not the shared log), server restarts / cold
    starts (persisted on the campaign; verified with an empty log), clear-history, failed posts, the
    REL-5 back-off (`recordContextPostResult` only touches the anchor on its own success).
-2. **New chain** when `targetTweetId` changes (anchor + provenance cleared, first reply goes to the
-   new root) and on explicit reset (`POST /api/contexts/:id/reset-chain`, `PUT` with
+2. **New chain** when `targetTweetId` or `accountId` changes (anchor + provenance cleared, first
+   reply goes to the root; another account's replies are a different thread, test "changing the
+   account resets the reply chain like a target change") and on explicit reset (`POST /api/contexts/:id/reset-chain`, `PUT` with
    `lastPostedTweetId: null`, Settings "Reset to Root").
 3. **Never adopts another campaign's tweet**: provenance is only written by the campaign's own
    successful in-thread reply; a client-sent id is ignored; a legacy anchor is kept only when a log
@@ -99,18 +110,20 @@ Decision on **clear-history**: it is history cleanup, not a chain reset. The anc
 
 ## 4. What stays global and why (recommendations)
 
-- **Global 50 s live spacing** (`MIN_LIVE_SPACING_MS`): keep global. X's spam heuristics act on
-  the account, so two campaigns posting within seconds of each other look like one burst. Effect:
-  across all campaigns at most one live post per ~50 s, i.e. N live 1-minute campaigns cannot all
-  keep a 1-minute cadence (each slips to the next tick, longest-waiting first). Simulated campaigns
-  are no longer affected. If per-campaign spacing is ever wanted, keep the global floor and add a
-  per-campaign value on top; never remove the account-level gate.
-- **Global cooldown** (any 429 / reply-cooldown): keep global, same reason.
+- **50 s live spacing per X account** (`MIN_LIVE_SPACING_MS`): X's spam heuristics act on the
+  account, so two campaigns posting as the same account within seconds look like one burst. Effect:
+  at most one live post per ~50 s **per account**, i.e. N live 1-minute campaigns on one account
+  cannot all keep a 1-minute cadence (each slips to the next tick, longest-waiting first); campaigns
+  on different accounts do not hold each other back. Simulated campaigns are not affected. Never
+  remove the account-level gate.
+- **Cooldown per X account** (any 429 / reply-cooldown): same reason; it blocks only campaigns posting
+  as the throttled account. On the Free tier the 17 posts/24 h cap is also per app, so the shared
+  rate-limit telemetry (`getGlobalBlockedReason`: exhausted window) stays global.
 - **Per-campaign 15-minute back-off after a non-throttle error** (`recordContextPostResult`): this is
   the "15-minute countdown on a 1-minute campaign" the owner saw. It is per-campaign (the other
   campaigns' clocks are untouched, test "the 15-minute error back-off moves only the failing
   1-minute campaign clock") and intentional (REL-5 anti-hammer). Throttle errors (429/cooldown) do
-  not add it because the global cooldown already blocks. Recommendation: keep, but consider showing
+  not add it because the account cooldown already blocks. Recommendation: keep, but consider showing
   "retrying in 14m after an error" in the card so it is not mistaken for a schedule change.
 - `/api/status.stats` and `latestLog` are whole-bot by design; per-campaign counters are
   `context.stats`.

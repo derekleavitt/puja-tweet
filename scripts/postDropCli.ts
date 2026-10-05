@@ -21,7 +21,7 @@ export interface CliOptions {
 
 export interface PostDropDeps {
   drops: Pick<DropService, 'executeDrop'>;
-  services: Pick<Services, 'settings' | 'contexts' | 'credentials'>;
+  services: Pick<Services, 'settings' | 'contexts' | 'accounts'>;
   env?: NodeJS.ProcessEnv;
   now?: Date;
 }
@@ -91,17 +91,21 @@ export async function runPostDrop(options: CliOptions, deps: PostDropDeps): Prom
     console.error(`[PostDrop] Context "${options.contextId}" not found.`);
     return 1;
   }
-  const creds = services.credentials.getEffectiveCredentials();
+  // The campaign's own X account (default: the env-token account).
+  const creds = services.accounts.getCredentialsForAccount(context.accountId);
   const hasAuth = !!(
-    (creds.apiKey && creds.apiSecret && creds.accessToken && creds.accessTokenSecret) ||
-    creds.oauth2AccessToken
+    creds &&
+    ((creds.apiKey && creds.apiSecret && creds.accessToken && creds.accessTokenSecret) ||
+      creds.oauth2AccessToken)
   );
+  const handle = services.accounts.handleOf(context.accountId);
 
   console.log('====================================================');
   console.log('ChromaBot Scheduled Workflow Triggered');
   console.log(`Execution Time (UTC): ${new Date().toISOString()}`);
   console.log(`Context: ${context.name} (${context.id})`);
   console.log(`Engagement mode: ${(context.engagementMode || 'reply').toUpperCase()}`);
+  console.log(`Posts as: ${handle ? `@${handle}` : context.accountId || 'default account'}`);
   console.log(`Target Tweet ID: ${context.targetTweetId}`);
   console.log(`Slot: ${options.slot.toUpperCase()}`);
   console.log(`Mode requested: ${wantLive ? 'LIVE X API (Real Post)' : 'DRY RUN (Simulated)'}`);

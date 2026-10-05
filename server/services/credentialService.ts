@@ -4,6 +4,7 @@
 
 import crypto from 'crypto';
 import { HttpError } from '../middleware/error.js';
+import { decrypt, encrypt, getEncryptionKey } from './credentialCrypto.js';
 import type { RefreshedTokens, TwitterCredentials } from '../twitterClient.js';
 import type { StateManager } from './stateManager.js';
 
@@ -33,37 +34,6 @@ const METHOD_FIELDS: Record<string, CredentialField[]> = {
   oauth1: ['apiKey', 'apiSecret', 'accessToken', 'accessTokenSecret'],
   oauth2: ['oauth2ClientId', 'oauth2ClientSecret', 'oauth2AccessToken', 'oauth2RefreshToken'],
   bearer: ['bearerToken'],
-};
-
-const BLOB_PREFIX = 'enc:v1:';
-
-/** AES-256-GCM key from `CREDENTIALS_ENCRYPTION_KEY` (32 bytes as 64 hex chars or base64), or null. */
-const getEncryptionKey = (): Buffer | null => {
-  const raw = (process.env.CREDENTIALS_ENCRYPTION_KEY || '').trim();
-  if (!raw) return null;
-  const key = /^[0-9a-fA-F]{64}$/.test(raw) ? Buffer.from(raw, 'hex') : Buffer.from(raw, 'base64');
-  if (key.length !== 32) {
-    console.error('[Credentials] CREDENTIALS_ENCRYPTION_KEY must be 32 bytes (hex or base64).');
-    return null;
-  }
-  return key;
-};
-
-const encrypt = (plain: string, key: Buffer): string => {
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-  const ct = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
-  return `${BLOB_PREFIX}${[iv, cipher.getAuthTag(), ct].map((b) => b.toString('base64')).join(':')}`;
-};
-
-const decrypt = (blob: string, key: Buffer): string => {
-  const [iv, tag, ct] = blob
-    .slice(BLOB_PREFIX.length)
-    .split(':')
-    .map((p) => Buffer.from(p, 'base64'));
-  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
-  decipher.setAuthTag(tag);
-  return Buffer.concat([decipher.update(ct), decipher.final()]).toString('utf8');
 };
 
 export class CredentialService {

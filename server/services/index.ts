@@ -13,6 +13,7 @@ import { FirestoreStore } from '../store/FirestoreStore.js';
 import { JsonFileStore } from '../store/JsonFileStore.js';
 import { MemoryStore } from '../store/MemoryStore.js';
 import type { Store } from '../store/Store.js';
+import { AccountService } from './accountService.js';
 import { ContextService } from './contextService.js';
 import { CredentialService } from './credentialService.js';
 import { GeminiUsageService } from './geminiUsageService.js';
@@ -28,6 +29,7 @@ export interface Services {
   logs: LogService;
   settings: SettingsService;
   credentials: CredentialService;
+  accounts: AccountService;
   rateLimit: RateLimitService;
   geminiUsage: GeminiUsageService;
   /** Resolves once every pending write has reached the store. */
@@ -52,6 +54,7 @@ export const createServices = async (store: Store): Promise<Services> => {
     logs: new LogService(sm, queue),
     settings: new SettingsService(sm, contexts),
     credentials,
+    accounts: new AccountService(sm, credentials),
     rateLimit: new RateLimitService(sm),
     geminiUsage: new GeminiUsageService(sm),
     flush: () => sm.flush(),

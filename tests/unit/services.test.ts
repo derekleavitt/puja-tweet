@@ -335,13 +335,13 @@ describe('services over MemoryStore', () => {
   describe('rateLimitService', () => {
     it('sets and clears the global cooldown', () => {
       expect(svc.rateLimit.getCooldownState().isThrottled).toBe(false);
-      svc.rateLimit.setGlobalCooldown(10, 'testing');
+      svc.rateLimit.setCooldown(10, 'testing');
       const state = svc.rateLimit.getCooldownState();
       expect(state.isThrottled).toBe(true);
       expect(state.reason).toBe('testing');
       expect(state.secondsRemaining).toBeGreaterThan(590);
       expect(svc.rateLimit.getRateLimitTelemetry().status).toBe('throttled');
-      svc.rateLimit.clearGlobalCooldown();
+      svc.rateLimit.clearCooldown();
       expect(svc.rateLimit.getCooldownState().isThrottled).toBe(false);
     });
 

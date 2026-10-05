@@ -9,6 +9,8 @@ export type XErrorClass =
   | 'cooldown'
   | 'reply_restricted'
   | 'auth'
+  /** The campaign's X account is removed, revoked or unreadable: nothing was sent to X. */
+  | 'account'
   | 'payment'
   | 'target_missing'
   | 'text_invalid'

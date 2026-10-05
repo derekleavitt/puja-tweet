@@ -61,7 +61,7 @@ export const QueueSlotCard: React.FC<QueueSlotCardProps> = ({
 
         <div className="p-2 rounded-lg bg-neutral-50 dark:bg-neutral-800/70 border border-neutral-200/70 dark:border-neutral-700/60">
           <div className="text-[10px] uppercase font-mono text-neutral-400 mb-0.5 flex items-center justify-between">
-            <span>Queued Message</span>
+            <span>Queued Message{slot.accountHandle ? ` · @${slot.accountHandle}` : ''}</span>
             {slot.targetTweetId && <span>→ #{slot.targetTweetId.slice(0, 6)}…</span>}
           </div>
           {slot.previewText ? (

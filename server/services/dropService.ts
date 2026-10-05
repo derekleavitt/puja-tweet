@@ -10,8 +10,9 @@ import { formatTimeInZone, hourInZone, slotTypeForHour } from '../../shared/time
 import { checkTweetText } from '../../shared/tweetLength.js';
 import { HttpError } from '../middleware/error.js';
 import { resolveTemplateText } from '../templateAgent.js';
-import { postColorTweet } from '../twitterClient.js';
-import { classifyXError } from '../xErrors.js';
+import { postColorTweet, type TwitterCredentials } from '../twitterClient.js';
+import { classifyXError, type XErrorClass } from '../xErrors.js';
+import { DEFAULT_ACCOUNT_ID } from '../../shared/types.js';
 import { composeDropText, isEvolutionEnabled, nextHashtagState, usedHashtags } from './dropText.js';
 import type { ComposeOptions } from './dropText.js';
 import { hashtagService, type HashtagService } from './hashtagService.js';
@@ -36,10 +37,7 @@ export interface ExecuteDropOptions {
 }
 
 export interface DropDeps {
-  services: Pick<
-    Services,
-    'contexts' | 'queue' | 'logs' | 'credentials' | 'rateLimit' | 'settings'
-  >;
+  services: Pick<Services, 'contexts' | 'queue' | 'logs' | 'accounts' | 'rateLimit' | 'settings'>;
   postColorTweet: typeof postColorTweet;
   resolveTemplateText: typeof resolveTemplateText;
   /** Evolving-hashtag generator; defaults to the Gemini-with-offline-fallback service. */
@@ -47,9 +45,9 @@ export interface DropDeps {
 }
 
 type TweetResult = Awaited<ReturnType<typeof postColorTweet>>;
-type Creds = ReturnType<Services['credentials']['getEffectiveCredentials']>;
+type Creds = TwitterCredentials;
 
-/** Rate-limit / cooldown responses: set the global cooldown. */
+/** Rate-limit / cooldown responses: set the posting account's cooldown. */
 const isCooldown = (r: TweetResult) =>
   !!(
     r.isRateLimitOrCooldown ||
@@ -100,6 +98,7 @@ export const createDropService = (deps: DropDeps) => {
     replyTo: string | undefined,
     creds: Creds,
     isDryRun: boolean,
+    accountHandle?: string,
   ): Promise<TweetResult> => {
     if (classify(first) !== 'target_missing') {
       console.log(
@@ -114,7 +113,7 @@ export const createDropService = (deps: DropDeps) => {
     if (isDryRun) return first;
     const fallback = await deps.postColorTweet(
       creds,
-      { text, replyToTweetId: context.targetTweetId, engagementMode: 'reply' },
+      { text, replyToTweetId: context.targetTweetId, engagementMode: 'reply', accountHandle },
       isDryRun,
     );
     return fallback.success ? fallback : first;
@@ -127,6 +126,7 @@ export const createDropService = (deps: DropDeps) => {
     text: string,
     creds: Creds,
     isDryRun: boolean,
+    accountHandle?: string,
   ): Promise<TweetResult | undefined> => {
     const errorClass = classify(first);
     if (errorClass !== 'cooldown' && errorClass !== 'reply_restricted') return undefined;
@@ -136,18 +136,23 @@ export const createDropService = (deps: DropDeps) => {
     );
     const retry = await deps.postColorTweet(
       creds,
-      { text, quoteTweetId: context.targetTweetId, engagementMode: 'quote' },
+      { text, quoteTweetId: context.targetTweetId, engagementMode: 'quote', accountHandle },
       isDryRun,
     );
     return retry.success ? retry : undefined;
   };
 
-  const recordTelemetry = (res: TweetResult, isDryRun: boolean) => {
-    if (res.rateLimitHeaders) s.rateLimit.updateRateLimitTelemetry(res.rateLimitHeaders);
+  /** Cooldown, live-post spacing and the rate window are per X account (headers are per user). */
+  const recordTelemetry = (res: TweetResult, isDryRun: boolean, accountId?: string) => {
+    if (res.rateLimitHeaders) s.rateLimit.updateRateLimitTelemetry(res.rateLimitHeaders, accountId);
     if (!isDryRun && isCooldown(res)) {
-      s.rateLimit.setGlobalCooldown(15, res.error || 'X API Rate Limit / Reply Cooldown Active');
+      s.rateLimit.setCooldown(
+        15,
+        res.error || 'X API Rate Limit / Reply Cooldown Active',
+        accountId,
+      );
     }
-    if (!isDryRun && res.success) s.rateLimit.recordLivePostTimestamp();
+    if (!isDryRun && res.success) s.rateLimit.recordLivePostTimestamp(accountId);
   };
 
   /** Execute a drop for a specific context or the active context. */
@@ -188,41 +193,64 @@ export const createDropService = (deps: DropDeps) => {
       s.settings.isGlobalDryRun() ||
       !!options.forceDryRun ||
       (options.forceLive ? false : (context.dryRun ?? false));
-    const creds = s.credentials.getEffectiveCredentials();
+    // The campaign's own X account signs every request of this drop (default: the env account).
+    const accountId = context.accountId || undefined;
+    const accountHandle = s.accounts.handleOf(accountId);
+    const accountCreds = s.accounts.getCredentialsForAccount(accountId);
+    // A simulation never reaches X, so it does not need usable account tokens.
+    const creds: Creds = accountCreds ?? {};
+    const accountFailure = !isDryRun && !accountCreds;
 
     console.log(
       `[Drop] Executing drop for context "${context.name}" (${context.id}) ` +
         `-> Mode: ${engagementMode.toUpperCase()} ` +
         `${describeMode(context, engagementMode, replyToTweetId, chainInfo)}` +
-        `, source: ${source}, mode: ${isDryRun ? 'DRY-RUN' : 'LIVE X'}${s.settings.isGlobalDryRun() ? ' (global dry-run)' : ''}`,
+        `, source: ${source}, mode: ${isDryRun ? 'DRY-RUN' : 'LIVE X'}${s.settings.isGlobalDryRun() ? ' (global dry-run)' : ''}` +
+        `, account: ${accountHandle ? `@${accountHandle}` : (accountId ?? DEFAULT_ACCOUNT_ID)}`,
     );
 
-    let res = await deps.postColorTweet(
-      creds,
-      { text, replyToTweetId, quoteTweetId, engagementMode },
-      isDryRun,
-    );
+    // An unusable account fails the drop without calling X (and pauses the campaign at once).
+    let res: TweetResult = accountFailure
+      ? { success: false, error: s.accounts.problem(accountId) ?? 'X account unavailable' }
+      : await deps.postColorTweet(
+          creds,
+          { text, replyToTweetId, quoteTweetId, engagementMode, accountHandle },
+          isDryRun,
+        );
     if (
+      !accountFailure &&
       !res.success &&
       engagementMode === 'reply' &&
       context.replyTargetMode === 'last_comment' &&
       !chainInfo.isFirstInChain
     ) {
-      res = await recoverChain(context, res, text, replyToTweetId, creds, isDryRun);
+      res = await recoverChain(context, res, text, replyToTweetId, creds, isDryRun, accountHandle);
     }
     let fallbackTriggered = false;
-    if (!res.success && engagementMode === 'reply' && context.autoFallbackToQuote) {
-      const quoted = await quoteFallback(context, res, text, creds, isDryRun);
+    if (
+      !accountFailure &&
+      !res.success &&
+      engagementMode === 'reply' &&
+      context.autoFallbackToQuote
+    ) {
+      const quoted = await quoteFallback(context, res, text, creds, isDryRun, accountHandle);
       if (quoted) {
         res = quoted;
         fallbackTriggered = true;
       }
     }
-    recordTelemetry(res, isDryRun);
+    recordTelemetry(res, isDryRun, accountId);
     const finalMode = fallbackTriggered ? 'quote' : engagementMode;
 
     const status = res.success ? (res.simulated ? 'simulated' : 'success') : 'error';
-    const failure = res.success ? undefined : { errorClass: classify(res), message: res.error };
+    const errorClass: XErrorClass | undefined = res.success
+      ? undefined
+      : accountFailure
+        ? 'account'
+        : classify(res);
+    const failure = errorClass ? { errorClass, message: res.error } : undefined;
+    // X rejected this account's tokens: mark it revoked so the UI and other campaigns know.
+    if (errorClass === 'auth' && !isDryRun) s.accounts.markRevoked(accountId, res.error);
     const { autoPausedReason } = s.contexts.recordContextPostResult(
       context.id,
       status,
@@ -251,6 +279,8 @@ export const createDropService = (deps: DropDeps) => {
       errorMessage,
       contextId: context.id,
       contextName: context.name,
+      accountId: accountId ?? DEFAULT_ACCOUNT_ID,
+      ...(accountHandle ? { accountHandle } : {}),
     } as const;
     s.logs.addLog(logEntry);
 

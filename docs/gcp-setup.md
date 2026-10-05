@@ -119,7 +119,8 @@ gcloud run services update chromabot --region us-central1 --update-secrets=TWITT
 ```
 
 After rotating `CRON_SECRET`, re-run `--scheduler URL`. Rotating `CREDENTIALS_ENCRYPTION_KEY` makes
-keys previously saved through the UI unreadable.
+keys previously saved through the UI, and the tokens of X accounts connected in Settings, unreadable
+(reconnect those accounts; their campaigns pause until then).
 
 ## Rollback
 
@@ -144,8 +145,18 @@ npx firebase-tools deploy --only firestore:rules --project hitthehatch
 
 `firebase.json` targets the named AI Studio database. The rules hard-code the owner email; keep it in
 sync with `shared/owner.ts`. Override the database with `FIRESTORE_DATABASE_ID`. Optional env vars:
-`GEMINI_MODEL`, `GEMINI_FALLBACK_MODEL`, `GEMINI_MAX_CALLS_PER_DAY`, `GEMINI_TIMEOUT_MS`, `X_HANDLE`,
-and build-time `VITE_FIREBASE_*` (baked into the bundle). See `.env.example`.
+`GEMINI_MODEL`, `GEMINI_FALLBACK_MODEL`, `GEMINI_MAX_CALLS_PER_DAY`, `GEMINI_TIMEOUT_MS`, `X_HANDLE`
+(display fallback for the default account's handle until it is verified), `OAUTH_CALLBACK_ORIGINS`
+(extra origins for the X account callback, e.g. a custom domain) and build-time `VITE_FIREBASE_*`
+(baked into the bundle). See `.env.example`.
+
+## Extra X accounts
+
+Campaigns can post as other X accounts connected in Settings → X accounts (OAuth 1.0a with the same
+`TWITTER_API_KEY`/`SECRET`). Their tokens are stored encrypted in the Firestore state document with
+`CREDENTIALS_ENCRYPTION_KEY` (already a secret above). In the X developer portal add the callback URL
+`https://<your Cloud Run URL or domain>/oauth/x/callback` and set app permissions to Read and Write.
+Full steps: [accounts.md](accounts.md).
 
 ## Turning off the AI Studio deployment
 

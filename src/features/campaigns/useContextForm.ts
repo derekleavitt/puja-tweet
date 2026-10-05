@@ -23,6 +23,8 @@ export function useContextForm(opts: UseContextFormOptions) {
   const [editingContext, setEditingContext] = useState<Partial<TweetContext> | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  /** Account the edited campaign is saved with ('' = default), to warn about chain resets. */
+  const [savedAccountId, setSavedAccountId] = useState<string | undefined>(undefined);
 
   /** Shallow-merges fields into the draft. */
   const patch = (fields: Partial<TweetContext>) =>
@@ -38,6 +40,7 @@ export function useContextForm(opts: UseContextFormOptions) {
   const openCreate = () => {
     setFormError(null);
     setIsCreating(true);
+    setSavedAccountId(undefined);
     setEditingContext({
       name: `Context #${contexts.length + 1}`,
       description: '',
@@ -64,6 +67,7 @@ export function useContextForm(opts: UseContextFormOptions) {
   const openEdit = (context: TweetContext) => {
     setFormError(null);
     setIsCreating(false);
+    setSavedAccountId(context.accountId ?? '');
     setEditingContext({
       ...context,
       // An unset target starts from the server default (never a client constant).
@@ -115,6 +119,7 @@ export function useContextForm(opts: UseContextFormOptions) {
     editingContext,
     isCreating,
     formError,
+    savedAccountId,
     patch,
     patchSchedule,
     openCreate,

@@ -26,6 +26,8 @@ const hashtagEvolutionSchema = z.object({
 export const contextUpdateSchema = z.object({
   name: z.string().optional(),
   description: z.string().optional(),
+  // X account the campaign posts as ('' / null / 'acct_env' = the default account). Must exist.
+  accountId: z.string().max(100).nullish(),
   targetTweetId: z
     .string()
     .refine(
@@ -55,6 +57,7 @@ export type ContextUpdateInput = Partial<
     TweetContext,
     | 'name'
     | 'description'
+    | 'accountId'
     | 'targetTweetId'
     | 'replyTargetMode'
     | 'engagementMode'
@@ -82,8 +85,9 @@ export const parseContextUpdate = (body: unknown): ContextUpdateInput => {
     const where = issue.path.length ? `${issue.path.join('.')}: ` : '';
     throw new HttpError(400, `${where}${issue.message}`);
   }
-  const { lastPostedTweetId, ...rest } = result.data;
+  const { lastPostedTweetId, accountId, ...rest } = result.data;
   const parsed: ContextUpdateInput = { ...rest };
+  if (accountId !== undefined) parsed.accountId = accountId ?? '';
   // Keep "key present" semantics: an explicit null/'' clears the chain anchor.
   if (lastPostedTweetId !== undefined) parsed.lastPostedTweetId = lastPostedTweetId ?? undefined;
   return parsed;
