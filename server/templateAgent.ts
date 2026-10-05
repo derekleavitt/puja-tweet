@@ -166,6 +166,69 @@ async function draftWithRetry(
   return draft;
 }
 
+export interface GenerateAgentTextOptions {
+  systemInstruction: string;
+  /** Weighted-char budget; longer drafts are retried once, then trimmed to a complete sentence. */
+  maxLength: number;
+  /** Complete-sentence ceiling when the shaped body needs less room (defaults to `maxLength`). */
+  hardMaxLength?: number;
+  temperature?: number;
+  /** Applies the hashtag rules to a raw draft (defaults to plain). */
+  shape?: (text: string) => ShapedAgentText;
+  /** Extra clean-up of each model reply (after `cleanAgentOutput`). */
+  clean?: (text: string) => string;
+  /** Receives the finished text (for the preview breakdown). */
+  onText?: AgentTextOptions['onText'];
+}
+
+/**
+ * One Gemini generation: tries every configured model (shared daily cap, timeout), regenerates a
+ * too-long draft once and finishes on a complete sentence. Throws `AgentUnavailableError` when AI is
+ * not configured or every model fails (callers decide on any fallback text).
+ */
+export async function generateAgentText(
+  contents: string,
+  opts: GenerateAgentTextOptions,
+): Promise<string> {
+  const max = opts.maxLength;
+  const shape = opts.shape ?? plainShape;
+  if (!isGeminiConfigured())
+    throw new AgentUnavailableError('AI generation is not configured (GEMINI_API_KEY).');
+
+  const callModel = async (model: string, prompt: string): Promise<string> => {
+    if (!tryConsumeGeminiCall()) throw new Error('GEMINI_MAX_CALLS_PER_DAY reached');
+    const response = await getGeminiClient().models.generateContent({
+      model,
+      contents: prompt,
+      config: {
+        systemInstruction: opts.systemInstruction,
+        temperature: opts.temperature ?? 0.9,
+        abortSignal: AbortSignal.timeout(getGeminiTimeoutMs()),
+      },
+    });
+    const cleaned = cleanAgentOutput(response.text ?? '');
+    return opts.clean ? opts.clean(cleaned) : cleaned;
+  };
+
+  for (const model of getGeminiModels()) {
+    try {
+      const draft = await draftWithRetry((p) => callModel(model, p), contents, shape, max);
+      if (draft.body) {
+        const done = finishAgentText(draft, max, opts.hardMaxLength ?? max);
+        opts.onText?.({ text: done.text, shaped: draft, droppedTail: done.droppedTail });
+        return done.text;
+      }
+    } catch (err) {
+      console.warn(
+        `[TemplateAgent] Model ${model} encountered an issue:`,
+        errorMessage(err) || err,
+      );
+      // continue to next model in loop
+    }
+  }
+  throw new AgentUnavailableError('AI generation failed for every configured model.');
+}
+
 /**
  * Call Gemini AI to generate poetic tweet content
  */
@@ -178,56 +241,24 @@ export async function generatePoeticAgentText(
   agent: AgentTextOptions = {},
 ): Promise<string> {
   const max = agent.maxLength ?? AGENT_TARGET_LENGTH;
-  const shape = agent.shape ?? plainShape;
   const contents = buildAgentContents(userPrompt, color, history, slotLabel, includeColor, agent);
 
-  const fallback = `${color.colorPick} (${color.hex}) — ${color.mood}`;
-  const useFallback = () => {
+  try {
+    return await generateAgentText(contents, {
+      systemInstruction: POETRY_AGENT_SYSTEM_INSTRUCTION,
+      maxLength: max,
+      hardMaxLength: agent.hardMaxLength,
+      shape: agent.shape,
+      onText: agent.onText,
+      clean: includeColor ? undefined : stripColorHeader,
+    });
+  } catch (err) {
+    // A color template falls back to its color mood; a non-color template must not post color text.
+    if (!includeColor || !(err instanceof AgentUnavailableError)) throw err;
+    const fallback = `${color.colorPick} (${color.hex}) — ${color.mood}`;
     agent.onText?.({ text: fallback, shaped: plainShape(fallback), droppedTail: [] });
     return fallback;
-  };
-  if (!isGeminiConfigured()) {
-    if (!includeColor)
-      throw new AgentUnavailableError('AI generation is not configured (GEMINI_API_KEY).');
-    return useFallback();
   }
-
-  const callModel = async (model: string, prompt: string): Promise<string> => {
-    if (!tryConsumeGeminiCall()) throw new Error('GEMINI_MAX_CALLS_PER_DAY reached');
-    const response = await getGeminiClient().models.generateContent({
-      model,
-      contents: prompt,
-      config: {
-        systemInstruction: POETRY_AGENT_SYSTEM_INSTRUCTION,
-        temperature: 0.9,
-        abortSignal: AbortSignal.timeout(getGeminiTimeoutMs()),
-      },
-    });
-    const cleaned = cleanAgentOutput(response.text ?? '');
-    return includeColor ? cleaned : stripColorHeader(cleaned);
-  };
-
-  for (const model of getGeminiModels()) {
-    try {
-      const draft = await draftWithRetry((p) => callModel(model, p), contents, shape, max);
-      if (draft.body) {
-        const done = finishAgentText(draft, max, agent.hardMaxLength ?? max);
-        agent.onText?.({ text: done.text, shaped: draft, droppedTail: done.droppedTail });
-        return done.text;
-      }
-    } catch (err) {
-      console.warn(
-        `[TemplateAgent] Model ${model} encountered an issue:`,
-        errorMessage(err) || err,
-      );
-      // continue to next model in loop
-    }
-  }
-
-  // A color template falls back to its color mood; a non-color template must not post color text.
-  if (!includeColor)
-    throw new AgentUnavailableError('AI generation failed for every configured model.');
-  return useFallback();
 }
 
 /**
