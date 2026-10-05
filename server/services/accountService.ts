@@ -112,7 +112,10 @@ export class AccountService {
 
   /** Why campaigns cannot post as this account right now; undefined when usable. */
   problem(id?: string | null): string | undefined {
-    return accountProblem(this.state, id);
+    const known = accountProblem(this.state, id);
+    if (known || this.getCredentialsForAccount(id)) return known;
+    const handle = this.handleOf(id);
+    return `${handle ? `Account @${handle}` : "This campaign's X account"} cannot be used: its tokens cannot be read (CREDENTIALS_ENCRYPTION_KEY changed?) or the app API key is missing — reconnect the account and resume`;
   }
 
   handleOf(id?: string | null): string | undefined {
