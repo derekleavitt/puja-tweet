@@ -201,7 +201,13 @@ export async function refreshOAuth2Token(
 export async function verifyTwitterCredentials(
   creds: TwitterCredentials,
   onTokensRefreshed?: TokensRefreshedCallback,
-): Promise<{ valid: boolean; user?: Record<string, unknown>; message: string }> {
+): Promise<{
+  valid: boolean;
+  user?: Record<string, unknown>;
+  message: string;
+  /** X rejected the credentials themselves (HTTP 401/403), not a network/rate-limit/server issue. */
+  authRejected?: boolean;
+}> {
   // 1. Try OAuth 1.0a User Context (Permanent)
   if (creds.apiKey && creds.apiSecret && creds.accessToken && creds.accessTokenSecret) {
     const url = 'https://api.x.com/2/users/me';
@@ -238,6 +244,7 @@ export async function verifyTwitterCredentials(
         return {
           valid: false,
           message: `OAuth 1.0a verification failed: ${errMsg}.`,
+          authRejected: res.status === 401 || res.status === 403,
         };
       }
     } catch (err) {

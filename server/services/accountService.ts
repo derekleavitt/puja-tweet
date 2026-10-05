@@ -268,10 +268,17 @@ export class AccountService {
         : this.tokenCredentials(this.getStored(accountId));
     const result = creds
       ? await verifyTwitterCredentials(creds)
-      : { valid: false, message: 'Account tokens cannot be read (wrong encryption key?).' };
+      : {
+          valid: false,
+          message: 'Account tokens cannot be read (wrong encryption key?).',
+          authRejected: accountId !== DEFAULT_ACCOUNT_ID,
+        };
     const user = result.user as { username?: string; id?: string } | undefined;
+    // Only X rejecting the tokens revokes; a network error, 429 or 5xx keeps the current status.
+    const current = this.get(accountId)?.status ?? 'unverified';
+    const status = result.valid ? 'ok' : result.authRejected ? 'revoked' : current;
     const patch = {
-      status: result.valid ? ('ok' as const) : ('revoked' as const),
+      status,
       lastVerifiedAt: new Date().toISOString(),
       lastError: result.valid ? undefined : result.message,
       ...(user?.username ? { handle: user.username } : {}),

@@ -206,6 +206,20 @@ describe('scheduler gates per account', () => {
     expect(scheduler.getGlobalBlockedReason()).toBeUndefined();
   });
 
+  it("account B's exhausted rate window (per-user headers) does not block account A", async () => {
+    const onDefault = dueLive('default acct');
+    const onSecond = dueLive('second acct', second);
+    const reset = Math.floor(Date.now() / 1000) + 600;
+    services.rateLimit.updateRateLimitTelemetry({ limit: 17, remaining: 0, reset }, second);
+    const exec = vi.spyOn(dropService, 'executeDrop').mockResolvedValue(undefined as never);
+    await scheduler.tick();
+    expect(exec.mock.calls.map((c) => c[0]?.contextId)).toEqual([onDefault.id]);
+    expect(scheduler.getBlockedReason(onSecond)).toMatch(/rate-limit window used up/);
+    expect(scheduler.getBlockedReason(onDefault)).toBeUndefined();
+    expect(scheduler.getGlobalBlockedReason()).toBeUndefined();
+    services.rateLimit.updateRateLimitTelemetry({ limit: 17, remaining: 17, reset }, second);
+  });
+
   it("account A's recent live post does not delay account B", async () => {
     const onDefault = dueLive('default acct');
     const onSecond = dueLive('second acct', second);

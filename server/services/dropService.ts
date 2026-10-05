@@ -142,9 +142,9 @@ export const createDropService = (deps: DropDeps) => {
     return retry.success ? retry : undefined;
   };
 
-  /** Cooldown and live-post spacing are per X account; the header telemetry stays app-wide. */
+  /** Cooldown, live-post spacing and the rate window are per X account (headers are per user). */
   const recordTelemetry = (res: TweetResult, isDryRun: boolean, accountId?: string) => {
-    if (res.rateLimitHeaders) s.rateLimit.updateRateLimitTelemetry(res.rateLimitHeaders);
+    if (res.rateLimitHeaders) s.rateLimit.updateRateLimitTelemetry(res.rateLimitHeaders, accountId);
     if (!isDryRun && isCooldown(res)) {
       s.rateLimit.setCooldown(
         15,

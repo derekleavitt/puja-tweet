@@ -326,7 +326,10 @@ export class ContextService {
     return this.createContext({
       name: `${source.name} (Copy)`,
       description: source.description,
-      accountId: source.accountId,
+      // A removed account falls back to the default (the copy starts paused; pick one before resuming).
+      accountId: this.sm.state.accounts.some((a) => a.id === source.accountId)
+        ? source.accountId
+        : undefined,
       targetTweetId: source.targetTweetId,
       replyTargetMode: source.replyTargetMode || 'original_post',
       engagementMode: source.engagementMode || 'reply',

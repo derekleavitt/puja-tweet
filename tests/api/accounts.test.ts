@@ -274,7 +274,13 @@ describe('verify, rename, remove', () => {
     expect(ok.body.account).toMatchObject({ id: 'acct_env', handle: 'owner', status: 'ok' });
 
     await connect('222', 'second_acct');
-    verify.mockResolvedValueOnce({ valid: false, message: 'Unauthorized' });
+    // A network error, 429 or 5xx never revokes: the account keeps posting.
+    verify.mockResolvedValueOnce({ valid: false, message: 'Network error connecting to X API' });
+    const blip = await request(app).post('/api/accounts/acct_222/verify');
+    expect(blip.body).toMatchObject({ valid: false, account: { status: 'ok' } });
+    expect(svc.accounts.getCredentialsForAccount('acct_222')).not.toBeNull();
+
+    verify.mockResolvedValueOnce({ valid: false, message: 'Unauthorized', authRejected: true });
     const bad = await request(app).post('/api/accounts/acct_222/verify');
     expect(bad.body).toMatchObject({ valid: false, account: { status: 'revoked' } });
     expect(svc.accounts.getCredentialsForAccount('acct_222')).toBeNull();
@@ -282,7 +288,7 @@ describe('verify, rename, remove', () => {
     // Verify uses the stored tokens even while revoked, so it can bring the account back.
     verify.mockResolvedValueOnce({ valid: true, user: { username: 'second_acct' }, message: 'ok' });
     await request(app).post('/api/accounts/acct_222/verify');
-    expect(verify.mock.calls[2][0]).toMatchObject({ accessToken: 'token-222' });
+    expect(verify.mock.calls[3][0]).toMatchObject({ accessToken: 'token-222' });
     expect(svc.accounts.get('acct_222')?.status).toBe('ok');
   });
 
@@ -368,6 +374,15 @@ describe('campaign accountId', () => {
     await connect('222', 'second_acct');
     const ctx = svc.contexts.createContext({ name: 'orig', accountId: 'acct_222' });
     expect(svc.contexts.duplicateContext(ctx.id).accountId).toBe('acct_222');
+  });
+
+  it('duplicating a campaign whose account was removed falls back to the default account', async () => {
+    await connect('222', 'second_acct');
+    const ctx = svc.contexts.createContext({ name: 'orig', accountId: 'acct_222' });
+    await request(app).delete('/api/accounts/acct_222').expect(200);
+    const copy = svc.contexts.duplicateContext(ctx.id);
+    expect(copy.accountId).toBeUndefined();
+    expect(copy.enabled).toBe(false);
   });
 });
 

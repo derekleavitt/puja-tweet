@@ -92,6 +92,7 @@ class SchedulerService {
     if (services.settings.isGlobalDryRun() || context.dryRun) return true;
     // Cooldown and spacing belong to the X account the campaign posts as.
     if (services.rateLimit.getCooldownState(context.accountId).isThrottled) return false;
+    if (services.rateLimit.getWindowExhaustedSeconds(context.accountId) > 0) return false;
     return services.rateLimit.getTimeSinceLastLivePostMs(context.accountId) >= MIN_LIVE_SPACING_MS;
   }
 
@@ -146,7 +147,7 @@ class SchedulerService {
       console.error('[Scheduler] Failed to top up the queue:', err);
     }
 
-    // Global gates: global pause, exhausted X rate window (cooldowns are per account).
+    // Global gate: global pause (cooldowns and rate windows are per account).
     const globalBlock = this.getGlobalBlockedReason();
     if (globalBlock) {
       console.log(`[Scheduler] Tick skipped: ${globalBlock}`);
@@ -268,10 +269,6 @@ class SchedulerService {
     if (services.settings.isGlobalPaused()) {
       return 'Paused: scheduled posts are off (switch the header to Running)';
     }
-    const telemetry = services.rateLimit.getRateLimitTelemetry();
-    if (telemetry.headersCaptured && telemetry.remaining <= 0 && telemetry.secondsUntilReset > 0) {
-      return `X rate-limit window used up: resets in ${Math.ceil(telemetry.secondsUntilReset / 60)}m`;
-    }
     return undefined;
   }
 
@@ -286,6 +283,11 @@ class SchedulerService {
     }
     const problem = services.accounts.problem(context.accountId);
     if (problem) return problem;
+    const windowSeconds = services.rateLimit.getWindowExhaustedSeconds(context.accountId);
+    if (windowSeconds > 0) {
+      const handle = services.accounts.handleOf(context.accountId);
+      return `X rate-limit window used up${handle ? ` for @${handle}` : ''}: resets in ${Math.ceil(windowSeconds / 60)}m`;
+    }
     const cooldown = services.rateLimit.getCooldownState(context.accountId);
     if (cooldown.isThrottled) {
       const handle = services.accounts.handleOf(context.accountId);

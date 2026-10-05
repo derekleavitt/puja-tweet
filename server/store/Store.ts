@@ -62,6 +62,8 @@ export interface BotState {
   lastLivePostByAccount?: Record<string, number>;
   lastCapturedRateLimitHeaders?: RateLimitHeaders;
   lastRateLimitCaptureTimestamp?: number;
+  /** The X account those headers came from (they are per user); undefined = default account. */
+  lastRateLimitAccountId?: string;
   /** Gemini calls made on `day` (UTC), so GEMINI_MAX_CALLS_PER_DAY survives restarts. */
   geminiUsage?: { day: string; calls: number };
 }

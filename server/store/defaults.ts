@@ -77,6 +77,9 @@ export const normalizeState = (raw: unknown): BotState => {
   if (data.lastCapturedRateLimitHeaders) {
     state.lastCapturedRateLimitHeaders = data.lastCapturedRateLimitHeaders;
   }
+  if (typeof data.lastRateLimitAccountId === 'string') {
+    state.lastRateLimitAccountId = data.lastRateLimitAccountId;
+  }
   if (data.lastRateLimitCaptureTimestamp) {
     state.lastRateLimitCaptureTimestamp = Number(data.lastRateLimitCaptureTimestamp);
   }

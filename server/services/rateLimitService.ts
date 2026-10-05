@@ -112,12 +112,27 @@ export class RateLimitService {
     return last ? Date.now() - last : Infinity;
   }
 
-  updateRateLimitTelemetry(headers?: RateLimitHeaders) {
+  updateRateLimitTelemetry(headers?: RateLimitHeaders, accountId?: string) {
     if (headers && (headers.limit !== undefined || headers.remaining !== undefined)) {
       this.sm.state.lastCapturedRateLimitHeaders = headers;
       this.sm.state.lastRateLimitCaptureTimestamp = Date.now();
+      this.sm.state.lastRateLimitAccountId = isDefault(accountId) ? undefined : accountId;
       this.sm.persist();
     }
+  }
+
+  /**
+   * Seconds until X's rate window resets when the last captured headers (which are per user) came
+   * from this account and say the window is used up; 0 otherwise. Never blocks another account.
+   */
+  getWindowExhaustedSeconds(accountId?: string): number {
+    const s = this.sm.state;
+    const headers = s.lastCapturedRateLimitHeaders;
+    const owner = s.lastRateLimitAccountId;
+    const same = isDefault(accountId) ? isDefault(owner) : owner === accountId;
+    if (!same || !headers || headers.remaining === undefined || headers.remaining > 0) return 0;
+    if (headers.reset === undefined) return 0;
+    return Math.max(0, Math.ceil(headers.reset - Date.now() / 1000));
   }
 
   getRateLimitTelemetry(): RateLimitTelemetry {
