@@ -45,7 +45,7 @@ let geminiDown = false;
  */
 const gemini = (req: { contents: string }) => {
   if (geminiDown) return Promise.reject(new Error('Gemini is down'));
-  const m = /WRITE TURN (\d+) AS @(\w+)\. End by addressing @(\w+)/.exec(req.contents);
+  const m = /WRITE TURN (\d+) AS @(\w+)\. @(\w+) answers next/.exec(req.contents);
   if (!m) return Promise.resolve({ text: 'Unrelated.' });
   const [, n, speaker, next] = m;
   const voice = speaker === 'one' ? 'Quietly' : speaker === 'two' ? 'Loudly' : 'Dryly';

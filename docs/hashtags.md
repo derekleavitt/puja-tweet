@@ -30,6 +30,22 @@ agent prompt keywords (love, devotion, poem→#poetry, time→#timeless …; nev
 `#poetry`. `#colors` and the color name are only used when the template has color tokens
 (`templateUsesColor`). `keepSeedTags` keeps some of the campaign's own `hashtags` (never a theme seed).
 
+## Conversation campaigns
+
+Conversation turns use the same table (built in `conversationService.buildTurn`, not
+`composeDropText`). Differences:
+
+- There is no template: an evolution with no campaign `hashtags` and no previous tags starts from a
+  neutral theme of the conversation's premise. The Gemini prompt gets the premise and the latest turn
+  as the topic (no color name), so the tags follow what is being talked about.
+- The tag block's room is reserved before the turn is written, after the @mentions.
+- Hashtags the model writes anyway are removed: a trailing run is dropped, a `#word` inside a sentence
+  becomes `word`.
+- `hashtagState` advances only after a posted (live or simulated) turn of the same run; the preview
+  echoes the turn's evolved tags back with Post.
+- New conversation campaigns start with no `hashtags` (the color campaign's `#eternal #colors` default
+  is not carried over).
+
 ## Hashtags the AI writes
 
 When the campaign has a tag block (own hashtags or evolution on) the model is told:

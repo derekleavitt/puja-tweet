@@ -134,6 +134,7 @@ export const createDropsRouter = ({ services, drops }: AppDeps) => {
             summaryUsed: turn.summaryUsed,
             transcriptLength: turn.transcriptLength,
           },
+          ...(turn.hashtags ? { hashtags: turn.hashtags } : {}),
         });
         return;
       }

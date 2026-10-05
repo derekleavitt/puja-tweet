@@ -41,7 +41,8 @@ export interface NextHashtags {
 }
 
 export const HASHTAG_SYSTEM_INSTRUCTION =
-  'You suggest hashtags for a poetic account (color drops and short verse). Be tasteful and non-spammy: ' +
+  'You suggest hashtags for a creative X account (color drops, short verse, character conversations). ' +
+  'Be tasteful and non-spammy: ' +
   'no engagement bait, no trending-topic piggybacking. Reply with ONLY a JSON array of strings.';
 
 const asTags = (tags: readonly string[]) => tags.map((t) => `#${t}`).join(' ');
@@ -65,9 +66,11 @@ export const buildHashtagPrompt = (
   count: number,
   recent: readonly string[],
   colorName?: string,
+  topic?: string,
 ): string =>
   `Given these hashtags: ${asTags(previous)}, suggest ${count} new related, tasteful, non-spammy ` +
-  `hashtags${colorName ? ` (today's color is "${colorName}")` : ''}, no repeats of: ` +
+  `hashtags${colorName ? ` (today's color is "${colorName}")` : ''}` +
+  `${topic ? ` that fit this conversation: "${topic}"` : ''}, no repeats of: ` +
   `${recent.length ? asTags(recent) : '(none)'}. ` +
   'Each hashtag is one word or CamelCase, 2-30 letters, without spaces. ' +
   'Reply as a JSON array of strings, e.g. ["Example","AnotherOne"].';
@@ -100,10 +103,13 @@ export const createHashtagService = (overrides: Partial<HashtagDeps> = {}) => {
     blocked: Set<string>,
     colorName: string | undefined,
     recent: readonly string[],
+    topic?: string,
   ): Promise<string[]> => {
     if (!deps.isConfigured() || !deps.tryConsume()) return [];
     try {
-      const reply = await deps.generate(buildHashtagPrompt(previous, slots, recent, colorName));
+      const reply = await deps.generate(
+        buildHashtagPrompt(previous, slots, recent, colorName, topic),
+      );
       return parseHashtagReply(reply)
         .filter((t) => !blocked.has(tagKey(t)))
         .slice(0, slots);
@@ -116,29 +122,30 @@ export const createHashtagService = (overrides: Partial<HashtagDeps> = {}) => {
   /**
    * Next tags for `context` and today's `color`. Seed = the campaign's own `hashtags` (override with
    * `opts.hashtags`), else the previous evolved tags, else a theme (`themeSeedTags`). The color name
-   * is only offered for templates that use color tokens.
+   * is only offered for templates that use color tokens. Conversations pass `topic` (premise and
+   * latest turn) instead of a template and color: the tags follow what is being talked about.
    */
   const next = async (
     context: TweetContext,
-    color: ColorData,
-    opts: { template?: string; hashtags?: string[] } = {},
+    color: ColorData | undefined,
+    opts: { template?: string; hashtags?: string[]; topic?: string } = {},
   ): Promise<NextHashtags> => {
     const cfg = normaliseEvolution(context.hashtagEvolution);
     const max = clampMaxTags(cfg.maxTags);
-    const template = opts.template ?? context.template;
+    const template = opts.topic ?? opts.template ?? context.template;
     const own = opts.hashtags ?? context.hashtags;
     const base = own ? normaliseCampaignTags(own) : getSeedTags(template).found; // unmigrated
     const seed = base.length ? base : themeSeedTags(template);
     const current = context.hashtagState?.current ?? [];
     const previous = current.length > 0 ? current : seed;
     const recent = context.hashtagState?.recent ?? [];
-    const name = color.colorPick || color.name;
+    const name = color ? color.colorPick || color.name : '';
     const colorName = templateUsesColor(template) && normaliseTag(name) ? name : undefined;
 
     const kept = keptSeedTags(base, max, cfg.keepSeedTags);
     const slots = max - kept.length;
     const blocked = new Set([...recent, ...seed, ...kept].map(tagKey));
-    const generated = await fromGemini(previous, slots, blocked, colorName, recent);
+    const generated = await fromGemini(previous, slots, blocked, colorName, recent, opts.topic);
     if (generated.length > 0) return { tags: [...kept, ...generated], source: 'gemini' };
 
     const tags = evolveOffline(previous, {

@@ -93,13 +93,11 @@ export const transientRetryDelayMs = (intervalMinutes: number, attempt: number):
 /** Opening line of the auto-pause reason when a conversation reached its turn limit. */
 const FINISHED_PREFIX = 'Conversation finished';
 
-/** Fields a conversation campaign always has (the speaker changes per turn; no hashtags, no quotes). */
+/** Fields a conversation campaign always has (the speaker changes per turn; no quotes). */
 const forceConversationFields = (ctx: TweetContext) => {
   ctx.engagementMode = 'reply';
   ctx.replyTargetMode = 'last_comment';
   ctx.autoFallbackToQuote = false;
-  ctx.hashtags = [];
-  ctx.hashtagEvolution = normaliseEvolution(ctx.hashtagEvolution, { enabled: false });
 };
 
 const recentPostFromLog = (l: PostLog): RecentPost => ({
@@ -226,13 +224,16 @@ export class ContextService {
   createContext(data: ContextInput): TweetContext {
     const s = this.sm.state;
     const id = data.id || `ctx_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    // Without explicit hashtags the template's literal tags become the campaign's hashtags.
+    // Without explicit hashtags the template's literal tags become the campaign's hashtags (a
+    // conversation never uses the template, so it starts without any).
+    const isConversation = data.mode === 'conversation';
     const template = data.template?.trim() || DEFAULT_TWEET_TEMPLATE;
     const tagged =
       data.hashtags !== undefined
         ? { template, hashtags: normaliseCampaignTags(data.hashtags) }
-        : extractTemplateHashtags(template);
-    const isConversation = data.mode === 'conversation';
+        : isConversation
+          ? { template, hashtags: [] }
+          : extractTemplateHashtags(template);
     const validated = isConversation ? this.validateConversation(data.conversation) : undefined;
     const newContext: TweetContext = {
       id,

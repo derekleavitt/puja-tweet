@@ -7,6 +7,9 @@ import { HttpError } from '../middleware/error.js';
 import { generateAgentText } from '../templateAgent.js';
 import { services } from './index.js';
 import { checkTweetText } from '../../shared/tweetLength.js';
+import { fitTagBlock, normaliseCampaignTags, tagBlockLength } from '../../shared/hashtags/index.js';
+import { isEvolutionEnabled } from './dropText.js';
+import { hashtagService, type HashtagService } from './hashtagService.js';
 import type { ConversationTurnRecord, PostLog, TweetContext } from '../../shared/types.js';
 import {
   RECENT_TURNS,
@@ -15,9 +18,9 @@ import {
   buildSummaryPrompt,
   conversationBudget,
   deMentionStrangers,
-  ensureMention,
-  appendCc,
+  dehash,
   pickNext,
+  placeMentions,
   shouldSummarize,
   turnBufferOf,
   unsummarizedTurns,
@@ -34,6 +37,8 @@ export interface ConversationTurn {
   replyToTweetId: string;
   summaryUsed: boolean;
   transcriptLength: number;
+  /** Evolved hashtags this turn used (only when the campaign evolves its hashtags). */
+  hashtags?: string[];
 }
 
 export interface ConversationServiceDeps {
@@ -44,6 +49,8 @@ export interface ConversationServiceDeps {
   };
   logs: { getLogs(): PostLog[] };
   generate?: typeof generateAgentText;
+  /** Evolving-hashtag generator; defaults to the Gemini-with-offline-fallback service. */
+  hashtags?: Pick<HashtagService, 'next'>;
   rng?: () => number;
 }
 
@@ -56,6 +63,18 @@ const needHandle = (handle: string | undefined, accountId: string): string => {
 
 export const createConversationService = (deps: ConversationServiceDeps) => {
   const generate = deps.generate ?? generateAgentText;
+  const hashtags = deps.hashtags ?? hashtagService;
+
+  /**
+   * The turn's tag block: evolved tags (seeded from the campaign's Hashtags, following the topic)
+   * when evolution is on, else the campaign's own Hashtags, else none.
+   */
+  const planTags = async (ctx: TweetContext, topic: string) => {
+    const own = normaliseCampaignTags(ctx.hashtags ?? []);
+    if (!isEvolutionEnabled(ctx)) return { tags: own, evolving: false };
+    const next = await hashtags.next(ctx, undefined, { hashtags: own, topic });
+    return { tags: next.tags, evolving: true };
+  };
 
   /**
    * Best effort: folds the oldest buffered turns into the summary (keeping the last RECENT_TURNS
@@ -117,9 +136,15 @@ export const createConversationService = (deps: ConversationServiceDeps) => {
     // Every turn the summary does not cover (normally 15-20), so nothing falls in between.
     const recent = unsummarizedTurns(state, state.turns ?? turns);
 
-    // Everyone else in the cast is tagged too, so any participant can reply to this turn.
-    const ccHandles = handles.filter((h) => h !== speakerHandle && h !== nextSpeakerHandle);
-    const max = conversationBudget(nextSpeakerHandle, ccHandles);
+    const lastSaid = recent.length ? recent[recent.length - 1].text : config.openingPost;
+    const tagPlan = await planTags(ctx, `${config.sharedPrompt.slice(0, 300)} / ${lastSaid}`);
+    const tagRoom = tagBlockLength(tagPlan.tags);
+    // Everyone else in the cast is tagged, next speaker first, so any participant can reply.
+    const required = [
+      nextSpeakerHandle,
+      ...handles.filter((h) => h !== speakerHandle && h !== nextSpeakerHandle),
+    ];
+    const max = conversationBudget(required, tagRoom);
     const prompt = buildConversationPrompt({
       sharedPrompt: config.sharedPrompt,
       persona: speaker.persona,
@@ -139,10 +164,13 @@ export const createConversationService = (deps: ConversationServiceDeps) => {
       maxLength: max,
     });
     const allowed = config.openerHandle ? [...handles, config.openerHandle] : handles;
-    const text = appendCc(
-      ensureMention(deMentionStrangers(raw, allowed), nextSpeakerHandle, max),
-      ccHandles,
-    );
+    const body = placeMentions(dehash(deMentionStrangers(raw, allowed)), {
+      required,
+      speaker: speakerHandle,
+      maxLength: 280 - tagRoom,
+    });
+    const fitted = fitTagBlock(body, tagPlan.tags);
+    const text = fitted.text;
     if (!checkTweetText(text).ok) {
       throw new HttpError(500, 'The generated conversation turn is not a valid tweet.');
     }
@@ -162,6 +190,7 @@ export const createConversationService = (deps: ConversationServiceDeps) => {
       replyToTweetId: targetTweetId,
       summaryUsed: !!state.summary,
       transcriptLength: recent.length,
+      ...(tagPlan.evolving ? { hashtags: fitted.tags } : {}),
     };
   };
 
