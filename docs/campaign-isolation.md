@@ -64,7 +64,8 @@ campaign on the **same** account, independent between accounts:
 | `consecutiveErrors`, `autoPausedReason`                                | `recordContextPostResult` (`breakerReason`)                                           | scheduler blocked reason, UI badge                                     | none found                                        |
 | `stats`                                                                | `recordContextPostResult`, `clearContextHistory`                                      | UI card                                                                | none found                                        |
 | Queue slots (`queue[]` tagged with `contextId`)                        | `queueService` (`clearAndRegenerateQueue(id)`, `ensureQueue(id)`, `popNextQueueSlot(type, id)`) | `dropService`, Queue tab                                        | fallbacks to the active campaign for unknown ids  |
-| Series history for `<history>` agent tags                              | `templateAgent.getSeriesHistory(contextId)`                                           | Gemini prompt                                                          | none (same-context only since PR #9)              |
+| Series history for `<history>` agent tags: `recentPosts` (last 10 live posts, server-owned) | `dropService` via `contexts.rememberPost`                              | `templateAgent.getSeriesHistory(contextId)` → Gemini prompt            | was derived from the shared capped log (§7)       |
+| `retry`, `inFlight` (server-owned)                                     | `recordContextPostResult`, `markInFlight`, `checkInFlight`                             | scheduler (`dueAt`, blocked reason)                                    | new (§7)                                          |
 
 The legacy `BotSettings` **view** (`GET /api/status.settings`) is still served for the UI: it is
 computed on every read from one campaign (`buildSettingsView`) and carries `activeContextId` = the
@@ -135,12 +136,11 @@ Decision on **clear-history**: it is history cleanup, not a chain reset. The anc
 - **Cooldown per X account** (any 429 / reply-cooldown): same reason; it blocks only campaigns posting
   as the throttled account. On the Free tier the 17 posts/24 h cap is also per app, so the shared
   rate-limit telemetry (`getGlobalBlockedReason`: exhausted window) stays global.
-- **Per-campaign 15-minute back-off after a non-throttle error** (`recordContextPostResult`): this is
-  the "15-minute countdown on a 1-minute campaign" the owner saw. It is per-campaign (the other
-  campaigns' clocks are untouched, test "the 15-minute error back-off moves only the failing
-  1-minute campaign clock") and intentional (REL-5 anti-hammer). Throttle errors (429/cooldown) do
-  not add it because the account cooldown already blocks. Recommendation: keep, but consider showing
-  "retrying in 14m after an error" in the card so it is not mistaken for a schedule change.
+- **Per-campaign back-off after an error** (`recordContextPostResult`, `TweetContext.retry`): 15
+  minutes after a persistent error, a short exponential back-off after a transient one (see §7). It
+  is per-campaign (the other campaigns' clocks are untouched, test "the 15-minute error back-off
+  moves only the failing 1-minute campaign clock"); the card shows "Retrying in 14m (…)" through
+  `blockedReason`.
 - `/api/status.stats` and `latestLog` are whole-bot by design; per-campaign counters are
   `context.stats`.
 
@@ -166,3 +166,81 @@ Decision on **clear-history**: it is history cleanup, not a chain reset. The anc
 - After saving the Timing form for a campaign that is no longer active, the form remounts for the
   active campaign (the "Settings Saved" flash is lost). Consider keying the panel on the campaign the
   owner picked rather than on the active one.
+
+## 7. Recovery and history durability
+
+Requirement: whatever happens (Cloud Run restarts at any moment, scale-to-zero, Gemini 503s, X
+5xx, one tick per minute from Cloud Scheduler), the repeat interval recovers and continues smoothly
+with an accurate history. Tests: `tests/unit/recovery.test.ts`.
+
+### History lives on the campaign
+
+The post log is shared and capped (`MAX_LOGS`, default 500, across **all** campaigns). At 1-minute
+intervals a campaign's older entries are trimmed within hours, so no AI memory may depend on it.
+
+- **Conversations:** `conversationState.turns` holds every turn after `summaryThroughTurn`
+  (`{ turn, accountId, handle, text ≤ 300, tweetId?, at }`). Invariant, enforced by
+  `appendTurnRecord` and `refreshSummary`: the summary covers `1..summaryThroughTurn`, the buffer
+  holds exactly `summaryThroughTurn+1..turnCount`; turns leave the buffer only in the same step that
+  folds them into the summary (by AI; past a hard cap of 40 turns, without AI). The prompt shows the
+  summary and every buffered turn. Restart / new target / mode switch start an empty buffer; Resume
+  keeps it. Clear-history keeps it (the turn count goes on).
+- **Single mode:** `recentPosts` holds the last 10 successful live posts (text ≤ 300, tweet id,
+  time, slot, color name/hex) for `<history><agent>` prompts. Clear-history empties it.
+- **Legacy state** (no buffer yet) is seeded once from whatever the log still has.
+- Size: at most 40 turns or 10 posts of ≤ 300 chars per campaign, so a campaign adds at most about
+  16 KB to the Firestore state document (limit 1 MiB).
+
+### Transient vs persistent failures
+
+| Class | Examples (`XErrorClass`) | Back-off (`retry.at`) | Breaker |
+| --- | --- | --- | --- |
+| Transient | `ai_unavailable` (Gemini busy / timeout / daily cap), `server_error` (X 5xx), `network` (no answer, timeout) | 1×, 2×, 4×… the interval, at least 1 min, at most 15 min (`transientRetryDelayMs`) | Never: does not touch `consecutiveErrors`, never auto-pauses |
+| Throttled | `rate_limit` (429), `cooldown` | 15 min (plus the account cooldown) | Not counted |
+| Persistent | `auth`, `payment`, `account` (immediate pause); `target_missing` after recovery, `reply_restricted`, `text_invalid`, `unknown`, AI not configured | max(15 min, interval) | Pauses after `MAX_CONSECUTIVE_ERRORS` (5) |
+
+A success (live or simulated) clears `retry` and `consecutiveErrors`. Decision: transient failures
+never pause a campaign, however long they last (a Gemini or X outage ends by itself; the card keeps
+saying "Retrying in 15m (AI busy, attempt 7)"). An AI-only single template whose AI fails is now
+recorded like any failed post (error log, back-off) instead of throwing on every tick. A fixed-time
+campaign retries a transiently failed slot with the same back-off for up to an hour.
+
+### Crash safety (no duplicates, no gaps)
+
+Order of one live drop: compose (AI) → persist the in-flight marker
+(`inFlight { startedAt, bootId, runId?, turn?, replyToTweetId, text }`, awaited flush) → X → in
+one synchronous step `recordContextPostResult` (clock, anchor, retry, clears the marker) +
+`recordConversationTurn` (turn count, next speaker, transcript) + `rememberPost` + log append →
+awaited flush. A Firestore save writes the whole state document after the log documents, so a save
+carries all of it or none.
+
+- Crash **before** X: the marker (if written) is cleared on a later tick, nothing was posted, the
+  same turn/post is attempted again.
+- Crash **after X accepted, before the result was saved**: the next instance sees the marker. If it
+  is younger than 5 minutes and from another process it waits (an overlapping instance may still be
+  posting, e.g. during a deploy); otherwise it clears it and writes an "Interrupted" error log entry.
+  The campaign continues from its last recorded post: the turn count, speaker and anchor were not
+  advanced, so the same turn is written again and replies to the same tweet. **Bound: at most one
+  duplicate post per crash**, which X shows as a second reply to the same tweet; the transcript and
+  anchor follow the second one, so the stored history stays coherent. The window is one Firestore
+  write long, because the result is flushed right after X answers.
+- The cron route still flushes before replying; `/api/cron/tick` answering 409 (tick still running)
+  never loses a post.
+
+### Cadence
+
+- **No burst after downtime:** an interval campaign is due once `interval (+ jitter)` has passed
+  since its last attempt (or at `retry.at`), so after 3 hours of downtime it posts once, then
+  resumes its cadence. Fixed times never post more than the most recent missed slot.
+- **Missed fixed slots:** a slot whose minute was missed by a late, skipped or busy tick still fires
+  within 10 minutes (`FIXED_CATCH_UP_MS`), once, and never a slot from before the campaign was
+  created or resumed. A pending (jittered) fire survives restarts and is dropped after an hour.
+- **1-minute campaigns on a 1-minute tick:** the clock is anchored to when the drop **started**,
+  not when X answered, and live spacing is measured between X requests, so a 20-second AI call no
+  longer pushes the next post a whole tick later. In `SCHEDULER_MODE=external` a campaign counts as
+  due 30 s early (half a tick; 5 s for the in-process 10 s loop; override
+  `SCHEDULER_DUE_TOLERANCE_MS`).
+- **Resume** restarts the interval from now (no immediate post after a long pause) and clears the
+  retry and breaker state.
+- All times are epoch milliseconds; fixed times are evaluated in the campaign's IANA time zone
+  (DST-aware).

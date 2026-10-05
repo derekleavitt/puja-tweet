@@ -72,20 +72,27 @@ Code lives in `server/services/conversationService.ts`. The pure parts go in
 - **Speaker:** `speaker = state.nextSpeakerAccountId`.
 - **Next speaker:** `next = pickNext(speaker, participants, rng)`, uniform random over participants
   other than the speaker. With 2 participants this is strict alternation.
-- **Transcript:**
-  ```ts
-  logs.filter(l => l.contextId === ctx.id
-    && l.conversationRunId === state.runId
-    && (l.status === 'success' || l.status === 'simulated'))
-  ```
-  in chronological order. Restart creates a new runId, which gives a clean transcript without
-  deleting any logs.
+- **Transcript:** kept on the campaign, never read from the shared post log (which is capped by
+  `MAX_LOGS` across all campaigns, so a 1-minute conversation would lose turns within hours).
+  `conversationState.turns` holds `{ turn, accountId, handle, text (≤ 300 chars), tweetId?, at }`
+  for every posted or simulated turn after `summaryThroughTurn`, oldest first.
+  - **Invariant:** `summary` covers turns `1..summaryThroughTurn` and `turns` holds exactly turns
+    `summaryThroughTurn+1..turnCount`. Nothing is ever dropped from the buffer before the summary
+    covers it.
+  - `recordConversationTurn` appends the turn in the same step as `turnCount++` (one save).
+  - Restart, a new target or a mode switch creates a new state (empty buffer); Resume (a new round)
+    keeps it.
+  - Legacy state without `turns` is seeded once from whatever turns of the run the log still has.
 - **Summary:**
-  - The last 15 turns are always included word for word.
-  - When `turnCount − (summaryThroughTurn ?? 0) > 20`, one extra Gemini call folds turns
-    `(summaryThroughTurn, turnCount−15]` into `summary` (at most 600 chars, merged with the old
-    summary). It is persisted on `conversationState`.
-  - Best effort: on failure, keep the old summary and send only the last 15 turns.
+  - When `turnCount − (summaryThroughTurn ?? 0) > 20`, one extra Gemini call folds the buffered
+    turns `(summaryThroughTurn, turnCount−15]` into `summary` (at most 600 chars, merged with the
+    old summary); the same step moves `summaryThroughTurn` and drops those turns from the buffer.
+  - The prompt shows the summary plus **every** buffered turn (normally 15 to 20), so no turn falls
+    between the summary and the verbatim part.
+  - Best effort: on failure, keep the old summary and the whole buffer. If the summary keeps failing
+    the buffer is capped at 40 turns: the oldest overflow is folded into the summary without AI (a
+    clipped "@handle: text" digest), so the invariant still holds and the state document stays
+    bounded (about 40 × 400 bytes per conversation).
   - It is computed inside `buildTurn`, so preview and post see the same context.
 - **Generation:** extract `generateAgentText(contents, {systemInstruction, maxLength})` from the
   model loop in `generatePoeticAgentText`. It covers both models, the daily cap, the too-long retry
@@ -105,15 +112,17 @@ Code lives in `server/services/conversationService.ts`. The pure parts go in
     ```
   - Handles come from `accounts.handleOf`. A participant without a known handle (an unverified
     default account) is a 400 at save or preview: "Verify @handle first".
-- **Recording a turn:** `contexts.recordConversationTurn(id, turn, status)`.
+- **Recording a turn:** `contexts.recordConversationTurn(id, turn, status, tweetId)`.
   - On success or simulated:
+    - append the turn to `turns` (see the invariant above);
     - `turnCount++`;
     - `nextSpeakerAccountId = turn.nextSpeakerAccountId`;
     - regenerate the queue;
     - if `maxTurns && turnCount >= maxTurns`, set `enabled = false` and
       `autoPausedReason = 'Conversation finished (N turns)'`.
   - On error the state is untouched: the same speaker retries and the anchor stays where it is.
-  - The breaker and the 15-minute back-off apply unchanged.
+  - Back-off and breaker: see [campaign-isolation.md](../campaign-isolation.md#7-recovery-and-history-durability) (an
+    unavailable AI is transient: short exponential back-off, never an auto-pause).
 
 ## 3. Gemini prompt
 
@@ -267,8 +276,9 @@ It returns no color, breakdown or hashtags, and ignores the template param.
   happens it is `reply_restricted`: the same speaker retries and the breaker trips after 5 failures.
   The quote fallback is forced off.
 - **Anchor deleted on X:** the existing `recoverChain` replies to the opening post instead.
-- **Gemini down:** `AgentUnavailableError` (503) leaves state and anchor untouched and uses the
-  existing back-off and breaker. Summary failures are swallowed.
+- **Gemini down:** `AgentUnavailableError` (503) leaves state and anchor untouched; it is a
+  transient failure (back-off 1×, 2×, 4×… the interval, at most 15 min, never an auto-pause).
+  Summary failures are swallowed and keep the buffer.
 - **Dry run:** simulated turns advance `turnCount` and the transcript, but never the anchor.
 - **Free tier:** every turn counts against the shared daily app cap.
 - **Renamed handle:** a renamed X handle breaks mentions until Verify refreshes it.
