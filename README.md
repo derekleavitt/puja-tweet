@@ -119,7 +119,7 @@ npm run dev       # dashboard + API on http://localhost:3000
 | `npm run lint && npm run typecheck` | Ensures the love is well-typed |
 | `npm run post-drop -- --dry-run` | Rehearse a drop in the mirror without actually sending it |
 
-Configuration lives in `.env` (see [`.env.example`](.env.example)). Never commit real keys. *Never.* We have the `git filter-repo` scars to prove it.
+Configuration lives in `.env` (see [`.env.example`](.env.example); the minimal dev setup is in [`docs/deploy.md`](docs/deploy.md#local-development)). Never commit real keys. *Never.* We have the `git filter-repo` scars to prove it.
 
 First time on a new machine: `npx playwright install chromium` before `npm run e2e`. Deploys don't need your machine at all: every merge to `main` deploys to Cloud Run through GitHub Actions.
 
@@ -127,14 +127,13 @@ First time on a new machine: `npx playwright install chromium` before `npm run e
 
 | Doc | What's in it |
 | :--- | :--- |
-| [`docs/gcp-setup.md`](docs/gcp-setup.md) / [`docs/deploy.md`](docs/deploy.md) | Cloud Run, Scheduler, secrets, deploys |
+| [`docs/gcp-setup.md`](docs/gcp-setup.md) / [`docs/deploy.md`](docs/deploy.md) | Cloud Run, Scheduler, secrets, deploys, production logs, known limits, local `.env` |
 | [`docs/accounts.md`](docs/accounts.md) | Connecting extra X accounts, "Posts as", X portal setup |
 | [`docs/conversations.md`](docs/conversations.md) | Conversation campaigns, step by step |
 | [`docs/hashtags.md`](docs/hashtags.md) | The Hashtags field, evolution, AI hashtag rules |
 | [`docs/campaign-isolation.md`](docs/campaign-isolation.md) | What is per campaign vs global, chains, recovery and history |
 | [`docs/api.md`](docs/api.md) | Every API route |
 | [`docs/design/conversations.md`](docs/design/conversations.md) | Design notes for conversations |
-| [`docs/handoff.md`](docs/handoff.md) | Where things stand, known trade-offs, ideas for later |
 
 ---
 
