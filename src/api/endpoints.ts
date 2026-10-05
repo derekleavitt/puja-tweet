@@ -70,6 +70,8 @@ export const postNow = (body: {
   color: ColorData | null;
   contextId: string;
   text?: string;
+  /** Evolved hashtags the previewed `text` used (from the preview response). */
+  hashtags?: string[];
   slotId?: string;
 }) => orBody(apiFetch<DropResponse>('/api/post-now', { method: 'POST', body }));
 export const previewTemplate = (body: {
@@ -77,7 +79,13 @@ export const previewTemplate = (body: {
   color?: ColorData | null;
   slotType?: string;
   contextId?: string;
-}) => orBody(apiFetch<{ previewText?: string }>('/api/template/preview', { method: 'POST', body }));
+}) =>
+  orBody(
+    apiFetch<{ previewText?: string; hashtags?: string[] }>('/api/template/preview', {
+      method: 'POST',
+      body,
+    }),
+  );
 
 // Contexts (campaigns)
 export const createContext = (data: Partial<TweetContext>) =>

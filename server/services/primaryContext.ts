@@ -3,6 +3,7 @@
  */
 
 import { DEFAULT_TWEET_TEMPLATE } from '../colorEngine.js';
+import { DEFAULT_HASHTAG_EVOLUTION } from '../../shared/hashtags/index.js';
 import type { TweetContext } from '../../shared/types.js';
 import type { BotState } from '../store/Store.js';
 import { getDefaultTargetTweetId } from '../store/defaults.js';
@@ -28,6 +29,7 @@ export const buildPrimaryContext = (s: BotState): TweetContext => {
     },
     template: s.settings.template || DEFAULT_TWEET_TEMPLATE,
     themePreference: s.settings.themePreference || 'dynamic',
+    hashtagEvolution: { ...DEFAULT_HASHTAG_EVOLUTION },
     lastPostedTimestamp: Date.now(),
     currentJitterMs: 0,
     createdAt: now,

@@ -6,7 +6,7 @@
 import { z } from 'zod';
 import { HttpError } from '../middleware/error.js';
 import { extractTweetId } from '../../shared/tweetId.js';
-import type { TweetContext } from '../../shared/types.js';
+import type { HashtagEvolutionConfig, TweetContext } from '../../shared/types.js';
 
 const scheduleSchema = z.object({
   mode: z.enum(['interval', 'fixed_times']).optional(),
@@ -15,6 +15,12 @@ const scheduleSchema = z.object({
   timezone: z.string().optional(),
   humanizeJitterEnabled: z.boolean().optional(),
   jitterPercentage: z.number().optional(),
+});
+
+const hashtagEvolutionSchema = z.object({
+  enabled: z.boolean().optional(),
+  maxTags: z.number().int().min(1).max(5).optional(),
+  keepSeedTags: z.boolean().optional(),
 });
 
 export const contextUpdateSchema = z.object({
@@ -36,6 +42,8 @@ export const contextUpdateSchema = z.object({
   template: z.string().optional(),
   themePreference: z.enum(['dynamic', 'vibrant', 'minimal', 'poetic']).optional(),
   lastPostedTweetId: z.string().nullish(),
+  // Config only: `hashtagState` is server-owned and stripped from client bodies.
+  hashtagEvolution: hashtagEvolutionSchema.optional(),
 });
 
 export type ContextUpdateInput = Partial<
@@ -53,7 +61,10 @@ export type ContextUpdateInput = Partial<
     | 'themePreference'
     | 'lastPostedTweetId'
   >
-> & { schedule?: Partial<TweetContext['schedule']> };
+> & {
+  schedule?: Partial<TweetContext['schedule']>;
+  hashtagEvolution?: Partial<HashtagEvolutionConfig>;
+};
 
 /**
  * Validates a client create/update body; throws HttpError(400) on bad input and strips unknown keys.

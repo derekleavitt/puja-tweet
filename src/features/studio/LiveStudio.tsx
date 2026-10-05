@@ -25,7 +25,7 @@ interface LiveStudioProps {
     customColor?: ColorData,
     slotType?: 'morning' | 'evening' | 'manual',
     contextId?: string,
-    opts?: { text?: string; slotId?: string },
+    opts?: { text?: string; hashtags?: string[]; slotId?: string },
   ) => Promise<DropResponse | undefined>;
   settings: BotSettings;
   isPosting: boolean;
@@ -95,14 +95,17 @@ const LiveStudioReady: React.FC<LiveStudioReadyProps> = ({
     slotLabel: formatTimeInZone(new Date(), settings.timezone),
     fallbackWeatherDesc: 'warming crisp morning air',
   });
-  const { aiPreviewText, isGeneratingAi, fetchAiPreview } = useAiPreview({
-    hasAgentTag,
+  const evolving = currentContext?.hashtagEvolution?.enabled === true;
+  const serverRendered = hasAgentTag || evolving;
+  const { aiPreviewText, aiPreviewTags, isGeneratingAi, fetchAiPreview } = useAiPreview({
+    serverRendered,
+    refreshKey: (currentContext?.hashtagState?.current ?? []).join(','),
     template: settings.template,
     color,
     slotType: selectedSlot,
     contextId: activeContextId,
   });
-  const tweetText = hasAgentTag ? aiPreviewText || staticTweetText : staticTweetText;
+  const tweetText = serverRendered ? aiPreviewText || staticTweetText : staticTweetText;
 
   const updateContext = async (updates: Partial<TweetContext>) => {
     if (currentContext && onUpdateContext) {
@@ -157,13 +160,15 @@ const LiveStudioReady: React.FC<LiveStudioReadyProps> = ({
             lastPostedTweetId={lastPostedTweetId}
             hasAgentTag={hasAgentTag}
             hasHistoryTag={hasHistoryTag}
+            evolving={evolving}
             isGeneratingAi={isGeneratingAi}
             isPosting={isPosting}
             onRegenerate={fetchAiPreview}
             onPost={() =>
               onPostNow(color, selectedSlot, undefined, {
                 // Post exactly what the preview shows (skip an agent tag's unresolved fallback).
-                text: !hasAgentTag || aiPreviewText ? tweetText : undefined,
+                text: !serverRendered || aiPreviewText ? tweetText : undefined,
+                hashtags: evolving ? aiPreviewTags : undefined,
               })
             }
           />

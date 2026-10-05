@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { Send, ExternalLink, ArrowUpRight, Sparkles, RefreshCw } from 'lucide-react';
+import { Send, ExternalLink, ArrowUpRight, Sparkles, RefreshCw, Hash } from 'lucide-react';
 import { ColorData } from '../../types.js';
 import { AiUnavailableBadge } from '../../components/AiUnavailableBadge.js';
 import { AI_UNAVAILABLE_HINT, useAiUnavailable } from '../../context/serverInfo.js';
@@ -19,6 +19,8 @@ interface TweetPreviewCardProps {
   lastPostedTweetId?: string;
   hasAgentTag: boolean;
   hasHistoryTag: boolean;
+  /** The campaign evolves its hashtags (the preview text is rendered by the server). */
+  evolving?: boolean;
   isGeneratingAi: boolean;
   isPosting: boolean;
   onRegenerate: () => void;
@@ -34,6 +36,7 @@ export const TweetPreviewCard: React.FC<TweetPreviewCardProps> = ({
   lastPostedTweetId,
   hasAgentTag,
   hasHistoryTag,
+  evolving = false,
   isGeneratingAi,
   isPosting,
   onRegenerate,
@@ -64,13 +67,25 @@ export const TweetPreviewCard: React.FC<TweetPreviewCardProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
-          {hasAgentTag && (
+          {evolving && (
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-teal-100 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 flex items-center gap-1">
+              <Hash className="w-2.5 h-2.5" />
+              <span>Evolving hashtags</span>
+            </span>
+          )}
+          {(hasAgentTag || evolving) && (
             <button
               type="button"
               onClick={onRegenerate}
-              disabled={isGeneratingAi || aiUnavailable}
+              disabled={isGeneratingAi || (hasAgentTag && aiUnavailable)}
               className="p-1 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/60 rounded transition-colors cursor-pointer"
-              title={aiUnavailable ? AI_UNAVAILABLE_HINT : 'Regenerate AI poem'}
+              title={
+                hasAgentTag && aiUnavailable
+                  ? AI_UNAVAILABLE_HINT
+                  : hasAgentTag
+                    ? 'Regenerate AI poem'
+                    : 'Re-roll hashtags'
+              }
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isGeneratingAi ? 'animate-spin' : ''}`} />
             </button>
