@@ -28,7 +28,7 @@ describe('scheduler blocked reasons', () => {
     const exec = vi.spyOn(dropService, 'executeDrop').mockResolvedValue(undefined as never);
     await scheduler.tick();
     expect(exec).not.toHaveBeenCalled();
-    expect(scheduler.getNextScheduledPost(ctx.id).blockedReason).toMatch(/Paused/);
+    expect(scheduler.getNextScheduledPost(ctx.id)?.blockedReason).toMatch(/Paused/);
   });
 
   it('explains a paused campaign', () => {

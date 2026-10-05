@@ -55,9 +55,9 @@ export class QueueService {
     const idx = s.queue.findIndex((q) => q.slotId === slotId);
     if (idx === -1) return null;
     const current = s.queue[idx];
-    const ctx =
-      (current.contextId ? this.sm.getContext(current.contextId) : undefined) ||
-      this.sm.getActiveContext();
+    // A slot always belongs to exactly one campaign; never re-render it with another's template.
+    const ctx = current.contextId ? this.sm.getContext(current.contextId) : undefined;
+    if (!ctx) return null;
     const newColor = generateColor(current.slotType);
     s.queue[idx] = {
       ...current,
@@ -110,9 +110,8 @@ export class QueueService {
       s.queue = s.queue.filter((q) => !!q.contextId && !!q.previewText);
     }
 
-    const contextsToSync = contextId
-      ? [this.sm.getContext(contextId) || this.sm.getActiveContext()].filter(Boolean)
-      : s.contexts;
+    // An unknown id tops up nothing (never another campaign's queue).
+    const contextsToSync = contextId ? [this.sm.getContext(contextId)] : s.contexts;
 
     let modified = hasLegacySlots;
     for (const ctx of contextsToSync) {

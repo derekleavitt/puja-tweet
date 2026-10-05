@@ -29,6 +29,15 @@ const DUE_TOLERANCE_MS = 5 * 1000;
 /** A persisted pending fire older than this at boot/tick is dropped rather than fired late. */
 const STALE_PENDING_MS = 60 * 60 * 1000;
 
+/** When a campaign's own clock says it is (or was) due; fixed-time campaigns use their armed fire. */
+const dueAt = (c: TweetContext): number => {
+  if (c.schedule.mode === 'interval') {
+    const intervalMs = (c.schedule.intervalMinutes || 60) * 60 * 1000;
+    return (c.lastPostedTimestamp || 0) + intervalMs + (c.currentJitterMs || 0);
+  }
+  return c.pendingFire?.fireAt ?? Number.MAX_SAFE_INTEGER;
+};
+
 export interface TickOptions {
   /** Max drops this tick may start; the rest stay due and fire on the next tick. Default: no cap. */
   maxDrops?: number;
@@ -138,14 +147,21 @@ class SchedulerService {
       return 'done';
     }
 
-    const contexts = services.contexts.getContexts().filter((c) => c.enabled);
+    const now = Date.now();
+    // Longest-waiting campaign first, so a per-tick cap or the global live-post spacing never
+    // starves a campaign just because another one comes earlier in the list.
+    const contexts = services.contexts
+      .getContexts()
+      .filter((c) => c.enabled)
+      .map((c) => ({ c, due: dueAt(c) }))
+      .sort((a, b) => a.due - b.due)
+      .map((x) => x.c);
     this.enabledCount = contexts.length;
     if (contexts.length === 0) {
       console.log('[Scheduler] Tick skipped: no running campaigns (all paused).');
       return 'done';
     }
 
-    const now = Date.now();
     for (const context of contexts) {
       if (generation !== this.tickGeneration) break; // superseded by the watchdog
       try {
@@ -269,11 +285,12 @@ class SchedulerService {
     return undefined;
   }
 
+  /** Next post of one campaign (the active one by default); undefined for an unknown id. */
   public getNextScheduledPost(contextId?: string) {
     const context = contextId
-      ? services.contexts.getContext(contextId) || services.contexts.getActiveContext()
+      ? services.contexts.getContext(contextId)
       : services.contexts.getActiveContext();
-    return this.calculateNextPostForContext(context);
+    return context ? this.calculateNextPostForContext(context) : undefined;
   }
 
   public getAllNextScheduledPosts() {
