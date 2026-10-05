@@ -7,6 +7,7 @@ import type { AppDeps } from '../app.js';
 import type { AiStatus } from '../../shared/types.js';
 import { isGeminiConfigured } from '../geminiConfig.js';
 import { getDefaultTargetTweetId } from '../store/defaults.js';
+import { withAccountHandles } from './queue.js';
 
 export const createStatusRouter = ({ services, scheduler }: AppDeps) => {
   const router = Router();
@@ -36,7 +37,7 @@ export const createStatusRouter = ({ services, scheduler }: AppDeps) => {
       cooldownState: services.rateLimit.getCooldownState(),
       accountCooldowns: services.rateLimit.getAllCooldownStates(),
       rateLimitTelemetry: services.rateLimit.getRateLimitTelemetry(),
-      queue: services.queue.getQueue(),
+      queue: withAccountHandles(services, services.queue.getQueue()),
       latestLog: logs[0] || null,
       accounts: services.accounts.list(),
     });

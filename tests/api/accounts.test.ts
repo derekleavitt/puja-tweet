@@ -370,3 +370,16 @@ describe('campaign accountId', () => {
     expect(svc.contexts.duplicateContext(ctx.id).accountId).toBe('acct_222');
   });
 });
+
+describe('account handle on queue and preview', () => {
+  it('queue slots and the preview name the posting account', async () => {
+    await connect('222', 'second_acct');
+    const ctx = svc.contexts.createContext({ name: 'Q', accountId: 'acct_222', template: 'hi' });
+    const queue = await request(app).get(`/api/queue?contextId=${ctx.id}`);
+    const slots = queue.body.queue as { accountHandle?: string }[];
+    expect(slots.length).toBeGreaterThan(0);
+    expect(slots.every((s) => s.accountHandle === 'second_acct')).toBe(true);
+    const preview = await request(app).post('/api/template/preview').send({ contextId: ctx.id });
+    expect(preview.body).toMatchObject({ accountId: 'acct_222', accountHandle: 'second_acct' });
+  });
+});
