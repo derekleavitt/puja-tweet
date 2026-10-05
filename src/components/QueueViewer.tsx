@@ -1,17 +1,14 @@
+/**
+ * X ChromaBot - QueueViewer
+ * Upcoming posts for the active campaign: when each goes out and the text it will post.
+ */
+
 import React, { useState } from 'react';
-import {
-  Sun,
-  Moon,
-  RefreshCw,
-  Send,
-  Layers,
-  MessageSquare,
-  Clock,
-  Target,
-  Sparkles,
-} from 'lucide-react';
+import { RefreshCw, Layers, MessageSquare, Clock, Target, Sparkles } from 'lucide-react';
 import { QueueSlot, ColorData, TweetContext } from '../types.js';
 import { formatHHmm12h, tzAbbreviation } from '../../shared/time.js';
+import { templateUsesColor } from '../lib/templateTokens.js';
+import { QueueSlotCard } from './QueueSlotCard.js';
 
 interface QueueViewerProps {
   queue: QueueSlot[];
@@ -42,8 +39,8 @@ export const QueueViewer: React.FC<QueueViewerProps> = ({
 
   const activeContext = contexts.find((c) => c.id === activeContextId) || contexts[0];
 
-  const queueTz = (slot: QueueSlot) =>
-    (contexts.find((c) => c.id === slot.contextId) || activeContext)?.schedule?.timezone;
+  const slotContext = (slot: QueueSlot) =>
+    contexts.find((c) => c.id === slot.contextId) || activeContext;
 
   const handleRegenerate = async () => {
     if (!onRegenerateQueue) return;
@@ -120,7 +117,7 @@ export const QueueViewer: React.FC<QueueViewerProps> = ({
               onClick={handleRegenerate}
               disabled={isRegenerating}
               className="px-3 py-1.5 text-xs font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-              title="Clear all 14 slots for this campaign and regenerate fresh colors & template previews"
+              title="Clear all 14 slots for this campaign and regenerate fresh template previews"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isRegenerating ? 'animate-spin' : ''}`} />
               <span>Clear &amp; Regenerate Queue</span>
@@ -173,142 +170,20 @@ export const QueueViewer: React.FC<QueueViewerProps> = ({
         </div>
       )}
 
-      {/* Grid of queue slots */}
+      {/* Upcoming posts */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-        {queue.map((slot, idx) => {
-          const isMorning = slot.slotType === 'morning';
-          const dateObj = new Date(slot.dateStr + 'T12:00:00');
-          const dayName = dateObj.toLocaleDateString('en-US', {
-            weekday: 'short',
-            month: 'short',
-            day: 'numeric',
-          });
-          const previewMessage =
-            slot.previewText ||
-            `${slot.color.colorPick || slot.color.name} ${slot.color.weatherDesc || slot.color.mood} #eternal #colors`;
-
-          return (
-            <div
-              key={slot.slotId}
-              className="border border-neutral-200 dark:border-neutral-800 rounded-xl overflow-hidden bg-white dark:bg-neutral-900 flex flex-col justify-between hover:border-neutral-300 dark:hover:border-neutral-700 transition-all shadow-xs"
-            >
-              {/* Swatch Header */}
-              <div
-                className="h-28 p-3 flex flex-col justify-between transition-colors relative"
-                style={{ backgroundColor: slot.color.hex }}
-              >
-                <div className="flex items-center justify-between">
-                  <span
-                    className="px-2 py-0.5 text-[11px] font-medium rounded-md shadow-xs backdrop-blur-md flex items-center gap-1 font-mono"
-                    style={{
-                      backgroundColor:
-                        slot.color.contrastText === '#000000'
-                          ? 'rgba(255,255,255,0.85)'
-                          : 'rgba(0,0,0,0.5)',
-                      color: slot.color.contrastText === '#000000' ? '#111' : '#fff',
-                    }}
-                  >
-                    {isMorning ? (
-                      <Sun className="w-3 h-3 text-amber-500" />
-                    ) : (
-                      <Moon className="w-3 h-3 text-indigo-400" />
-                    )}
-                    <span>
-                      #{idx + 1} · {slot.timeSlot}
-                    </span>
-                  </span>
-
-                  <span
-                    className="px-2 py-0.5 text-[11px] font-mono font-bold rounded-md shadow-xs backdrop-blur-md"
-                    style={{
-                      backgroundColor:
-                        slot.color.contrastText === '#000000'
-                          ? 'rgba(255,255,255,0.85)'
-                          : 'rgba(0,0,0,0.5)',
-                      color: slot.color.contrastText === '#000000' ? '#111' : '#fff',
-                    }}
-                  >
-                    {slot.color.hex}
-                  </span>
-                </div>
-
-                <div style={{ color: slot.color.contrastText }}>
-                  <div className="font-bold text-sm leading-tight drop-shadow-xs truncate">
-                    {slot.color.name}
-                  </div>
-                </div>
-              </div>
-
-              {/* Body Details */}
-              <div className="p-3.5 space-y-3 flex-1 flex flex-col justify-between text-xs">
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-neutral-400 text-[11px]">
-                    <span className="font-medium text-neutral-700 dark:text-neutral-300">
-                      {dayName}
-                    </span>
-                    <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300">
-                      {formatHHmm12h(slot.timeSlot)} {tzAbbreviation(new Date(), queueTz(slot))}
-                    </span>
-                  </div>
-
-                  {/* Queued Message Preview based on Campaign Template */}
-                  <div className="p-2 rounded-lg bg-neutral-50 dark:bg-neutral-800/70 border border-neutral-200/70 dark:border-neutral-700/60">
-                    <div className="text-[10px] uppercase font-mono text-neutral-400 mb-0.5 flex items-center justify-between">
-                      <span>Queued Message</span>
-                      {slot.targetTweetId && <span>→ #{slot.targetTweetId.slice(0, 6)}…</span>}
-                    </div>
-                    <p
-                      className="text-neutral-800 dark:text-neutral-200 text-[11px] font-mono leading-snug line-clamp-3 break-words"
-                      title={previewMessage}
-                    >
-                      {previewMessage}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Harmonious companion preview pills */}
-                <div className="flex items-center gap-1 pt-1">
-                  <span
-                    className="w-3 h-3 rounded-full border border-neutral-300 dark:border-neutral-700"
-                    style={{ backgroundColor: slot.color.hex }}
-                  />
-                  {slot.color.companions.slice(0, 3).map((comp, cIdx) => (
-                    <span
-                      key={cIdx}
-                      className="w-3 h-3 rounded-full border border-neutral-300 dark:border-neutral-700"
-                      style={{ backgroundColor: comp }}
-                      title={comp}
-                    />
-                  ))}
-                  <span className="text-[10px] text-neutral-400 font-mono ml-auto">
-                    RGB {slot.color.rgb.r},{slot.color.rgb.g}
-                  </span>
-                </div>
-
-                {/* Card Controls */}
-                <div className="flex items-center gap-2 pt-2 border-t border-neutral-100 dark:border-neutral-800">
-                  <button
-                    onClick={() => onRerollSlot(slot.slotId)}
-                    className="flex-1 py-1.5 px-2 text-xs font-medium text-neutral-700 dark:text-neutral-300 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 rounded-md transition-colors flex items-center justify-center gap-1 cursor-pointer"
-                    title="Generate a new color and message preview for this slot"
-                  >
-                    <RefreshCw className="w-3 h-3" />
-                    Re-roll
-                  </button>
-
-                  <button
-                    onClick={() => onPostNow(slot.color, slot.slotType, slot)}
-                    disabled={isPosting}
-                    className="py-1.5 px-2.5 text-xs font-medium text-white bg-neutral-900 hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200 rounded-md transition-colors flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
-                    title="Send this color reply immediately"
-                  >
-                    <Send className="w-3 h-3" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          );
-        })}
+        {queue.map((slot, idx) => (
+          <QueueSlotCard
+            key={slot.slotId}
+            slot={slot}
+            index={idx}
+            timezone={slotContext(slot)?.schedule?.timezone}
+            canReroll={templateUsesColor(slotContext(slot)?.template)}
+            isPosting={isPosting}
+            onReroll={() => onRerollSlot(slot.slotId)}
+            onSend={() => onPostNow(slot.color, slot.slotType, slot)}
+          />
+        ))}
       </div>
     </div>
   );
