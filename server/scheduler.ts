@@ -19,7 +19,7 @@ import { dropService } from './services/dropService.js';
 import { services } from './services/index.js';
 import type { PendingFire, TweetContext } from '../shared/types.js';
 
-/** Minimum spacing between any two live drops across all campaigns. */
+/** Minimum spacing between two live drops of the same X account. */
 // Slightly under a minute: Cloud Scheduler ticks every ~60 s and a post takes a few seconds,
 // so a strict 60 s gate made 1-minute campaigns skip every other tick.
 const MIN_LIVE_SPACING_MS = 50 * 1000;
@@ -90,8 +90,9 @@ class SchedulerService {
   private canFireNow(context: TweetContext): boolean {
     if (this.dropsLeft <= 0) return false; // MAX_DROPS_PER_TICK: stays due for the next tick
     if (services.settings.isGlobalDryRun() || context.dryRun) return true;
-    if (services.rateLimit.getCooldownState().isThrottled) return false;
-    return services.rateLimit.getTimeSinceLastLivePostMs() >= MIN_LIVE_SPACING_MS;
+    // Cooldown and spacing belong to the X account the campaign posts as.
+    if (services.rateLimit.getCooldownState(context.accountId).isThrottled) return false;
+    return services.rateLimit.getTimeSinceLastLivePostMs(context.accountId) >= MIN_LIVE_SPACING_MS;
   }
 
   /** Starts a drop, charging it to the per-tick budget (callers check `canFireNow` first). */
@@ -145,7 +146,7 @@ class SchedulerService {
       console.error('[Scheduler] Failed to top up the queue:', err);
     }
 
-    // Global gates: global pause, cooldown, exhausted X rate window.
+    // Global gates: global pause, exhausted X rate window (cooldowns are per account).
     const globalBlock = this.getGlobalBlockedReason();
     if (globalBlock) {
       console.log(`[Scheduler] Tick skipped: ${globalBlock}`);
@@ -267,10 +268,6 @@ class SchedulerService {
     if (services.settings.isGlobalPaused()) {
       return 'Paused: scheduled posts are off (switch the header to Running)';
     }
-    const cooldown = services.rateLimit.getCooldownState();
-    if (cooldown.isThrottled) {
-      return `X cooldown: ${Math.ceil(cooldown.secondsRemaining / 60)}m left${cooldown.reason ? ` (${cooldown.reason})` : ''}`;
-    }
     const telemetry = services.rateLimit.getRateLimitTelemetry();
     if (telemetry.headersCaptured && telemetry.remaining <= 0 && telemetry.secondsUntilReset > 0) {
       return `X rate-limit window used up: resets in ${Math.ceil(telemetry.secondsUntilReset / 60)}m`;
@@ -286,6 +283,13 @@ class SchedulerService {
       return context.autoPausedReason
         ? `Campaign auto-paused: ${context.autoPausedReason}`
         : 'Campaign is paused (resume it on its card)';
+    }
+    const problem = services.accounts.problem(context.accountId);
+    if (problem) return problem;
+    const cooldown = services.rateLimit.getCooldownState(context.accountId);
+    if (cooldown.isThrottled) {
+      const handle = services.accounts.handleOf(context.accountId);
+      return `X cooldown${handle ? ` for @${handle}` : ''}: ${Math.ceil(cooldown.secondsRemaining / 60)}m left${cooldown.reason ? ` (${cooldown.reason})` : ''}`;
     }
     return undefined;
   }

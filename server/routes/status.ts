@@ -7,6 +7,7 @@ import type { AppDeps } from '../app.js';
 import type { AiStatus } from '../../shared/types.js';
 import { isGeminiConfigured } from '../geminiConfig.js';
 import { getDefaultTargetTweetId } from '../store/defaults.js';
+import { withAccountHandles } from './queue.js';
 
 export const createStatusRouter = ({ services, scheduler }: AppDeps) => {
   const router = Router();
@@ -34,9 +35,11 @@ export const createStatusRouter = ({ services, scheduler }: AppDeps) => {
       credentialsStatus: services.credentials.getMaskedCredentialsStatus(),
       stats,
       cooldownState: services.rateLimit.getCooldownState(),
+      accountCooldowns: services.rateLimit.getAllCooldownStates(),
       rateLimitTelemetry: services.rateLimit.getRateLimitTelemetry(),
-      queue: services.queue.getQueue(),
+      queue: withAccountHandles(services, services.queue.getQueue()),
       latestLog: logs[0] || null,
+      accounts: services.accounts.list(),
     });
   });
 
@@ -45,12 +48,19 @@ export const createStatusRouter = ({ services, scheduler }: AppDeps) => {
       success: true,
       telemetry: services.rateLimit.getRateLimitTelemetry(),
       cooldownState: services.rateLimit.getCooldownState(),
+      accountCooldowns: services.rateLimit.getAllCooldownStates(),
     });
   });
 
-  router.post('/cooldown/clear', (_req, res) => {
-    services.rateLimit.clearGlobalCooldown();
-    res.json({ success: true, cooldownState: services.rateLimit.getCooldownState() });
+  // Body `{ accountId }` clears one account's cooldown; without it every account's is cleared.
+  router.post('/cooldown/clear', (req, res) => {
+    const accountId = typeof req.body?.accountId === 'string' ? req.body.accountId : undefined;
+    services.rateLimit.clearCooldown(accountId);
+    res.json({
+      success: true,
+      cooldownState: services.rateLimit.getCooldownState(),
+      accountCooldowns: services.rateLimit.getAllCooldownStates(),
+    });
   });
 
   return router;

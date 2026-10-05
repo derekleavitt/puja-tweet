@@ -5,12 +5,12 @@ Errors: `{ "success": false, "error": "<message>" }` with a real HTTP status (40
 
 | Method | Path | Notes |
 | --- | --- | --- |
-| GET | `/api/status` | Settings, contexts, next posts, stats, queue, latest log |
-| GET | `/api/rate-limits` | Telemetry and cooldown state |
-| POST | `/api/cooldown/clear` | Clears the global cooldown |
+| GET | `/api/status` | Settings, contexts, next posts, stats, queue, latest log, `accounts` (see [X accounts](#x-accounts)), `accountCooldowns` (per account id; `cooldownState` stays the default account's) |
+| GET | `/api/rate-limits` | Telemetry, default-account `cooldownState`, `accountCooldowns` |
+| POST | `/api/cooldown/clear` | Body `{ accountId? }`: clears that X account's cooldown, or every account's without it |
 | GET | `/api/contexts` | Contexts, active id, next posts |
-| POST | `/api/contexts` | Create a context (400 on invalid body). Optional `hashtagEvolution` config, see [Evolving hashtags](#evolving-hashtags) |
-| PUT | `/api/contexts/:id` | Update (404 unknown id); `hashtagEvolution` merges over the stored config. The chain anchor is server-owned: a `lastPostedTweetId` string is ignored, `null`/`''` resets the chain (as does a new `targetTweetId`) |
+| POST | `/api/contexts` | Create a context (400 on invalid body or an unknown `accountId`). Optional `hashtagEvolution` config, see [Evolving hashtags](#evolving-hashtags) |
+| PUT | `/api/contexts/:id` | Update (404 unknown id); `hashtagEvolution` merges over the stored config. The chain anchor is server-owned: a `lastPostedTweetId` string is ignored, `null`/`''` resets the chain (as does a new `targetTweetId` or a new `accountId`). An unknown `accountId` is a 400; resuming (`enabled: true`) a campaign whose account is removed or revoked is a 400 |
 | DELETE | `/api/contexts/:id` | Delete (404 unknown id, 400 if last context) |
 | POST | `/api/contexts/:id/activate` | 404 unknown id |
 | POST | `/api/contexts/:id/toggle` | 404 unknown id |
@@ -23,15 +23,41 @@ Errors: `{ "success": false, "error": "<message>" }` with a real HTTP status (40
 | DELETE | `/api/credentials/:method` | Remove stored credentials for `oauth1`, `oauth2` or `bearer` |
 | POST | `/api/twitter/verify` | Verify credentials; failure is `{ valid:false, message }` |
 | POST | `/api/generate-color` | Body `{ slotType?, color?, contextId?, template? }` |
-| POST | `/api/template/preview` | Body `{ template?, hashtags?, color?, slotType?, contextId? }` (`template`/`hashtags` preview unsaved edits; 400 when `hashtags` is not a string array); returns `previewText`, `breakdown` (see [Evolving hashtags](#evolving-hashtags)) and, when the campaign evolves hashtags, `hashtags` (the tags used, without `#`) |
+| POST | `/api/template/preview` | Body `{ template?, hashtags?, color?, slotType?, contextId? }` (`template`/`hashtags` preview unsaved edits; 400 when `hashtags` is not a string array); returns `previewText`, `accountId`, `accountHandle`, `breakdown` (see [Evolving hashtags](#evolving-hashtags)) and, when the campaign evolves hashtags, `hashtags` (the tags used, without `#`) |
 | POST | `/api/post-now` | Body `{ contextId?, slotType?, color?, forceLive?, text?, hashtags?, slotId? }`; 404 unknown `contextId`. `text` is posted verbatim; send the preview's `hashtags` with it so the post does not re-roll them. The response carries `hashtags` when evolution is on |
 | ALL | `/api/cron/trigger`, `/api/webhook/trigger` | Secret via `?secret=`, `x-cron-secret` or body; `contextId`/`slot`/`forceLive`; 404 unknown `contextId`; without `contextId` the active campaign is posted |
 | GET | `/api/webhook/url` | The trigger URL; `?contextId=` pins it to one campaign (404 unknown) |
-| GET | `/api/queue` | Optional `?contextId=` |
+| GET | `/api/queue` | Optional `?contextId=`; each slot carries `accountHandle` |
 | POST | `/api/queue/regenerate` | Body or query `contextId` |
 | POST | `/api/queue/reroll` | Body `{ slotId }`; 400 missing, 404 unknown slot |
-| GET | `/api/history` | `{ logs }` |
+| GET | `/api/history` | `{ logs }`; each log carries `accountId` and `accountHandle` (logs from before multi-account have neither) |
 | DELETE | `/api/history` | Clears logs |
+
+## X accounts
+
+Campaigns post as one X account each (`TweetContext.accountId`; absent = the default account
+`acct_env`, whose tokens are the `TWITTER_ACCESS_TOKEN*` env vars). Owner guide:
+[docs/accounts.md](accounts.md). Responses never contain tokens; all routes require the owner.
+
+`XAccountInfo` (`shared/types.ts`): `{ id, label, handle, userId, status: 'ok'|'revoked'|'unverified',
+lastVerifiedAt?, lastError?, createdAt, isDefault }`. Connected ids are `acct_<X user id>`.
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| GET | `/api/accounts` | `{ accounts }`, default first |
+| POST | `/api/accounts/connect/start` | Body `{ mode?: 'redirect'\|'pin', callbackUrl? }`. Redirect mode needs `callbackUrl` = this site's `/oauth/x/callback` (same host as the request, https or localhost, or an `OAUTH_CALLBACK_ORIGINS` origin; anything else is a 400). PIN mode uses `oob`. Returns `{ mode, authorizeUrl, oauthToken }` (`authorizeUrl` forces X to ask which account to sign in). 400 when `CREDENTIALS_ENCRYPTION_KEY` or the app API key/secret is missing; X errors are 502. The request-token secret is stored encrypted for 10 minutes |
+| POST | `/api/accounts/connect/complete` | Body `{ oauthToken, verifier }` (`verifier` = `oauth_verifier` from the callback, or the PIN). 400 for an unknown/expired/used request token or when X refuses the verifier. Reconnecting an existing X user updates its tokens (no duplicate). Returns `{ account, accounts }` |
+| POST | `/api/accounts/:id/verify` | `GET /2/users/me` as that account (works for `acct_env` too); stores handle and status (`ok` or `revoked`). Returns `{ valid, message, account, accounts }` |
+| PATCH | `/api/accounts/:id` | Body `{ label }` (max 60 chars); 400 for `acct_env`, 404 unknown |
+| DELETE | `/api/accounts/:id` | Deletes its tokens and pauses its campaigns (they keep `accountId`, `autoPausedReason` says what to fix). Returns `{ pausedCampaigns, accounts, contexts }`; 400 for `acct_env`, 404 unknown |
+
+Posting: every drop (scheduler, webhook, CLI, manual) signs with the campaign account's tokens. A live
+drop for a removed, revoked or unreadable account fails without calling X (error class `account`)
+and pauses the campaign at once; a live 401 marks the account `revoked`. X cooldowns and the 50 s
+live spacing are per account.
+
+The SPA route `/oauth/x/callback?oauth_token=…&oauth_verifier=…` (served as `index.html`) calls
+`connect/complete` with the owner's token, then opens Settings.
 
 ## Evolving hashtags
 

@@ -54,10 +54,31 @@ export interface ChainAnchor {
   postedAt: string; // ISO timestamp of that reply
 }
 
+/** The account behind the env tokens (TWITTER_ACCESS_TOKEN/SECRET); campaigns without `accountId` use it. */
+export const DEFAULT_ACCOUNT_ID = 'acct_env';
+
+export type XAccountStatus = 'ok' | 'revoked' | 'unverified';
+
+/** Public view of an X account a campaign can post as. Never carries tokens. */
+export interface XAccountInfo {
+  id: string; // 'acct_env' for the default (env) account, 'acct_<userId>' for connected ones
+  label: string;
+  handle: string; // Without '@'; '' until the default account was verified
+  userId: string;
+  status: XAccountStatus;
+  lastVerifiedAt?: string;
+  lastError?: string;
+  createdAt: string;
+  /** True for the env-token account: verify only (no rename / remove). */
+  isDefault: boolean;
+}
+
 export interface TweetContext {
   id: string; // Unique context ID e.g. 'ctx_default', 'ctx_1790623000'
   name: string; // Context title e.g. 'Primary Eternal Colors'
   description?: string;
+  /** X account this campaign posts as (see `XAccountInfo`); undefined = the default account. */
+  accountId?: string;
   targetTweetId: string; // The numeric Tweet ID to reply to (root post)
   replyTargetMode?: 'original_post' | 'last_comment'; // 'original_post' = reply to root post; 'last_comment' = cascading reply to last comment made by us
   engagementMode?: 'reply' | 'quote' | 'standalone'; // 'reply' = comment thread, 'quote' = Quote Tweet (embeds post), 'standalone' = timeline post
@@ -207,6 +228,9 @@ export interface PostLog {
   contextName?: string;
   /** True when a restricted reply was retried as a quote tweet (autoFallbackToQuote). */
   fallbackTriggered?: boolean;
+  /** Account the drop was posted as (absent on logs from before multi-account). */
+  accountId?: string;
+  accountHandle?: string;
 }
 
 export interface QueueSlot {
@@ -220,6 +244,8 @@ export interface QueueSlot {
   previewText?: string;
   targetTweetId?: string;
   replyTargetMode?: 'original_post' | 'last_comment';
+  /** Handle of the account the campaign posts as (filled in when the queue is read). */
+  accountHandle?: string;
 }
 
 /** AI availability fields on `GET /api/status` (`geminiConfigured` is false when GEMINI_API_KEY is unset). */
@@ -243,6 +269,10 @@ export interface StatusResponse extends AiStatus {
   cooldownState?: CooldownState;
   rateLimitTelemetry?: RateLimitTelemetry;
   queue?: QueueSlot[];
+  /** Every account campaigns can post as (default first). */
+  accounts?: XAccountInfo[];
+  /** X cooldown per account id (`cooldownState` is the default account's). */
+  accountCooldowns?: Record<string, CooldownState>;
 }
 
 /**

@@ -16,6 +16,7 @@ import {
   StatusResponse,
   TweetContext,
   VerifyResult,
+  XAccountInfo,
 } from '../types.js';
 
 type Json = ApiResult;
@@ -127,6 +128,37 @@ export const clearCredentials = (method: 'oauth1' | 'oauth2' | 'bearer') =>
   orBody(apiFetch<Json>(`/api/credentials/${method}`, { method: 'DELETE' }));
 export const verifyCredentials = () =>
   orBody(apiFetch<VerifyResult>('/api/twitter/verify', { method: 'POST' }));
+
+// X accounts campaigns can post as (responses never contain tokens)
+type AccountsResult = { success: boolean; accounts: XAccountInfo[] };
+export const getAccounts = () => orNull(apiFetch<AccountsResult>('/api/accounts'));
+export const startAccountConnect = (body: { mode: 'redirect' | 'pin'; callbackUrl?: string }) =>
+  apiFetch<{ success: boolean; mode: string; authorizeUrl: string; oauthToken: string }>(
+    '/api/accounts/connect/start',
+    { method: 'POST', body, errorMessage: 'Could not start connecting the account' },
+  );
+export const completeAccountConnect = (body: { oauthToken: string; verifier: string }) =>
+  apiFetch<AccountsResult & { account: XAccountInfo }>('/api/accounts/connect/complete', {
+    method: 'POST',
+    body,
+    errorMessage: 'Could not connect the account',
+  });
+export const verifyAccount = (id: string) =>
+  apiFetch<AccountsResult & { valid: boolean; message: string; account: XAccountInfo }>(
+    `/api/accounts/${encodeURIComponent(id)}/verify`,
+    { method: 'POST', errorMessage: 'Could not verify the account' },
+  );
+export const renameAccount = (id: string, label: string) =>
+  apiFetch<AccountsResult>(`/api/accounts/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: { label },
+    errorMessage: 'Could not rename the account',
+  });
+export const removeAccount = (id: string) =>
+  apiFetch<AccountsResult & { pausedCampaigns: string[] }>(
+    `/api/accounts/${encodeURIComponent(id)}`,
+    { method: 'DELETE', errorMessage: 'Could not remove the account' },
+  );
 
 // Webhook (admin: the secret is only ever returned by these routes)
 export const getWebhookUrl = (contextId?: string) =>

@@ -6,12 +6,19 @@
 
 import React, { useState } from 'react';
 import { Check, Activity } from 'lucide-react';
-import { BotSettings, CooldownState, RateLimitTelemetry } from '../../types.js';
+import { BotSettings, CooldownState, RateLimitTelemetry, TweetContext } from '../../types.js';
+import { AccountsPanel } from './AccountsPanel.js';
+import { useServerInfo } from '../../context/serverInfo.js';
+import { accountName, findAccount } from '../../lib/accounts.js';
 import { WebhookSettings } from './WebhookSettings.js';
 import { RunToggles } from './RunToggles.js';
 
 interface SettingsPanelProps {
   settings: BotSettings;
+  contexts: TweetContext[];
+  refresh: () => Promise<void> | void;
+  /** X cooldown per account id. */
+  accountCooldowns?: Record<string, CooldownState>;
   onToggleGlobalDryRun: () => void;
   onToggleGlobalPause: () => void;
   cooldownState?: CooldownState | null;
@@ -25,6 +32,9 @@ const BUTTON =
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   settings,
+  contexts,
+  refresh,
+  accountCooldowns = {},
   onToggleGlobalDryRun,
   onToggleGlobalPause,
   cooldownState,
@@ -33,6 +43,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   onClearCooldown,
 }) => {
   const [copied, setCopied] = useState(false);
+  const { accounts } = useServerInfo();
+  const throttled = Object.entries(accountCooldowns)
+    .filter(([, c]) => c.isThrottled)
+    .map(
+      ([id, c]) =>
+        `${accountName(findAccount(accounts, id), id)} ${Math.ceil(c.secondsRemaining / 60)}m`,
+    );
+  const anyThrottled = throttled.length > 0 || !!cooldownState?.isThrottled;
   const flashCopied = () => {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -75,7 +93,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             Rate limits &amp; cooldown
           </span>
           <div className="flex items-center gap-2">
-            {cooldownState?.isThrottled && (
+            {anyThrottled && (
               <button type="button" onClick={onClearCooldown} className={BUTTON}>
                 Clear cooldown
               </button>
@@ -86,11 +104,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           </div>
         </div>
         <p className="text-xs text-neutral-500">
-          {cooldownState?.isThrottled
-            ? `Cooldown active for ${Math.ceil(cooldownState.secondsRemaining / 60)}m: no campaign posts until it ends.`
-            : `X quota: ${rateLimitTelemetry?.remaining ?? '?'} / ${rateLimitTelemetry?.limit ?? '?'} remaining. The anti-spam spacing and cooldown are shared by all campaigns.`}
+          {anyThrottled
+            ? `Cooldown active (${throttled.join(', ') || `${Math.ceil((cooldownState?.secondsRemaining ?? 0) / 60)}m`}): campaigns posting as ${throttled.length === 1 ? 'that account' : 'those accounts'} wait until it ends.`
+            : `X quota: ${rateLimitTelemetry?.remaining ?? '?'} / ${rateLimitTelemetry?.limit ?? '?'} remaining. The anti-spam spacing and cooldown apply per X account.`}
         </p>
       </section>
+
+      <AccountsPanel contexts={contexts} refresh={refresh} />
 
       <WebhookSettings onCopied={flashCopied} />
     </div>

@@ -49,6 +49,7 @@ a11ce00 revert: "feat: play it cool" — did not pass review
 - 🧵 **Reply chains**: each drop can reply to the last one, forming a long thread of devotion. If the thread breaks, it recovers. Unlike some of us.
 - ✍️ **AI poetry** (Gemini): optional. Hard-capped at 280 characters, because even love has rate limits.
 - #️⃣ **Evolving hashtags**: optional, per campaign. Every tweet trades `#eternal #colors` for fresh, related tags and never repeats itself, like a poet with a thesaurus and commitment issues.
+- 👥 **Several X accounts**: connect extra accounts in Settings and pick one per campaign ("Posts as"). Each account keeps its own cooldown and spacing. See [`docs/accounts.md`](docs/accounts.md).
 - 🛑 **Global dry-run & pause**: a fresh install starts in "write love letters but don't send them" mode. Very relatable.
 - 🔐 **Locked to one Google account**: only the owner can log in. This is a love bot, not a group chat.
 - 🧯 **Circuit breaker**: 5 failures in a row and a campaign takes a breather instead of spamming. Emotional maturity, implemented in TypeScript.

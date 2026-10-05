@@ -19,6 +19,7 @@ import { CampaignHashtagsInput } from './CampaignHashtagsInput.js';
 import { TemplateHashtagsHint } from './TemplateHashtagsHint.js';
 import { TargetField } from './TargetField.js';
 import { CampaignWebhookUrl } from './CampaignWebhookUrl.js';
+import { AccountSelect } from './AccountSelect.js';
 
 interface ContextFormModalProps {
   form: ContextForm;
@@ -67,6 +68,13 @@ export const ContextFormModal: React.FC<ContextFormModalProps> = ({ form }) => {
               className={FIELD_CLASS}
             />
           </div>
+
+          <AccountSelect
+            value={ctx.accountId}
+            savedValue={form.savedAccountId}
+            hasChain={!!ctx.lastPostedTweetId || ctx.replyTargetMode === 'last_comment'}
+            onChange={(accountId) => patch({ accountId })}
+          />
 
           <TargetField
             value={ctx.targetTweetId || ''}

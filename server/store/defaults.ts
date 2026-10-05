@@ -33,6 +33,8 @@ export const createDefaultState = (): BotState => ({
   logs: [],
   queue: [],
   credentials: {},
+  accounts: [],
+  pendingOAuth: [],
   cooldownUntilMs: 0,
   cooldownReason: '',
   lastThrottledAt: '',
@@ -51,6 +53,21 @@ export const normalizeState = (raw: unknown): BotState => {
   if (Array.isArray(data.logs)) state.logs = data.logs;
   if (Array.isArray(data.queue)) state.queue = data.queue;
   if (data.credentials) state.credentials = data.credentials;
+  if (Array.isArray(data.accounts)) {
+    state.accounts = data.accounts.filter(
+      (a) => a && typeof a.id === 'string' && typeof a.encrypted === 'string',
+    );
+  }
+  if (data.defaultAccount && typeof data.defaultAccount === 'object') {
+    state.defaultAccount = data.defaultAccount;
+  }
+  if (Array.isArray(data.pendingOAuth)) state.pendingOAuth = data.pendingOAuth;
+  if (data.accountCooldowns && typeof data.accountCooldowns === 'object') {
+    state.accountCooldowns = data.accountCooldowns;
+  }
+  if (data.lastLivePostByAccount && typeof data.lastLivePostByAccount === 'object') {
+    state.lastLivePostByAccount = data.lastLivePostByAccount;
+  }
   if (data.cooldownUntilMs) state.cooldownUntilMs = Number(data.cooldownUntilMs);
   if (data.cooldownReason) state.cooldownReason = data.cooldownReason;
   if (data.lastThrottledAt) state.lastThrottledAt = data.lastThrottledAt;

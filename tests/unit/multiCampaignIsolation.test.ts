@@ -84,7 +84,7 @@ beforeEach(() => {
   post.mockReset().mockImplementation(okPost as never);
   for (const c of services.contexts.getContexts().slice(1)) services.contexts.deleteContext(c.id);
   services.logs.clearLogs();
-  services.rateLimit.clearGlobalCooldown();
+  services.rateLimit.clearCooldown();
   services.settings.updateSettings({ globalDryRun: false, globalPaused: false });
   now += 60 * MIN; // past any live-post spacing left by the previous test
   A = campaign({
@@ -234,15 +234,16 @@ describe('errors, back-off and auto-pause stay with the failing campaign', () =>
     expect(ctx(A).lastPostedTweetId).toBe(anchor.tweetId);
   });
 
-  it('a 429 sets the GLOBAL cooldown (by design: one X account) and blocks every campaign', async () => {
+  it("a 429 sets the account's cooldown and blocks every campaign on that account", async () => {
     due(B, -100);
     post.mockImplementation(failWith(429, 'Too Many Requests') as never);
     await scheduler.tick(); // A hits the limit
     expect(services.rateLimit.getCooldownState().isThrottled).toBe(true);
-    expect(scheduler.getGlobalBlockedReason()).toMatch(/cooldown/);
+    // All three campaigns post as the default account, so they all wait.
+    expect(scheduler.getBlockedReason(ctx(C))).toMatch(/cooldown/);
     post.mockImplementation(okPost as never);
     await scheduler.tick();
-    expect(post).toHaveBeenCalledTimes(1); // C and B blocked by the global cooldown
+    expect(post).toHaveBeenCalledTimes(1); // C blocked by the account cooldown (B is not due)
     expect(ctx(A).consecutiveErrors ?? 0).toBe(0); // throttling is not a breaker error
   });
 });

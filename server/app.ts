@@ -11,6 +11,7 @@ import { requireAdmin, type TokenVerifier } from './middleware/auth.js';
 import { schedulerConfig, type SchedulerMode } from './config.js';
 import { errorHandler } from './middleware/error.js';
 import { flushBeforeResponse } from './middleware/flushOnWrite.js';
+import { createAccountsRouter } from './routes/accounts.js';
 import { createContextsRouter } from './routes/contexts.js';
 import { createCredentialsRouter } from './routes/credentials.js';
 import { createCronRouter } from './routes/cron.js';
@@ -67,6 +68,7 @@ export const createApp = (deps: AppDeps) => {
   app.use('/api', createContextsRouter(deps));
   app.use('/api', createSettingsRouter(deps));
   app.use('/api', createCredentialsRouter(deps));
+  app.use('/api', createAccountsRouter(deps));
   app.use('/api', createDropsRouter(deps));
   app.use('/api', createWebhookRouter(deps));
   app.use('/api', createQueueRouter(deps));
