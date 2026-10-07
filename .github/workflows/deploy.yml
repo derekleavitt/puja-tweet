@@ -89,6 +89,7 @@ jobs:
             SCHEDULE_TIMEZONE=America/Denver
             TARGET_TWEET_ID=2103110008212992249
             NODE_ENV=production
+            X_TRENDS_WOEID=${{ vars.X_TRENDS_WOEID }}
           secrets: |
             TWITTER_API_KEY=TWITTER_API_KEY:latest
             TWITTER_API_SECRET=TWITTER_API_SECRET:latest

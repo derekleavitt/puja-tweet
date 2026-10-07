@@ -38,6 +38,15 @@ Conversation turns use the same table (built in `conversationService.buildTurn`,
 - There is no template: an evolution with no campaign `hashtags` and no previous tags starts from a
   neutral theme of the conversation's premise. The Gemini prompt gets the premise and the latest turn
   as the topic (no color name), so the tags follow what is being talked about.
+- The tags aim for **reach**: popular, established tags people follow and search for the subject
+  (`#Coffee`, `#FlyFishing`), not invented compounds. Only the last two sets are off limits (color
+  drops avoid the last ~40), and the campaign's own hashtags may come back, so a conversation rotates
+  among the popular tags instead of drifting to obscure ones.
+- **Trending on X** (optional): with `X_TRENDS_WOEID` set (repo variable in production; `1` =
+  worldwide, `23424977` = United States), the prompt also lists what is trending there and may use
+  one only if it truly fits the subject. The trends endpoint is not on X's Free or Basic plans (Pro, or
+  pay-per-use at about $0.01 a call); it is cached for an hour and, if X refuses it, off for a day.
+  `server/services/trendService.ts`.
 - The tag block's room is reserved before the turn is written, after the @mentions.
 - Hashtags the model writes anyway are removed: a trailing run is dropped, a `#word` inside a sentence
   becomes `word`.

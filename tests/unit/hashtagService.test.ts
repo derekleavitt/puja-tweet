@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { generateColor } from '../../server/colorEngine.js';
 import {
+  buildConversationHashtagPrompt,
   buildHashtagPrompt,
+  CONVERSATION_HASHTAG_SYSTEM_INSTRUCTION,
   createHashtagService,
   parseHashtagReply,
 } from '../../server/services/hashtagService.js';
@@ -163,5 +165,51 @@ describe('hashtagService.next', () => {
     expect(out.tags.map((t) => t.toLowerCase())).not.toContain('sunsettopaz');
     // "keep" applies to the campaign's own tags only, never to the theme seed.
     expect(out.tags.map((t) => t.toLowerCase())).not.toContain('poetry');
+  });
+});
+
+describe('conversation hashtags (topic)', () => {
+  const topic = 'Three anglers argue about trout / The river owes us nothing.';
+  const convo = (extra: Partial<TweetContext> = {}) =>
+    context({ template: '', hashtags: ['FlyFishing'], ...extra });
+
+  it('asks for popular tags for the subject, with what is trending on X', async () => {
+    const trending = vi.fn(async () => ['WorldCup', 'Trout']);
+    const { service, generate } = makeService({ trending });
+    await service.next(convo(), undefined, { hashtags: ['FlyFishing'], topic });
+    expect(trending).toHaveBeenCalledTimes(1);
+    const [prompt, system] = generate.mock.calls[0] as unknown as [string, string];
+    expect(system).toBe(CONVERSATION_HASHTAG_SYSTEM_INSTRUCTION);
+    expect(prompt).toContain(`A public X conversation is about: "${topic}"`);
+    expect(prompt).toContain('popular, established tags');
+    expect(prompt).toContain('Trending on X right now: #WorldCup #Trout');
+    expect(prompt).toContain('only if it truly fits the subject');
+  });
+
+  it('never asks for trends for color drops', async () => {
+    const trending = vi.fn(async () => ['WorldCup']);
+    const { service, generate } = makeService({ trending });
+    await service.next(context(), color);
+    expect(trending).not.toHaveBeenCalled();
+    expect(generate.mock.calls[0]).toHaveLength(1); // default (color) system instruction
+  });
+
+  it('only avoids the last two sets, and may return to the seed tags', async () => {
+    const recent = ['A1', 'A2', 'A3', 'B1', 'B2', 'B3', 'C1', 'C2', 'C3'];
+    const generate = vi.fn(async (_prompt: string) => '["FlyFishing","A1","C3","Trout"]');
+    const { service } = makeService({ generate, trending: async () => [] });
+    const { tags } = await service.next(
+      convo({ hashtagState: { current: ['C1', 'C2', 'C3'], recent } }),
+      undefined,
+      { hashtags: ['FlyFishing'], topic },
+    );
+    // A1 is three sets back (allowed again), C3 is in the last set (blocked), the seed is allowed.
+    expect(tags).toEqual(['FlyFishing', 'A1', 'Trout']);
+    const prompt = generate.mock.calls[0][0];
+    expect(prompt).toContain('Do not repeat: #B1 #B2 #B3 #C1 #C2 #C3.');
+  });
+
+  it('leaves the trending line out when there are no trends', () => {
+    expect(buildConversationHashtagPrompt(['A'], 2, [], 'coffee', [])).not.toContain('Trending');
   });
 });
