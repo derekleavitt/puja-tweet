@@ -5,8 +5,9 @@
  */
 
 import React, { useState } from 'react';
-import { BadgeCheck, Pencil, Trash2, Check, X } from 'lucide-react';
+import { BadgeCheck, Pencil, Trash2, Check, X, Eraser } from 'lucide-react';
 import { XAccountInfo } from '../../types.js';
+import { WipeProgress } from './WipeProgress.js';
 
 interface AccountRowProps {
   account: XAccountInfo;
@@ -14,6 +15,8 @@ interface AccountRowProps {
   onVerify: () => void;
   onRename: (label: string) => void;
   onRequestRemove: () => void;
+  onRequestWipe: () => void;
+  onCancelWipe: () => void;
 }
 
 const STATUS_STYLES: Record<XAccountInfo['status'], string> = {
@@ -37,6 +40,8 @@ export const AccountRow: React.FC<AccountRowProps> = ({
   onVerify,
   onRename,
   onRequestRemove,
+  onRequestWipe,
+  onCancelWipe,
 }) => {
   const [editing, setEditing] = useState(false);
   const [label, setLabel] = useState(account.label);
@@ -105,6 +110,13 @@ export const AccountRow: React.FC<AccountRowProps> = ({
           Last verified: {verified}
           {account.status === 'revoked' && account.lastError ? ` · ${account.lastError}` : ''}
         </p>
+        {account.wipe && (
+          <WipeProgress
+            wipe={account.wipe}
+            busy={busy === `wipe:${account.id}`}
+            onCancel={onCancelWipe}
+          />
+        )}
       </div>
       <div className="flex items-center gap-1.5 shrink-0">
         <button
@@ -114,6 +126,15 @@ export const AccountRow: React.FC<AccountRowProps> = ({
           className={ACTION}
         >
           <BadgeCheck className="w-3 h-3" /> Verify
+        </button>
+        <button
+          type="button"
+          onClick={onRequestWipe}
+          disabled={!account.handle || account.wipe?.status === 'running'}
+          title={account.handle ? undefined : 'Verify the account first'}
+          className={`${ACTION} text-red-600 dark:text-red-400`}
+        >
+          <Eraser className="w-3 h-3" /> Delete all content
         </button>
         {!account.isDefault && (
           <>

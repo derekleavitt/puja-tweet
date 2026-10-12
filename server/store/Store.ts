@@ -11,6 +11,7 @@ import type {
   QueueSlot,
   RateLimitHeaders,
   TweetContext,
+  WipeJobSummary,
   XAccountInfo,
 } from '../../shared/types.js';
 
@@ -38,6 +39,33 @@ export interface AccountCooldown {
   untilMs: number;
   reason: string;
   lastThrottledAt: string;
+}
+
+/** One item a wipe job still has to remove. `id` is the source post for a retweet. */
+export interface WipeItem {
+  kind: 'post' | 'retweet' | 'like';
+  id: string;
+}
+
+/** X endpoints a wipe job calls, each with its own rate-limit window. */
+export type WipeEndpoint = 'timeline' | 'likedList' | 'deletePost' | 'unretweet' | 'unlike';
+
+/** A "delete all content" job of one account, advanced a little on every scheduler tick. */
+export interface WipeJob extends Omit<WipeJobSummary, 'queued' | 'waitingUntil'> {
+  accountId: string;
+  handle: string;
+  userId: string;
+  /** Pagination token of the list being read (posts or likes). */
+  cursor?: string;
+  /** The current list has no more pages. */
+  listDone: boolean;
+  queue: WipeItem[];
+  /** Items removed in the current pass (a pass that removes nothing ends the phase). */
+  passRemoved: number;
+  /** Rate-limited endpoints and when they may be called again (epoch ms). */
+  waitUntil: Partial<Record<WipeEndpoint, number>>;
+  /** `kind:id` of items X refused to remove; later passes skip them. */
+  failedIds: string[];
 }
 
 export interface BotState {
@@ -72,6 +100,8 @@ export interface BotState {
   lastRateLimitAccountId?: string;
   /** Gemini calls made on `day` (UTC), so GEMINI_MAX_CALLS_PER_DAY survives restarts. */
   geminiUsage?: { day: string; calls: number };
+  /** "Delete all content" jobs, keyed by account id (the latest job per account). */
+  wipeJobs?: Record<string, WipeJob>;
 }
 
 export interface Store {

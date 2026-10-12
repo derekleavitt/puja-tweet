@@ -84,6 +84,7 @@ export const normalizeState = (raw: unknown): BotState => {
   if (data.lastRateLimitCaptureTimestamp) {
     state.lastRateLimitCaptureTimestamp = Number(data.lastRateLimitCaptureTimestamp);
   }
+  if (data.wipeJobs && typeof data.wipeJobs === 'object') state.wipeJobs = data.wipeJobs;
   const usage = data.geminiUsage;
   if (usage && typeof usage.day === 'string' && Number.isFinite(Number(usage.calls))) {
     state.geminiUsage = { day: usage.day, calls: Number(usage.calls) };

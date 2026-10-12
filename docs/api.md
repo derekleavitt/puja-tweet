@@ -50,6 +50,8 @@ lastVerifiedAt?, lastError?, createdAt, isDefault }`. Connected ids are `acct_<X
 | POST | `/api/accounts/connect/complete` | Body `{ oauthToken, verifier }` (`verifier` = `oauth_verifier` from the callback, or the PIN). 400 for an unknown/expired/used request token or when X refuses the verifier. Reconnecting an existing X user updates its tokens (no duplicate). Returns `{ account, accounts }` |
 | POST | `/api/accounts/:id/verify` | `GET /2/users/me` as that account (works for `acct_env` too); stores handle and status (`ok` or `revoked`). Returns `{ valid, message, account, accounts }` |
 | PATCH | `/api/accounts/:id` | Body `{ label }` (max 60 chars); 400 for `acct_env`, 404 unknown |
+| POST | `/api/accounts/:id/wipe` | Starts deleting ALL of the account's content on X (posts, replies, quotes; retweets undone; likes removed). Body `{ confirm }` must be the account's `@handle` (400 otherwise; 404 unknown; 409 while one runs). Pauses its campaigns. With the global dry run on it only counts. Returns `{ pausedCampaigns, accounts, contexts }`; progress is each account's `wipe` in `accounts` |
+| POST | `/api/accounts/:id/wipe/cancel` | Stops a running content wipe (already deleted content stays deleted). Returns `{ accounts }` |
 | DELETE | `/api/accounts/:id` | Deletes its tokens and pauses its campaigns (they keep `accountId`, `autoPausedReason` says what to fix). Returns `{ pausedCampaigns, accounts, contexts }`; 400 for `acct_env`, 404 unknown |
 
 Posting: every drop (scheduler, webhook, CLI, manual) signs with the campaign account's tokens. A live

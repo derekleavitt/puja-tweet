@@ -110,7 +110,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </p>
       </section>
 
-      <AccountsPanel contexts={contexts} refresh={refresh} />
+      <AccountsPanel
+        contexts={contexts}
+        globalDryRun={settings.globalDryRun !== false}
+        refresh={refresh}
+      />
 
       <WebhookSettings onCopied={flashCopied} />
     </div>

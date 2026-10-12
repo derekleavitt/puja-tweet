@@ -6,8 +6,10 @@
 
 import { useState } from 'react';
 import {
+  cancelAccountWipe,
   completeAccountConnect,
   removeAccount,
+  startAccountWipe,
   renameAccount,
   startAccountConnect,
   verifyAccount,
@@ -90,8 +92,26 @@ export function useAccounts(refresh: () => Promise<void> | void) {
       }
     });
 
+  /** "Delete all content": `confirm` is the @handle the owner typed. */
+  const startWipe = (id: string, confirm: string) =>
+    run(`wipe:${id}`, async () => {
+      const r = await startAccountWipe(id, confirm);
+      toast.info(
+        r.pausedCampaigns.length
+          ? `Deleting in the background. Paused: ${r.pausedCampaigns.join(', ')}.`
+          : 'Started in the background; progress shows under the account.',
+      );
+    });
+
+  const cancelWipe = (id: string) =>
+    run(`wipe:${id}`, async () => {
+      await cancelAccountWipe(id);
+    });
+
   return {
     accounts,
+    startWipe,
+    cancelWipe,
     busy,
     pendingPin,
     cancelPin: () => setPendingPin(null),

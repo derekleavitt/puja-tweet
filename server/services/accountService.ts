@@ -8,6 +8,7 @@
  *   encrypted with CREDENTIALS_ENCRYPTION_KEY and never leave the server.
  */
 
+import { summarizeWipeJob } from './wipeJob.js';
 import { HttpError } from '../middleware/error.js';
 import {
   oauth1AccessToken,
@@ -89,9 +90,12 @@ export class AccountService {
     };
   }
 
-  /** Every account, default first. Never includes tokens. */
+  /** Every account, default first, with its latest content-wipe progress. Never includes tokens. */
   list(): XAccountInfo[] {
-    return [this.defaultInfo(), ...this.state.accounts.map(toInfo)];
+    return [this.defaultInfo(), ...this.state.accounts.map(toInfo)].map((info) => {
+      const wipe = summarizeWipeJob(this.state.wipeJobs?.[info.id]);
+      return wipe ? { ...info, wipe } : info;
+    });
   }
 
   get(id?: string | null): XAccountInfo | undefined {
@@ -328,6 +332,16 @@ export class AccountService {
     );
     this.sm.persist();
     return { pausedCampaigns };
+  }
+
+  /** A content wipe of this account is starting: its campaigns stop posting new content. */
+  pauseCampaignsForWipe(id: string): string[] {
+    const handle = this.handleOf(id);
+    const who = handle ? `@${handle}` : 'this account';
+    const reason = `Deleting all content of ${who} — resume when the wipe is done`;
+    const paused = this.pauseCampaignsOf(effectiveAccountId(id), reason, reason);
+    this.sm.persist();
+    return paused;
   }
 
   /** X answered 401 for this account: mark it revoked so campaigns stop using it until verified. */
