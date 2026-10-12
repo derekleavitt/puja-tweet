@@ -99,6 +99,30 @@ export const createAccountsRouter = ({ services }: AppDeps) => {
     }
   });
 
+  /** Starts deleting all of the account's content; body `{ confirm: "@handle" }`. */
+  router.post('/accounts/:id/wipe', (req, res, next) => {
+    try {
+      const { pausedCampaigns } = services.wipe.start(req.params.id, req.body?.confirm);
+      res.json({
+        success: true,
+        pausedCampaigns,
+        accounts: list(),
+        contexts: services.contexts.getContexts(),
+      });
+    } catch (err) {
+      next(toHttpError(err, 400));
+    }
+  });
+
+  router.post('/accounts/:id/wipe/cancel', (req, res, next) => {
+    try {
+      services.wipe.cancel(req.params.id);
+      res.json({ success: true, accounts: list() });
+    } catch (err) {
+      next(toHttpError(err, 400));
+    }
+  });
+
   router.delete('/accounts/:id', (req, res, next) => {
     try {
       const { pausedCampaigns } = services.accounts.remove(req.params.id);

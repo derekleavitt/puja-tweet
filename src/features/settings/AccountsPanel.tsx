@@ -10,16 +10,34 @@ import { TweetContext, XAccountInfo } from '../../types.js';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog.js';
 import { AccountRow } from './AccountRow.js';
 import { PinConnect } from './PinConnect.js';
+import { WipeAccountDialog } from './WipeAccountDialog.js';
 import { OAUTH_CALLBACK_PATH, useAccounts } from './useAccounts.js';
 
 interface AccountsPanelProps {
   contexts: TweetContext[];
+  /** Global dry run is on (a content wipe then only counts). */
+  globalDryRun: boolean;
   refresh: () => Promise<void> | void;
 }
 
-export const AccountsPanel: React.FC<AccountsPanelProps> = ({ contexts, refresh }) => {
+/** Campaigns that post as (or, in a conversation, include) this account. */
+const campaignsOf = (contexts: TweetContext[], id: string) =>
+  contexts
+    .filter((c) =>
+      c.mode === 'conversation'
+        ? c.conversation?.participants.some((p) => p.accountId === id)
+        : (c.accountId || 'acct_env') === id,
+    )
+    .map((c) => c.name);
+
+export const AccountsPanel: React.FC<AccountsPanelProps> = ({
+  contexts,
+  globalDryRun,
+  refresh,
+}) => {
   const state = useAccounts(refresh);
   const [removing, setRemoving] = useState<XAccountInfo | null>(null);
+  const [wiping, setWiping] = useState<XAccountInfo | null>(null);
   const callbackUrl = `${window.location.origin}${OAUTH_CALLBACK_PATH}`;
   const affected = removing ? contexts.filter((c) => c.accountId === removing.id) : [];
 
@@ -81,9 +99,25 @@ export const AccountsPanel: React.FC<AccountsPanelProps> = ({ contexts, refresh 
             onVerify={() => state.verify(account.id)}
             onRename={(label) => state.rename(account.id, label)}
             onRequestRemove={() => setRemoving(account)}
+            onRequestWipe={() => setWiping(account)}
+            onCancelWipe={() => state.cancelWipe(account.id)}
           />
         ))}
       </ul>
+
+      {wiping && (
+        <WipeAccountDialog
+          account={wiping}
+          campaigns={campaignsOf(contexts, wiping.id)}
+          simulate={globalDryRun}
+          onStart={(confirm) => {
+            const id = wiping.id;
+            setWiping(null);
+            void state.startWipe(id, confirm);
+          }}
+          onCancel={() => setWiping(null)}
+        />
+      )}
 
       {removing && (
         <ConfirmDialog

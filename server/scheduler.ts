@@ -202,6 +202,13 @@ class SchedulerService {
       console.error('[Scheduler] Failed to top up the queue:', err);
     }
 
+    // Content wipes are owner-started jobs, not posts: they advance even while posting is paused.
+    try {
+      await services.wipe?.advance();
+    } catch (err) {
+      console.error('[Scheduler] Content wipe step failed:', err);
+    }
+
     // Global gate: global pause (cooldowns and rate windows are per account).
     const globalBlock = this.getGlobalBlockedReason();
     if (globalBlock) {

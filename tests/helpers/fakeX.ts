@@ -1,8 +1,9 @@
 /**
  * A fake X API for tests, installed as the global `fetch`.
  *
- * Covers the OAuth 1.0a 3-legged flow (request_token, authorize, access_token), GET /2/users/me and
- * POST /2/tweets. Every request's OAuth 1.0a HMAC-SHA1 signature is recomputed independently of the
+ * Covers the OAuth 1.0a 3-legged flow (request_token, authorize, access_token), GET /2/users/me,
+ * POST /2/tweets, and the content-removal calls: user timeline, liked posts, DELETE a post, undo a
+ * retweet, remove a like (with optional rate-limit windows). Every request's OAuth 1.0a HMAC-SHA1 signature is recomputed independently of the
  * production signer and checked against the consumer secret + the secret of the token it names;
  * a bad signature is answered 401 like X does. Each request records which token signed it.
  */
@@ -82,11 +83,14 @@ const expectedSignature = (
     .digest('base64');
 };
 
-const json = (status: number, body: unknown) =>
+const json = (status: number, body: unknown, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...headers },
   });
+
+/** Rate-limited endpoints of the fake (one window each, shared by every user). */
+export type FakeWindow = 'timeline' | 'likedList' | 'deletePost' | 'unretweet' | 'unlike';
 
 export class FakeX {
   readonly users = new Map<string, FakeUser>();
@@ -97,6 +101,16 @@ export class FakeX {
   private readonly postFailures = new Map<string, { status: number; body: unknown }[]>();
   private seq = 1_800_000_000_000_000_000n;
   private tokenSeq = 0;
+  /** Retweets per user: [the retweet's own id, the source post id], newest last. */
+  readonly retweets = new Map<string, { id: string; sourceId: string }[]>();
+  /** Liked post ids per user, newest last. */
+  readonly likes = new Map<string, string[]>();
+  /** Rate windows: calls left and the reset time (epoch seconds). */
+  readonly windows = new Map<FakeWindow, { remaining: number; reset: number }>();
+  /** X lists only the newest N timeline entries. */
+  timelineCap = 3200;
+  /** The X plan cannot read timelines / likes (403). */
+  refuseReads = false;
 
   constructor(
     readonly consumerKey = 'fake-consumer-key',
@@ -144,6 +158,57 @@ export class FakeX {
 
   tweetsBy(userId: string) {
     return this.tweets.filter((t) => t.authorId === userId);
+  }
+
+  /** Content that exists before the test: a post, a retweet or a like by `userId`. */
+  seedPost(userId: string, text = 'old post'): string {
+    const id = String(this.seq++);
+    this.tweets.push({ id, authorId: userId, token: '', text });
+    return id;
+  }
+
+  seedRetweet(userId: string, sourceId: string) {
+    const list = this.retweets.get(userId) ?? [];
+    list.push({ id: String(this.seq++), sourceId });
+    this.retweets.set(userId, list);
+  }
+
+  seedLike(userId: string, postId: string) {
+    this.likes.set(userId, [...(this.likes.get(userId) ?? []), postId]);
+  }
+
+  /** Every id the user's timeline still shows (posts and retweets), newest first. */
+  timelineOf(userId: string): { id: string; retweetOf?: string }[] {
+    return [
+      ...this.tweetsBy(userId).map((t) => ({ id: t.id })),
+      ...(this.retweets.get(userId) ?? []).map((r) => ({ id: r.id, retweetOf: r.sourceId })),
+    ].sort((a, b) => (BigInt(b.id) > BigInt(a.id) ? 1 : -1));
+  }
+
+  /** Counts one call against `window`; a 429 response when it is used up. */
+  private spend(window: FakeWindow): Response | Record<string, string> {
+    const w = this.windows.get(window);
+    if (!w) return {};
+    if (w.remaining <= 0) {
+      return json(429, { title: 'Too Many Requests' }, { 'x-rate-limit-reset': String(w.reset) });
+    }
+    w.remaining--;
+    return { 'x-rate-limit-remaining': String(w.remaining), 'x-rate-limit-reset': String(w.reset) };
+  }
+
+  private paged<T>(all: T[], url: URL, toData: (x: T) => unknown, headers: Record<string, string>) {
+    const max = Number(url.searchParams.get('max_results') || 10);
+    const start = Number(url.searchParams.get('pagination_token') || 0);
+    const slice = all.slice(start, start + max);
+    const next = start + max < all.length ? String(start + max) : undefined;
+    return json(
+      200,
+      {
+        ...(slice.length ? { data: slice.map(toData) } : {}),
+        meta: { result_count: slice.length, ...(next ? { next_token: next } : {}) },
+      },
+      headers,
+    );
   }
 
   install() {
@@ -233,6 +298,72 @@ export class FakeX {
       return json(201, { data: { id, text: body.text } });
     }
 
-    return json(404, { title: 'Not Found' });
+    return this.handleContent(method, url, user) ?? json(404, { title: 'Not Found' });
+  }
+
+  /** Timeline, liked posts and the three removal calls (only for the signing user's own content). */
+  private handleContent(method: string, url: URL, user: FakeUser): Response | undefined {
+    const path = url.pathname;
+    const own = (id: string) => id === user.userId;
+    const limited = (window: FakeWindow) => this.spend(window);
+    let m: RegExpExecArray | null;
+
+    if (method === 'GET' && (m = /^\/2\/users\/(\d+)\/tweets$/.exec(path)) && own(m[1])) {
+      const h = limited('timeline');
+      if (h instanceof Response) return h;
+      if (this.refuseReads) return json(403, { title: 'Client Forbidden' });
+      const all = this.timelineOf(user.userId).slice(0, this.timelineCap);
+      return this.paged(
+        all,
+        url,
+        (t) => ({
+          id: t.id,
+          text: 'x',
+          ...(t.retweetOf ? { referenced_tweets: [{ type: 'retweeted', id: t.retweetOf }] } : {}),
+        }),
+        h,
+      );
+    }
+    if (method === 'GET' && (m = /^\/2\/users\/(\d+)\/liked_tweets$/.exec(path)) && own(m[1])) {
+      const h = limited('likedList');
+      if (h instanceof Response) return h;
+      if (this.refuseReads) return json(403, { title: 'Client Forbidden' });
+      const all = [...(this.likes.get(user.userId) ?? [])].reverse();
+      return this.paged(all, url, (id) => ({ id, text: 'x' }), h);
+    }
+    if (method === 'DELETE' && (m = /^\/2\/tweets\/(\d+)$/.exec(path))) {
+      const h = limited('deletePost');
+      if (h instanceof Response) return h;
+      const i = this.tweets.findIndex((t) => t.id === m![1]);
+      if (i < 0) return json(404, { title: 'Not Found' }, h);
+      if (this.tweets[i].authorId !== user.userId) return json(403, { title: 'Forbidden' }, h);
+      this.tweets.splice(i, 1);
+      return json(200, { data: { deleted: true } }, h);
+    }
+    if (
+      method === 'DELETE' &&
+      (m = /^\/2\/users\/(\d+)\/retweets\/(\d+)$/.exec(path)) &&
+      own(m[1])
+    ) {
+      const h = limited('unretweet');
+      if (h instanceof Response) return h;
+      const list = this.retweets.get(user.userId) ?? [];
+      this.retweets.set(
+        user.userId,
+        list.filter((r) => r.sourceId !== m![2]),
+      );
+      return json(200, { data: { retweeted: false } }, h);
+    }
+    if (method === 'DELETE' && (m = /^\/2\/users\/(\d+)\/likes\/(\d+)$/.exec(path)) && own(m[1])) {
+      const h = limited('unlike');
+      if (h instanceof Response) return h;
+      const list = this.likes.get(user.userId) ?? [];
+      this.likes.set(
+        user.userId,
+        list.filter((id) => id !== m![2]),
+      );
+      return json(200, { data: { liked: false } }, h);
+    }
+    return undefined;
   }
 }

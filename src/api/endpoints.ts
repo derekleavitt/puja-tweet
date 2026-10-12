@@ -209,6 +209,16 @@ export const renameAccount = (id: string, label: string) =>
     body: { label },
     errorMessage: 'Could not rename the account',
   });
+export const startAccountWipe = (id: string, confirm: string) =>
+  apiFetch<AccountsResult & { pausedCampaigns: string[] }>(
+    `/api/accounts/${encodeURIComponent(id)}/wipe`,
+    { method: 'POST', body: { confirm }, errorMessage: 'Could not start deleting the content' },
+  );
+export const cancelAccountWipe = (id: string) =>
+  apiFetch<AccountsResult>(`/api/accounts/${encodeURIComponent(id)}/wipe/cancel`, {
+    method: 'POST',
+    errorMessage: 'Could not cancel',
+  });
 export const removeAccount = (id: string) =>
   apiFetch<AccountsResult & { pausedCampaigns: string[] }>(
     `/api/accounts/${encodeURIComponent(id)}`,

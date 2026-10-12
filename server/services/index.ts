@@ -22,6 +22,7 @@ import { QueueService } from './queueService.js';
 import { RateLimitService } from './rateLimitService.js';
 import { SettingsService } from './settingsService.js';
 import { StateManager } from './stateManager.js';
+import { WipeService } from './wipeService.js';
 
 export interface Services {
   contexts: ContextService;
@@ -32,6 +33,8 @@ export interface Services {
   accounts: AccountService;
   rateLimit: RateLimitService;
   geminiUsage: GeminiUsageService;
+  /** "Delete all content" jobs of X accounts (advanced by the scheduler tick). */
+  wipe: WipeService;
   /** Resolves once every pending write has reached the store. */
   flush(): Promise<void>;
   /** Synchronously writes any unsaved state (shutdown hook only). */
@@ -48,13 +51,17 @@ export const createServices = async (store: Store): Promise<Services> => {
   credentials.ensureWebhookSecret();
   queue.ensureQueue();
 
+  const settings = new SettingsService(sm, contexts);
+  const accounts = new AccountService(sm, credentials);
+
   return {
     contexts,
     queue,
     logs: new LogService(sm, queue),
-    settings: new SettingsService(sm, contexts),
+    settings,
     credentials,
-    accounts: new AccountService(sm, credentials),
+    accounts,
+    wipe: new WipeService({ sm, accounts, settings }),
     rateLimit: new RateLimitService(sm),
     geminiUsage: new GeminiUsageService(sm),
     flush: () => sm.flush(),

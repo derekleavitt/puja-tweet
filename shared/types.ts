@@ -71,6 +71,27 @@ export interface XAccountInfo {
   createdAt: string;
   /** True for the env-token account: verify only (no rename / remove). */
   isDefault: boolean;
+  /** The latest "delete all content" job of this account, if any. */
+  wipe?: WipeJobSummary;
+}
+
+/** Progress of a "delete all content" job (Settings → X accounts). */
+export interface WipeJobSummary {
+  status: 'running' | 'done' | 'cancelled' | 'failed';
+  /** Global dry run was on at the start: it only counts what it would delete. */
+  simulate: boolean;
+  /** posts = posts, replies, quotes and retweets; likes = liked posts. */
+  phase: 'posts' | 'likes';
+  /** Pass over the timeline (X lists only the newest ~3,200 posts, so it repeats until clean). */
+  pass: number;
+  counts: { posts: number; retweets: number; likes: number; failed: number };
+  /** Items fetched and waiting to be removed. */
+  queued: number;
+  startedAt: string;
+  finishedAt?: string;
+  /** Waiting for X's rate limit until this time (ISO). */
+  waitingUntil?: string;
+  lastError?: string;
 }
 
 /** One voice of a conversation campaign: a connected account (or 'acct_env') and its persona. */

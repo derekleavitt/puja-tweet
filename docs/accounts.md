@@ -91,6 +91,24 @@ X's quota depends on your API tier:
 
 The rate-limit telemetry shown in the app is app-wide (the most recent X response headers).
 
+## Deleting all of an account's content
+
+Settings → X accounts → **Delete all content** removes everything the account did on X: every post,
+reply and quote is deleted, every retweet undone and every like removed. It cannot be undone.
+
+- Type the account's `@handle` to start. Campaigns that post as the account (or include it in a
+  conversation) are paused first, so it does not post new content meanwhile; resume them afterwards.
+- It runs in the background on the scheduler tick, also while posting is paused. X allows about 50
+  deletes, 50 un-retweets and 50 unlikes per 15 minutes (unlikes also 1,000 a day), so a big account
+  takes hours. The job waits out each rate window using X's headers; progress and Cancel show under
+  the account.
+- X lists only the newest ~3,200 posts. The job repeats passes until a pass finds nothing left, so
+  older posts surface as newer ones go. Posts X refuses to remove are counted as failed and skipped.
+- Listing posts and likes is a read: your X plan must allow it (a refusal stops the job with a clear
+  message), and on pay-per-use it counts toward your read usage.
+- With the global **Dry Run** on it only counts what it would remove and deletes nothing.
+- Code: `server/services/wipeService.ts`, `server/xContentClient.ts`.
+
 ## Security
 
 Tokens are stored only encrypted (AES-256-GCM with `CREDENTIALS_ENCRYPTION_KEY`) in the state
