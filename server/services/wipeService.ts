@@ -131,9 +131,11 @@ export class WipeService {
     job.queue = [];
     if (error) job.lastError = error;
     const { posts, retweets, likes, failed } = job.counts;
+    // The reason is part of the line: a job that stops must explain itself in the server log.
+    const why = status === 'failed' || error ? ` Reason: ${job.lastError}` : '';
     console.log(
       `[Wipe] @${job.handle} ${status}: ${posts} posts, ${retweets} retweets, ${likes} likes` +
-        `${job.simulate ? ' (counted only)' : ''}, ${failed} failed.`,
+        `${job.simulate ? ' (counted only)' : ''}, ${failed} failed.${why}`,
     );
   }
 
@@ -184,12 +186,19 @@ export class WipeService {
 
   /** Records X's rate window; true when the call was rate limited (429). */
   private rate(job: WipeJob, endpoint: WipeEndpoint, r: XCallResult): boolean {
-    if (r.status === 429) {
-      job.waitUntil[endpoint] = r.resetAt ?? this.now() + DEFAULT_WINDOW_MS;
-      return true;
+    const limited = r.status === 429;
+    const until = limited
+      ? (r.resetAt ?? this.now() + DEFAULT_WINDOW_MS)
+      : r.remaining === 0
+        ? r.resetAt
+        : undefined;
+    if (until) {
+      job.waitUntil[endpoint] = until;
+      console.log(
+        `[Wipe] @${job.handle}: X rate limit for ${endpoint}, waiting until ${new Date(until).toISOString()}.`,
+      );
     }
-    if (r.remaining === 0 && r.resetAt) job.waitUntil[endpoint] = r.resetAt;
-    return false;
+    return limited;
   }
 
   /** 401: the account's tokens were revoked; the job cannot continue. */

@@ -87,6 +87,10 @@ export interface WipeJobSummary {
   /** Waiting for X's rate limit until this time (ISO). */
   waitingUntil?: string;
   lastError?: string;
+  /** Running: rough minutes until the queued items are removed (X's rate windows). */
+  estimatedMinutesLeft?: number;
+  /** Running: there may be more to list after the queue (later pages, passes or the likes). */
+  moreToRead?: boolean;
 }
 
 /** One voice of a conversation campaign: a connected account and its persona. */

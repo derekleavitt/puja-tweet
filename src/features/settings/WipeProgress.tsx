@@ -28,12 +28,16 @@ export const WipeProgress: React.FC<WipeProgressProps> = ({ wipe, busy, onCancel
   const { posts, retweets, likes, failed } = wipe.counts;
   const verb = wipe.simulate ? 'found' : 'removed';
   const status = wipe.simulate && wipe.status === 'running' ? 'Counting' : STATUS[wipe.status];
+  const left =
+    wipe.estimatedMinutesLeft !== undefined
+      ? ` · about ${wipe.estimatedMinutesLeft < 1 ? 'a minute' : `${wipe.estimatedMinutesLeft} min`} left${wipe.moreToRead ? ' for what is queued (more to read after)' : ''}`
+      : '';
   const doing =
     wipe.status !== 'running'
       ? ''
       : wipe.waitingUntil
-        ? ` · waiting for X's rate limit until ${time(wipe.waitingUntil)}`
-        : ` · ${wipe.phase === 'posts' ? 'posts' : 'likes'}, pass ${wipe.pass}${wipe.queued ? `, ${wipe.queued} queued` : ''}`;
+        ? ` · waiting for X's rate limit until ${time(wipe.waitingUntil)}${left}`
+        : ` · ${wipe.phase === 'posts' ? 'posts' : 'likes'}, pass ${wipe.pass}${wipe.queued ? `, ${wipe.queued} queued` : ''}${left}`;
 
   return (
     <div
