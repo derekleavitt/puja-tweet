@@ -13,6 +13,8 @@ import { createServices, type Services } from '../../server/services/index.js';
 import { MemoryStore } from '../../server/store/MemoryStore.js';
 import { resolveTemplateText } from '../../server/templateAgent.js';
 import { postColorTweet } from '../../server/twitterClient.js';
+import { estimateMinutesLeft } from '../../server/services/wipeJob.js';
+import type { WipeJob } from '../../server/store/Store.js';
 import { FakeX, type FakeUser } from '../helpers/fakeX.js';
 
 const TARGET = '1700000000000000001';
@@ -79,6 +81,22 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
+});
+
+describe('time left', () => {
+  it('estimates from the slowest queued kind (about 50 per 15 minutes each)', () => {
+    const job = {
+      queue: [
+        ...Array.from({ length: 120 }, (_, i) => ({ kind: 'post', id: String(i) })),
+        ...Array.from({ length: 10 }, (_, i) => ({ kind: 'like', id: String(i) })),
+      ],
+      waitUntil: {},
+    } as unknown as WipeJob;
+    expect(estimateMinutesLeft(job, 0)).toBe(30); // 50 now, 50 after 15 min, 20 after 30 min
+    job.waitUntil = { deletePost: 5 * 60_000 };
+    expect(estimateMinutesLeft(job, 0)).toBe(35);
+    expect(estimateMinutesLeft({ queue: [], waitUntil: {} } as unknown as WipeJob, 0)).toBe(0);
+  });
 });
 
 describe('content wipe', () => {
@@ -150,6 +168,11 @@ describe('content wipe', () => {
     expect(fake.tweetsBy(user.userId)).toHaveLength(3);
     const summary = await wipeOf();
     expect(summary.waitingUntil).toBe(new Date(reset * 1000).toISOString());
+    // 3 queued deletes go out as soon as the 15-minute wait ends.
+    expect(summary).toMatchObject({ estimatedMinutesLeft: 15, moreToRead: true });
+    expect(vi.mocked(console.log).mock.calls.flat().join('\n')).toMatch(
+      /@brand_one: X rate limit for deletePost, waiting until /,
+    );
     const callsBefore = fake.requests.length;
     now += 5 * 60_000;
     await svc.wipe.advance(); // still inside the window: no delete call at all
@@ -189,6 +212,10 @@ describe('content wipe', () => {
     await runTicks();
     expect(await wipeOf()).toMatchObject({ status: 'failed' });
     expect((await wipeOf()).lastError).toContain('X plan may not include reading them');
+    // The stop reason is in the server log, not only on the job.
+    expect(vi.mocked(console.log).mock.calls.flat().join('\n')).toMatch(
+      /@brand_one failed: .*Reason: X refused to list @brand_one's posts \(HTTP 403\)/,
+    );
   });
 
   it('stops on revoked tokens and marks the account', async () => {

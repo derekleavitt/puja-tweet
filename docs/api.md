@@ -20,9 +20,8 @@ Errors: `{ "success": false, "error": "<message>" }` with a real HTTP status (40
 | POST | `/api/contexts/:id/clear-history` | Drops this campaign's logs, resets its stats and clock; keeps its chain anchor; 404 unknown id |
 | POST | `/api/contexts/:id/trigger` | Body `{ slotType?, forceLive? }`; 404 unknown id |
 | POST | `/api/settings` | Legacy settings body: campaign fields go to `contextId` (404 unknown; default: the active campaign) and never to any other campaign; the response carries `context` (the campaign edited) and its `queue`. Global switches `globalDryRun` and `globalPaused` (both default `true`, also for stores missing them). Global dry-run forces simulation on every path (`forceLive` cannot override it); global pause makes scheduled sources (scheduler, webhook/cron, CLI) stop, webhook returns 409, manual posting still works |
-| POST | `/api/credentials` | Save X credentials (blank/missing fields keep stored values; 400 without `CREDENTIALS_ENCRYPTION_KEY`) |
-| DELETE | `/api/credentials/:method` | Remove stored credentials for `oauth1`, `oauth2` or `bearer` |
-| POST | `/api/twitter/verify` | Verify credentials; failure is `{ valid:false, message }` |
+| POST | `/api/credentials` | Save the X app's keys `{ apiKey, apiSecret, bearerToken }` (blank/missing fields keep stored values; any other field is ignored; 400 without `CREDENTIALS_ENCRYPTION_KEY`). User tokens are never entered here: accounts are connected |
+| DELETE | `/api/credentials/:method` | Remove the stored keys of `app` (API key + secret) or `bearer` |
 | POST | `/api/generate-color` | Body `{ slotType?, color?, contextId?, template? }` |
 | POST | `/api/template/preview` | Body `{ template?, hashtags?, color?, slotType?, contextId? }` (`template`/`hashtags` preview unsaved edits; 400 when `hashtags` is not a string array); returns `previewText`, `accountId`, `accountHandle`, `breakdown` (see [Evolving hashtags](#evolving-hashtags)) and, when the campaign evolves hashtags, `hashtags` (the tags used, without `#`). For a conversation campaign it returns instead `previewText`, `charCount`, `replyToTweetId`, `lastPostedTweetId`, `isFirstInChain`, `accountId`/`accountHandle` (the speaker) and `conversation: { runId, turnNumber, speakerAccountId, speakerHandle, nextSpeakerAccountId, nextSpeakerHandle, summaryUsed, transcriptLength }` (no color, breakdown or hashtags) |
 | POST | `/api/post-now` | Body `{ contextId?, slotType?, color?, forceLive?, text?, hashtags?, slotId? }`; 404 unknown `contextId`. A failed post (X error, or an AI-only template whose AI is unavailable) answers 200 with `success: false` and its error log entry, like every other failure. `text` is posted verbatim; send the preview's `hashtags` with it so the post does not re-roll them. The response carries `hashtags` when evolution is on. For a conversation campaign, send `text` with `conversation: { runId, turnNumber, speakerAccountId, nextSpeakerAccountId }` from the preview: a stale turn is a 409 ("Conversation moved on, refresh the preview"), text without the next speaker's @handle is a 400; without `text` the turn is composed fresh. Only one drop per campaign runs at a time (409 "A drop for this campaign is already running") |
@@ -36,8 +35,8 @@ Errors: `{ "success": false, "error": "<message>" }` with a real HTTP status (40
 
 ## X accounts
 
-Campaigns post as one X account each (`TweetContext.accountId`; absent = the default account
-`acct_env`, whose tokens are the `TWITTER_ACCESS_TOKEN*` env vars). Owner guide:
+Campaigns post as one connected X account each (`TweetContext.accountId`; absent = none picked:
+simulated only). There is no built-in default account. Owner guide:
 [docs/accounts.md](accounts.md). Responses never contain tokens; all routes require the owner.
 
 `XAccountInfo` (`shared/types.ts`): `{ id, label, handle, userId, status: 'ok'|'revoked'|'unverified',
@@ -48,11 +47,11 @@ lastVerifiedAt?, lastError?, createdAt, isDefault }`. Connected ids are `acct_<X
 | GET | `/api/accounts` | `{ accounts }`, default first |
 | POST | `/api/accounts/connect/start` | Body `{ mode?: 'redirect'\|'pin', callbackUrl? }`. Redirect mode needs `callbackUrl` = this site's `/oauth/x/callback` (same host as the request, https or localhost, or an `OAUTH_CALLBACK_ORIGINS` origin; anything else is a 400). PIN mode uses `oob`. Returns `{ mode, authorizeUrl, oauthToken }` (`authorizeUrl` forces X to ask which account to sign in). 400 when `CREDENTIALS_ENCRYPTION_KEY` or the app API key/secret is missing; X errors are 502. The request-token secret is stored encrypted for 10 minutes |
 | POST | `/api/accounts/connect/complete` | Body `{ oauthToken, verifier }` (`verifier` = `oauth_verifier` from the callback, or the PIN). 400 for an unknown/expired/used request token or when X refuses the verifier. Reconnecting an existing X user updates its tokens (no duplicate). Returns `{ account, accounts }` |
-| POST | `/api/accounts/:id/verify` | `GET /2/users/me` as that account (works for `acct_env` too); stores handle and status (`ok` or `revoked`). Returns `{ valid, message, account, accounts }` |
-| PATCH | `/api/accounts/:id` | Body `{ label }` (max 60 chars); 400 for `acct_env`, 404 unknown |
+| POST | `/api/accounts/:id/verify` | `GET /2/users/me` as that account; stores handle and status (`ok` or `revoked`). Returns `{ valid, message, account, accounts }` |
+| PATCH | `/api/accounts/:id` | Body `{ label }` (max 60 chars); 404 unknown |
 | POST | `/api/accounts/:id/wipe` | Starts deleting ALL of the account's content on X (posts, replies, quotes; retweets undone; likes removed). Body `{ confirm }` must be the account's `@handle` (400 otherwise; 404 unknown; 409 while one runs). Pauses its campaigns. With the global dry run on it only counts. Returns `{ pausedCampaigns, accounts, contexts }`; progress is each account's `wipe` in `accounts` |
 | POST | `/api/accounts/:id/wipe/cancel` | Stops a running content wipe (already deleted content stays deleted). Returns `{ accounts }` |
-| DELETE | `/api/accounts/:id` | Deletes its tokens and pauses its campaigns (they keep `accountId`, `autoPausedReason` says what to fix). Returns `{ pausedCampaigns, accounts, contexts }`; 400 for `acct_env`, 404 unknown |
+| DELETE | `/api/accounts/:id` | Deletes its tokens and pauses its campaigns (they keep `accountId`, `autoPausedReason` says what to fix). Returns `{ pausedCampaigns, accounts, contexts }`; 404 unknown |
 
 Posting: every drop (scheduler, webhook, CLI, manual) signs with the campaign account's tokens. A live
 drop for a removed, revoked or unreadable account fails without calling X (error class `account`)

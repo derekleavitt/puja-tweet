@@ -1,24 +1,12 @@
 /**
- * X API credential routes (save, clear one auth method, verify).
+ * The X app's keys (save, clear): consumer key/secret and the optional app-only bearer token.
+ * Accounts are connected under /api/accounts; there are no user tokens here.
  */
 
 import { Router } from 'express';
 import type { AppDeps } from '../app.js';
 import { toHttpError } from '../middleware/error.js';
-import { verifyTwitterCredentials } from '../twitterClient.js';
-import { errorMessage } from '../errorMessage.js';
-
-const CREDENTIAL_FIELDS = [
-  'apiKey',
-  'apiSecret',
-  'accessToken',
-  'accessTokenSecret',
-  'oauth2ClientId',
-  'oauth2ClientSecret',
-  'oauth2AccessToken',
-  'oauth2RefreshToken',
-  'bearerToken',
-] as const;
+import { CREDENTIAL_FIELDS } from '../services/credentialService.js';
 
 export const createCredentialsRouter = ({ services }: AppDeps) => {
   const router = Router();
@@ -50,15 +38,6 @@ export const createCredentialsRouter = ({ services }: AppDeps) => {
       });
     } catch (err) {
       next(toHttpError(err, 400));
-    }
-  });
-
-  router.post('/twitter/verify', async (_req, res) => {
-    try {
-      const result = await verifyTwitterCredentials(services.credentials.getEffectiveCredentials());
-      res.json(result);
-    } catch (err) {
-      res.status(500).json({ valid: false, message: errorMessage(err) });
     }
   });
 

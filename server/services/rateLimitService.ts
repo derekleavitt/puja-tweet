@@ -3,7 +3,6 @@
  */
 
 import type { CooldownState, RateLimitHeaders, RateLimitTelemetry } from '../../shared/types.js';
-import { DEFAULT_ACCOUNT_ID } from '../../shared/types.js';
 import type { AccountCooldown } from '../store/Store.js';
 import type { StateManager } from './stateManager.js';
 
@@ -25,27 +24,24 @@ const detectTier = (
   return { tierDetected: 'Pay-Per-Use ($0.015/tweet)', estimatedDailyCap: 10000 };
 };
 
-/** Cooldown / live-post bookkeeping is per X account; the default account keeps the old scalars. */
-const isDefault = (accountId?: string) => !accountId || accountId === DEFAULT_ACCOUNT_ID;
-
 export class RateLimitService {
   constructor(private readonly sm: StateManager) {}
 
-  private cooldownOf(accountId?: string): AccountCooldown {
-    const s = this.sm.state;
-    if (isDefault(accountId)) {
-      return {
-        untilMs: s.cooldownUntilMs,
-        reason: s.cooldownReason,
-        lastThrottledAt: s.lastThrottledAt,
-      };
-    }
-    return s.accountCooldowns?.[accountId!] ?? { untilMs: 0, reason: '', lastThrottledAt: '' };
+  private cooldownOf(accountId: string): AccountCooldown {
+    return (
+      this.sm.state.accountCooldowns?.[accountId] ?? { untilMs: 0, reason: '', lastThrottledAt: '' }
+    );
   }
 
-  /** X cooldown of one account (the default account when omitted). */
+  /**
+   * X cooldown of one account. Without an id: the active cooldown that ends last across every
+   * account (what the header banner shows), or none.
+   */
   getCooldownState(accountId?: string): CooldownState {
-    const c = this.cooldownOf(accountId);
+    const all = Object.values(this.sm.state.accountCooldowns ?? {});
+    const c = accountId
+      ? this.cooldownOf(accountId)
+      : (all.sort((a, b) => b.untilMs - a.untilMs)[0] ?? this.cooldownOf(''));
     const now = Date.now();
     const isThrottled = c.untilMs > now;
     return {
@@ -57,29 +53,24 @@ export class RateLimitService {
     };
   }
 
-  /** Cooldown of the default account and of every connected account, keyed by account id. */
+  /** Cooldown of every connected account, keyed by account id. */
   getAllCooldownStates(): Record<string, CooldownState> {
-    const ids = [DEFAULT_ACCOUNT_ID, ...this.sm.state.accounts.map((a) => a.id)];
+    const ids = this.sm.state.accounts.map((a) => a.id);
     return Object.fromEntries(ids.map((id) => [id, this.getCooldownState(id)]));
   }
 
   /** Starts an X cooldown for one account: only that account's campaigns wait it out. */
   setCooldown(durationMinutes: number, reason: string, accountId?: string) {
+    if (!accountId) return;
     const s = this.sm.state;
     const entry: AccountCooldown = {
       untilMs: Date.now() + durationMinutes * 60 * 1000,
       reason,
       lastThrottledAt: new Date().toISOString(),
     };
-    if (isDefault(accountId)) {
-      s.cooldownUntilMs = entry.untilMs;
-      s.cooldownReason = entry.reason;
-      s.lastThrottledAt = entry.lastThrottledAt;
-    } else {
-      s.accountCooldowns = { ...s.accountCooldowns, [accountId!]: entry };
-    }
+    s.accountCooldowns = { ...s.accountCooldowns, [accountId]: entry };
     console.log(
-      `[RateLimit] Set X API cooldown for ${durationMinutes} minutes (${accountId || DEFAULT_ACCOUNT_ID}): ${reason}`,
+      `[RateLimit] Set X API cooldown for ${durationMinutes} minutes (${accountId}): ${reason}`,
     );
     this.sm.persist();
   }
@@ -87,29 +78,22 @@ export class RateLimitService {
   /** Clears one account's cooldown, or every account's when omitted. */
   clearCooldown(accountId?: string) {
     const s = this.sm.state;
-    if (!accountId || isDefault(accountId)) {
-      s.cooldownUntilMs = 0;
-      s.cooldownReason = '';
-    }
     if (!accountId) s.accountCooldowns = {};
-    else if (!isDefault(accountId) && s.accountCooldowns) delete s.accountCooldowns[accountId];
+    else if (s.accountCooldowns) delete s.accountCooldowns[accountId];
     console.log(`[RateLimit] Cleared X API cooldown (${accountId || 'all accounts'}).`);
     this.sm.persist();
   }
 
   /** `at` = when the post was sent (defaults to now). */
   recordLivePostTimestamp(accountId?: string, at = Date.now()) {
+    if (!accountId) return;
     const s = this.sm.state;
-    if (isDefault(accountId)) s.lastGlobalLivePostTimestamp = at;
-    else s.lastLivePostByAccount = { ...s.lastLivePostByAccount, [accountId!]: at };
+    s.lastLivePostByAccount = { ...s.lastLivePostByAccount, [accountId]: at };
   }
 
   /** Time since this account's last live post (anti-burst spacing is per account). */
   getTimeSinceLastLivePostMs(accountId?: string): number {
-    const s = this.sm.state;
-    const last = isDefault(accountId)
-      ? s.lastGlobalLivePostTimestamp
-      : s.lastLivePostByAccount?.[accountId!];
+    const last = accountId ? this.sm.state.lastLivePostByAccount?.[accountId] : undefined;
     return last ? Date.now() - last : Infinity;
   }
 
@@ -117,7 +101,7 @@ export class RateLimitService {
     if (headers && (headers.limit !== undefined || headers.remaining !== undefined)) {
       this.sm.state.lastCapturedRateLimitHeaders = headers;
       this.sm.state.lastRateLimitCaptureTimestamp = Date.now();
-      this.sm.state.lastRateLimitAccountId = isDefault(accountId) ? undefined : accountId;
+      this.sm.state.lastRateLimitAccountId = accountId;
       this.sm.persist();
     }
   }
@@ -129,9 +113,8 @@ export class RateLimitService {
   getWindowExhaustedSeconds(accountId?: string): number {
     const s = this.sm.state;
     const headers = s.lastCapturedRateLimitHeaders;
-    const owner = s.lastRateLimitAccountId;
-    const same = isDefault(accountId) ? isDefault(owner) : owner === accountId;
-    if (!same || !headers || headers.remaining === undefined || headers.remaining > 0) return 0;
+    if (!accountId || s.lastRateLimitAccountId !== accountId) return 0;
+    if (!headers || headers.remaining === undefined || headers.remaining > 0) return 0;
     if (headers.reset === undefined) return 0;
     return Math.max(0, Math.ceil(headers.reset - Date.now() / 1000));
   }

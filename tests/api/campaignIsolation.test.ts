@@ -10,6 +10,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { postColorTweet } from '../../server/twitterClient.js';
 import { makeApp, services } from '../helpers/makeApp.js';
 import type { TweetContext } from '../../shared/types.js';
+import { useTestAccount } from '../helpers/testAccount.js';
 
 vi.mock('../../server/twitterClient.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../server/twitterClient.js')>();
@@ -41,7 +42,7 @@ beforeAll(() => {
   app = makeApp();
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   post.mockReset().mockImplementation((async (_c: unknown, o: PostOpts, dry: boolean) => ({
     success: true,
     tweetId: dry ? `sim_${nextId++}` : String(nextId++),
@@ -73,6 +74,7 @@ beforeEach(() => {
     schedule: { intervalMinutes: 5 },
   }).id;
   services.contexts.setActiveContextId(A);
+  await useTestAccount(services);
 });
 
 describe('POST /api/settings edits one campaign by id', () => {

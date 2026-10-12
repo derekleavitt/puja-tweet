@@ -114,7 +114,6 @@ describe('connect flow against the fake X', () => {
       id: 'acct_2001',
       handle: 'brand_one',
       status: 'ok',
-      isDefault: false,
     });
     expect(fake.requests.map((r) => [r.path, r.signatureValid])).toEqual([
       ['/oauth/request_token', true],
@@ -182,7 +181,7 @@ describe('failure paths', () => {
       .send({ oauthToken: token, verifier: '0000000' });
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/Invalid or expired token/);
-    expect(svc.accounts.list()).toHaveLength(1);
+    expect(svc.accounts.list()).toHaveLength(0);
   });
 
   it('a 401 on post revokes the account and auto-pauses its campaign', async () => {
@@ -205,7 +204,7 @@ describe('failure paths', () => {
     expect(svc.contexts.getContext(ctx.id)).toMatchObject({ enabled: false });
     expect(svc.contexts.getContext(ctx.id)?.autoPausedReason).toMatch(/401/);
     const accounts = record(await request(app).get('/api/accounts'));
-    expect(accounts.body.accounts[1]).toMatchObject({ status: 'revoked' });
+    expect(accounts.body.accounts[0]).toMatchObject({ status: 'revoked' });
   });
 
   it('removing an account used by two campaigns pauses both', async () => {
@@ -245,7 +244,7 @@ describe('failure paths', () => {
     expect(fake.requests.length).toBe(before);
     expect(svc.contexts.getContext(ctx.id)?.enabled).toBe(false);
     // The list still works (no tokens are needed to describe an account).
-    expect((await request(app).get('/api/accounts')).body.accounts).toHaveLength(2);
+    expect((await request(app).get('/api/accounts')).body.accounts).toHaveLength(1);
   });
 });
 

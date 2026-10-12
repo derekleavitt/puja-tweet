@@ -25,6 +25,7 @@ import {
 } from '../../server/twitterClient.js';
 import type { BotState } from '../../server/store/Store.js';
 import type { TweetContext } from '../../shared/types.js';
+import { useTestAccount } from '../helpers/testAccount.js';
 
 const generateContent = vi.fn();
 vi.mock('@google/genai', () => ({
@@ -128,6 +129,7 @@ beforeEach(async () => {
   services.settings.updateSettings({ globalDryRun: false, globalPaused: false });
   ann ??= await connect('9101', 'ann');
   ben ??= await connect('9102', 'ben');
+  await useTestAccount(services);
 });
 
 afterEach(() => {

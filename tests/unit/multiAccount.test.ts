@@ -50,8 +50,6 @@ const credsOf = (call: number) => post.mock.calls[call][0] as TwitterCredentials
 beforeEach(async () => {
   vi.stubEnv('TWITTER_API_KEY', 'consumer-key');
   vi.stubEnv('TWITTER_API_SECRET', 'consumer-secret');
-  vi.stubEnv('TWITTER_ACCESS_TOKEN', 'env-token');
-  vi.stubEnv('TWITTER_ACCESS_TOKEN_SECRET', 'env-secret');
   vi.stubEnv('CREDENTIALS_ENCRYPTION_KEY', 'c'.repeat(64));
   vi.spyOn(console, 'log').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -85,10 +83,13 @@ describe('posting as the campaign account', () => {
       accessTokenSecret: 'secret-222',
     });
     expect(credsOf(1)).toMatchObject({ accessToken: 'token-333', accessTokenSecret: 'secret-333' });
-    expect(credsOf(2)).toMatchObject({ accessToken: 'env-token', accessTokenSecret: 'env-secret' });
+    // No account picked: a live post fails without calling X (there is no default account).
+    expect(post).toHaveBeenCalledTimes(2);
     expect(post.mock.calls[0][1]).toMatchObject({ accountHandle: 'second_acct' });
     expect(outA.log).toMatchObject({ accountId: second, accountHandle: 'second_acct' });
-    expect(svc.logs.getLogs()[0]).toMatchObject({ accountId: 'acct_env' });
+    expect(svc.logs.getLogs()[0]).toMatchObject({ status: 'error' });
+    expect(svc.logs.getLogs()[0].errorMessage).toContain('No X account selected');
+    expect(svc.logs.getLogs()[0].accountId).toBeUndefined();
   });
 
   it('fails without calling X and auto-pauses when the account is revoked', async () => {
@@ -156,10 +157,10 @@ describe('posting as the campaign account', () => {
     });
     await makeDrops().executeDrop({ contextId: a.id });
     expect(svc.rateLimit.getCooldownState(second).isThrottled).toBe(true);
-    expect(svc.rateLimit.getCooldownState().isThrottled).toBe(false);
-    expect(svc.rateLimit.getAllCooldownStates()).toMatchObject({
-      acct_env: { isThrottled: false },
-      [second]: { isThrottled: true },
+    // Without an id: the cooldown of any account (what the header banner shows).
+    expect(svc.rateLimit.getCooldownState().isThrottled).toBe(true);
+    expect(svc.rateLimit.getAllCooldownStates()).toEqual({
+      [second]: expect.objectContaining({ isThrottled: true }),
     });
 
     post.mockResolvedValue({ success: true, tweetId: '1' });
@@ -172,11 +173,13 @@ describe('posting as the campaign account', () => {
 
 describe('scheduler gates per account', () => {
   const HOUR = 3_600_000;
+  let first: string;
   let second: string;
 
   beforeEach(async () => {
     services.settings.updateSettings({ globalPaused: false, globalDryRun: false });
     services.rateLimit.clearCooldown();
+    first ??= await connectAccount(services, '111', 'first_acct');
     second ??= await connectAccount(services, '444', 'sched_acct');
     for (const c of services.contexts.getContexts()) c.enabled = false;
   });
@@ -195,39 +198,39 @@ describe('scheduler gates per account', () => {
   };
 
   it("account A's cooldown does not block account B", async () => {
-    const onDefault = dueLive('default acct');
+    const onFirst = dueLive('first acct', first);
     const onSecond = dueLive('second acct', second);
-    services.rateLimit.setCooldown(15, 'reply cooldown');
+    services.rateLimit.setCooldown(15, 'reply cooldown', first);
     const exec = vi.spyOn(dropService, 'executeDrop').mockResolvedValue(undefined as never);
     await scheduler.tick();
     expect(exec.mock.calls.map((c) => c[0]?.contextId)).toEqual([onSecond.id]);
-    expect(scheduler.getBlockedReason(onDefault)).toMatch(/X cooldown/);
+    expect(scheduler.getBlockedReason(onFirst)).toMatch(/X cooldown/);
     expect(scheduler.getBlockedReason(onSecond)).toBeUndefined();
     expect(scheduler.getGlobalBlockedReason()).toBeUndefined();
   });
 
   it("account B's exhausted rate window (per-user headers) does not block account A", async () => {
-    const onDefault = dueLive('default acct');
+    const onFirst = dueLive('first acct', first);
     const onSecond = dueLive('second acct', second);
     const reset = Math.floor(Date.now() / 1000) + 600;
     services.rateLimit.updateRateLimitTelemetry({ limit: 17, remaining: 0, reset }, second);
     const exec = vi.spyOn(dropService, 'executeDrop').mockResolvedValue(undefined as never);
     await scheduler.tick();
-    expect(exec.mock.calls.map((c) => c[0]?.contextId)).toEqual([onDefault.id]);
+    expect(exec.mock.calls.map((c) => c[0]?.contextId)).toEqual([onFirst.id]);
     expect(scheduler.getBlockedReason(onSecond)).toMatch(/rate-limit window used up/);
-    expect(scheduler.getBlockedReason(onDefault)).toBeUndefined();
+    expect(scheduler.getBlockedReason(onFirst)).toBeUndefined();
     expect(scheduler.getGlobalBlockedReason()).toBeUndefined();
     services.rateLimit.updateRateLimitTelemetry({ limit: 17, remaining: 17, reset }, second);
   });
 
   it("account A's recent live post does not delay account B", async () => {
-    const onDefault = dueLive('default acct');
+    const onFirst = dueLive('first acct', first);
     const onSecond = dueLive('second acct', second);
-    services.rateLimit.recordLivePostTimestamp();
+    services.rateLimit.recordLivePostTimestamp(first);
     const exec = vi.spyOn(dropService, 'executeDrop').mockResolvedValue(undefined as never);
     await scheduler.tick();
     const fired = exec.mock.calls.map((c) => c[0]?.contextId);
     expect(fired).toContain(onSecond.id);
-    expect(fired).not.toContain(onDefault.id);
+    expect(fired).not.toContain(onFirst.id);
   });
 });

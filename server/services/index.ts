@@ -21,6 +21,7 @@ import { LogService } from './logService.js';
 import { QueueService } from './queueService.js';
 import { RateLimitService } from './rateLimitService.js';
 import { SettingsService } from './settingsService.js';
+import { removeDefaultAccount } from '../migration/removeDefaultAccount.js';
 import { StateManager } from './stateManager.js';
 import { WipeService } from './wipeService.js';
 
@@ -43,6 +44,8 @@ export interface Services {
 
 export const createServices = async (store: Store): Promise<Services> => {
   const sm = await StateManager.create(store);
+  // Once per store: the built-in default account is gone; campaigns move to connected accounts.
+  if (removeDefaultAccount(sm.state).ran) sm.persist();
   const queue = new QueueService(sm);
   const contexts = new ContextService(sm, queue);
   const credentials = new CredentialService(sm);

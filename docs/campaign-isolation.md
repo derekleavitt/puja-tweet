@@ -29,14 +29,14 @@ could leak one campaign's values into another, and records the decisions and fix
 
 ### Per X account (multi-account, see [accounts.md](accounts.md))
 
-Each campaign posts as one account (`accountId`, undefined = default `acct_env`). Shared by every
+Each campaign posts as one connected account (`accountId`, undefined = none: simulated only). Shared by every
 campaign on the **same** account, independent between accounts:
 
 | Field / state | Where | Why per account |
 | :-- | :-- | :-- |
-| User access token + secret (`BotState.accounts[].encrypted`; env for `acct_env`) | `accountService.getCredentialsForAccount` | X identity |
-| Cooldown: `accountCooldowns[id]` (the default account keeps `cooldownUntilMs` / `cooldownReason` / `lastThrottledAt`) | `rateLimitService.setCooldown(…, accountId)` from that account's 429 / reply cooldown | X throttles the account, not the campaign or the app |
-| 50 s live spacing: `lastLivePostByAccount[id]` (default: `lastGlobalLivePostTimestamp`) | `rateLimitService`, `scheduler.canFireNow` | Account-level anti-burst (see §4) |
+| User access token + secret (`BotState.accounts[].encrypted`) | `accountService.getCredentialsForAccount` | X identity |
+| Cooldown: `accountCooldowns[id]` | `rateLimitService.setCooldown(…, accountId)` from that account's 429 / reply cooldown | X throttles the account, not the campaign or the app |
+| 50 s live spacing: `lastLivePostByAccount[id]` | `rateLimitService`, `scheduler.canFireNow` | Account-level anti-burst (see §4) |
 | Account status (`revoked` after a live 401) | `accountService.markRevoked` | The account's tokens stopped working |
 | `/api/status.stats`, `latestLog`                                    | `routes/status.ts`                                                         | Whole-bot counters (per-campaign stats live on the campaign) |
 | `activeContextId`                                                   | `state.activeContextId`                                                    | UI selection only: which campaign the Studio/Settings show   |

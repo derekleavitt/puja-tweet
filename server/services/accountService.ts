@@ -1,11 +1,8 @@
 /**
- * X accounts campaigns can post as.
- *
- * - The DEFAULT account (`acct_env`) is the one behind the env tokens (TWITTER_ACCESS_TOKEN/SECRET
- *   or UI-entered OAuth credentials). It is synthesised, never stored as tokens, never removable.
- * - CONNECTED accounts come from the OAuth 1.0a 3-legged flow (or its PIN variant). Only their user
- *   access token + secret differ; the consumer key/secret stay app-level. Tokens are stored
- *   encrypted with CREDENTIALS_ENCRYPTION_KEY and never leave the server.
+ * X accounts campaigns can post as: the CONNECTED accounts, from the OAuth 1.0a 3-legged flow (or
+ * its PIN variant) in Settings → X accounts. There is no built-in default account. Only their user
+ * access token + secret differ; the consumer key/secret stay app-level. Tokens are stored
+ * encrypted with CREDENTIALS_ENCRYPTION_KEY and never leave the server.
  */
 
 import { summarizeWipeJob } from './wipeJob.js';
@@ -18,7 +15,7 @@ import {
   verifyTwitterCredentials,
   type TwitterCredentials,
 } from '../twitterClient.js';
-import { DEFAULT_ACCOUNT_ID, type XAccountInfo } from '../../shared/types.js';
+import type { XAccountInfo } from '../../shared/types.js';
 import type { BotState, XAccount } from '../store/Store.js';
 import type { CredentialService } from './credentialService.js';
 import { decryptJson, encryptJson, getEncryptionKey } from './credentialCrypto.js';
@@ -36,14 +33,14 @@ interface AccountTokens {
 const NO_KEY_MESSAGE =
   'X accounts cannot be connected because CREDENTIALS_ENCRYPTION_KEY is not set on the server (it encrypts the account tokens). Set it, restart, and try again.';
 
-/** Treats '', undefined and 'acct_env' alike (the default account). */
-export const effectiveAccountId = (id?: string | null): string => id || DEFAULT_ACCOUNT_ID;
+/** Reason a campaign without an account cannot post. */
+export const NO_ACCOUNT_REASON =
+  'No X account selected: connect one in Settings → X accounts and pick it in the campaign form';
 
-/** Why campaigns cannot post as this account (unknown or revoked); undefined when usable. */
+/** Why campaigns cannot post as this account (none, unknown or revoked); undefined when usable. */
 export const accountProblem = (state: BotState, id?: string | null): string | undefined => {
-  const accountId = effectiveAccountId(id);
-  if (accountId === DEFAULT_ACCOUNT_ID) return undefined;
-  const account = state.accounts.find((a) => a.id === accountId);
+  if (!id) return NO_ACCOUNT_REASON;
+  const account = state.accounts.find((a) => a.id === id);
   if (!account || account.status === 'revoked') return accountPauseReason(account?.handle);
   return undefined;
 };
@@ -61,7 +58,6 @@ const toInfo = (a: XAccount): XAccountInfo => ({
   lastVerifiedAt: a.lastVerifiedAt,
   lastError: a.lastError,
   createdAt: a.createdAt,
-  isDefault: false,
 });
 
 export class AccountService {
@@ -74,34 +70,16 @@ export class AccountService {
     return this.sm.state;
   }
 
-  private defaultInfo(): XAccountInfo {
-    const meta = this.state.defaultAccount ?? {};
-    const handle = meta.handle || (process.env.X_HANDLE || '').trim().replace(/^@/, '');
-    return {
-      id: DEFAULT_ACCOUNT_ID,
-      label: 'Default account',
-      handle,
-      userId: meta.userId || '',
-      status: meta.status || 'unverified',
-      lastVerifiedAt: meta.lastVerifiedAt,
-      lastError: meta.lastError,
-      createdAt: '',
-      isDefault: true,
-    };
-  }
-
-  /** Every account, default first, with its latest content-wipe progress. Never includes tokens. */
+  /** Every connected account, with its latest content-wipe progress. Never includes tokens. */
   list(): XAccountInfo[] {
-    return [this.defaultInfo(), ...this.state.accounts.map(toInfo)].map((info) => {
+    return this.state.accounts.map(toInfo).map((info) => {
       const wipe = summarizeWipeJob(this.state.wipeJobs?.[info.id]);
       return wipe ? { ...info, wipe } : info;
     });
   }
 
   get(id?: string | null): XAccountInfo | undefined {
-    const accountId = effectiveAccountId(id);
-    if (accountId === DEFAULT_ACCOUNT_ID) return this.defaultInfo();
-    const found = this.state.accounts.find((a) => a.id === accountId);
+    const found = id ? this.state.accounts.find((a) => a.id === id) : undefined;
     return found ? toInfo(found) : undefined;
   }
 
@@ -128,15 +106,11 @@ export class AccountService {
   }
 
   /**
-   * Full credentials to post as this account, or null when the account is unknown, revoked or its
-   * tokens cannot be decrypted (or the app has no consumer key). The default account returns the
-   * effective app credentials as before (empty ones simulate, like they always did).
+   * Full credentials to post as this account, or null when there is none, it is unknown or
+   * revoked, or its tokens cannot be decrypted (or the app has no consumer key).
    */
   getCredentialsForAccount(id?: string | null): TwitterCredentials | null {
-    const accountId = effectiveAccountId(id);
-    const app = this.credentials.getEffectiveCredentials();
-    if (accountId === DEFAULT_ACCOUNT_ID) return app;
-    const account = this.state.accounts.find((a) => a.id === accountId);
+    const account = id ? this.state.accounts.find((a) => a.id === id) : undefined;
     if (!account || account.status === 'revoked') return null;
     return this.tokenCredentials(account);
   }
@@ -236,12 +210,22 @@ export class AccountService {
       throw new HttpError(400, err instanceof Error ? err.message : String(err));
     }
 
+    return this.storeConnected(result, key);
+  }
+
+  /**
+   * Stores (encrypted) the tokens X issued for a user. Reconnecting the same X user refreshes its
+   * tokens instead of adding a duplicate. Used by the Connect flow (and by tests).
+   */
+  async storeConnected(
+    result: { userId: string; screenName: string; accessToken: string; accessTokenSecret: string },
+    key: Buffer = this.requireKey(),
+  ): Promise<XAccountInfo> {
     const now = new Date().toISOString();
     const encrypted = encryptJson(
       { accessToken: result.accessToken, accessTokenSecret: result.accessTokenSecret },
       key,
     );
-    // Reconnecting the same X user refreshes its tokens instead of adding a duplicate.
     const existing = this.state.accounts.find((a) => a.userId === result.userId);
     if (existing) {
       Object.assign(existing, {
@@ -271,18 +255,15 @@ export class AccountService {
 
   /** Checks the account against X (GET /2/users/me) and records its handle and status. */
   async verify(id: string): Promise<{ account: XAccountInfo; valid: boolean; message: string }> {
-    const accountId = effectiveAccountId(id);
+    const accountId = id;
     // A revoked account is checked with its stored tokens: Verify brings it back once X accepts them.
-    const creds =
-      accountId === DEFAULT_ACCOUNT_ID
-        ? this.credentials.getEffectiveCredentials()
-        : this.tokenCredentials(this.getStored(accountId));
+    const creds = this.tokenCredentials(this.getStored(accountId));
     const result = creds
       ? await verifyTwitterCredentials(creds)
       : {
           valid: false,
           message: 'Account tokens cannot be read (wrong encryption key?).',
-          authRejected: accountId !== DEFAULT_ACCOUNT_ID,
+          authRejected: true,
         };
     const user = result.user as { username?: string; id?: string } | undefined;
     // Only X rejecting the tokens revokes; a network error, 429 or 5xx keeps the current status.
@@ -295,19 +276,12 @@ export class AccountService {
       ...(user?.username ? { handle: user.username } : {}),
       ...(user?.id ? { userId: user.id } : {}),
     };
-    if (accountId === DEFAULT_ACCOUNT_ID) {
-      this.state.defaultAccount = { ...this.state.defaultAccount, ...patch };
-    } else {
-      Object.assign(this.getStored(accountId), patch);
-    }
+    Object.assign(this.getStored(accountId), patch);
     this.sm.persist();
     return { account: this.get(accountId)!, valid: result.valid, message: result.message };
   }
 
   rename(id: string, label: string): XAccountInfo {
-    if (effectiveAccountId(id) === DEFAULT_ACCOUNT_ID) {
-      throw new HttpError(400, 'The default account cannot be renamed.');
-    }
     const clean = label.trim().slice(0, 60);
     if (!clean) throw new HttpError(400, 'label must not be empty');
     const account = this.getStored(id);
@@ -318,13 +292,11 @@ export class AccountService {
 
   /** Removes an account; campaigns posting as it are paused (they keep `accountId`). */
   remove(id: string): { pausedCampaigns: string[] } {
-    if (effectiveAccountId(id) === DEFAULT_ACCOUNT_ID) {
-      throw new HttpError(400, 'The default account cannot be removed.');
-    }
     const account = this.getStored(id);
     this.state.accounts = this.state.accounts.filter((a) => a.id !== id);
     if (this.state.accountCooldowns) delete this.state.accountCooldowns[id];
     if (this.state.lastLivePostByAccount) delete this.state.lastLivePostByAccount[id];
+    if (this.state.wipeJobs) delete this.state.wipeJobs[id];
     const pausedCampaigns = this.pauseCampaignsOf(
       id,
       accountPauseReason(account.handle),
@@ -339,22 +311,16 @@ export class AccountService {
     const handle = this.handleOf(id);
     const who = handle ? `@${handle}` : 'this account';
     const reason = `Deleting all content of ${who} — resume when the wipe is done`;
-    const paused = this.pauseCampaignsOf(effectiveAccountId(id), reason, reason);
+    const paused = this.pauseCampaignsOf(id, reason, reason);
     this.sm.persist();
     return paused;
   }
 
   /** X answered 401 for this account: mark it revoked so campaigns stop using it until verified. */
   markRevoked(id: string | undefined, message?: string) {
-    const accountId = effectiveAccountId(id);
-    const patch = { status: 'revoked' as const, lastError: message?.slice(0, 300) };
-    if (accountId === DEFAULT_ACCOUNT_ID) {
-      this.state.defaultAccount = { ...this.state.defaultAccount, ...patch };
-    } else {
-      const account = this.state.accounts.find((a) => a.id === accountId);
-      if (!account) return;
-      Object.assign(account, patch);
-    }
+    const account = id ? this.state.accounts.find((a) => a.id === id) : undefined;
+    if (!account) return;
+    Object.assign(account, { status: 'revoked' as const, lastError: message?.slice(0, 300) });
     this.sm.persist();
   }
 

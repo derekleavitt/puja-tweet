@@ -1,16 +1,24 @@
 # Posting from several X accounts
 
 Each campaign posts as **one** X account, picked in its form ("Posts as"). Accounts are managed in
-**Settings → X accounts**.
+**Settings → X accounts**, and every account is a **connected** account: you sign in with it
+through "Connect account". There is no built-in default account (an older one, from the
+`TWITTER_ACCESS_TOKEN*` env vars, was removed; see below).
 
-- **Default account**: the account whose tokens are in `TWITTER_ACCESS_TOKEN` /
-  `TWITTER_ACCESS_TOKEN_SECRET` (normally the account that owns the X developer app). It is always
-  listed, cannot be renamed or removed, and is what every campaign without an explicit choice uses
-  (older campaigns need no migration). Press **Verify** once so its @handle is shown.
-- **Connected accounts**: any other X account you sign in with through "Connect account". The app's
-  API key and secret (`TWITTER_API_KEY` / `TWITTER_API_SECRET`) stay the same; X issues a separate
-  access token + secret per account. They do not expire; they stop working only if you revoke the
-  app on x.com (Settings → Security and account access → Apps and sessions).
+- The app's API key and secret (`TWITTER_API_KEY` / `TWITTER_API_SECRET`, or the API Keys tab) stay
+  the same for every account; X issues a separate access token + secret per account. They do not
+  expire; they stop working only if you revoke the app on x.com (Settings → Security and account
+  access → Apps and sessions).
+- A campaign without an account can still run in **dry run** (simulated posts). Live posting, and
+  resuming it live, needs a connected account. New campaigns start with the first connected account.
+
+### The removed default account
+
+Older installs had a built-in "Default account" (`acct_env`) whose tokens were env vars. On the
+first start of this version it is removed. Campaigns that used it now point at the id that account
+gets once connected (`acct_<its X user id>`) and are **paused** with a reason saying so. Connect that
+X account in Settings (same @handle), then resume them. The env vars `TWITTER_ACCESS_TOKEN*` and
+`TWITTER_OAUTH2_*` are no longer read.
 
 ## One-time setup in the X developer portal
 
@@ -23,9 +31,8 @@ In [developer.x.com](https://developer.x.com) → Projects & Apps → your app:
      Settings → X accounts (for local development also `http://localhost:3000/oauth/x/callback`).
    - Website URL: your site.
    - Save.
-2. If you changed the permissions from Read to Read and Write, **regenerate the default account's
-   access token and secret** (Keys and tokens) and update the `TWITTER_ACCESS_TOKEN*` secrets: tokens
-   keep the permissions they were created with.
+2. If you changed the permissions from Read to Read and Write, **reconnect** the accounts: tokens keep
+   the permissions they were created with.
 
 Server requirements: `TWITTER_API_KEY`, `TWITTER_API_SECRET` and `CREDENTIALS_ENCRYPTION_KEY` must be
 set (the last one encrypts the connected accounts' tokens; without it "Connect account" answers with
@@ -49,9 +56,7 @@ a clear error). If the site is reached through a different host than the one the
 fails), click "Open X to authorize", approve as the account to add, and type the PIN X shows.
 
 A connection request is valid for 10 minutes. Connecting an account that is already listed refreshes
-its tokens instead of adding a duplicate. Connecting the default account's own user as a connected
-account is allowed: it then appears twice (default + connected); both work, but their cooldowns are
-tracked separately, so prefer using one of them.
+its tokens instead of adding a duplicate.
 
 ## Using accounts in campaigns
 
@@ -100,8 +105,9 @@ reply and quote is deleted, every retweet undone and every like removed. It cann
   conversation) are paused first, so it does not post new content meanwhile; resume them afterwards.
 - It runs in the background on the scheduler tick, also while posting is paused. X allows about 50
   deletes, 50 un-retweets and 50 unlikes per 15 minutes (unlikes also 1,000 a day), so a big account
-  takes hours. The job waits out each rate window using X's headers; progress and Cancel show under
-  the account.
+  takes hours. The job waits out each rate window using X's headers; progress, a rough "about N min
+  left" for what is already queued, and Cancel show under the account. Every rate-limit wait and
+  the reason a job stops are logged (`[Wipe]` lines).
 - X lists only the newest ~3,200 posts. The job repeats passes until a pass finds nothing left, so
   older posts surface as newer ones go. Posts X refuses to remove are counted as failed and skipped.
 - Listing posts and likes is a read: your X plan must allow it (a refusal stops the job with a clear

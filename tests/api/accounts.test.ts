@@ -59,8 +59,6 @@ const connect = async (userId: string, screenName: string, secret = `secret-${us
 beforeEach(async () => {
   vi.stubEnv('TWITTER_API_KEY', 'consumer-key');
   vi.stubEnv('TWITTER_API_SECRET', 'consumer-secret');
-  vi.stubEnv('TWITTER_ACCESS_TOKEN', 'env-token');
-  vi.stubEnv('TWITTER_ACCESS_TOKEN_SECRET', 'env-secret');
   vi.stubEnv('CREDENTIALS_ENCRYPTION_KEY', KEY);
   svc = await createServices(new MemoryStore());
   app = createApp({ services: svc, scheduler, drops: dropService, authDisabled: true });
@@ -75,12 +73,13 @@ afterEach(() => {
 });
 
 describe('GET /api/accounts', () => {
-  it('lists the default account first and never leaks tokens', async () => {
+  it('lists only connected accounts (no built-in default) and never leaks tokens', async () => {
+    expect((await request(app).get('/api/accounts')).body.accounts).toEqual([]);
     await connect('222', 'second_acct');
     const res = await request(app).get('/api/accounts');
     expect(res.status).toBe(200);
-    expect(res.body.accounts.map((a: { id: string }) => a.id)).toEqual(['acct_env', 'acct_222']);
-    expect(res.body.accounts[0]).toMatchObject({ isDefault: true, label: 'Default account' });
+    expect(res.body.accounts.map((a: { id: string }) => a.id)).toEqual(['acct_222']);
+    expect(res.body.accounts[0]).not.toHaveProperty('isDefault');
     const raw = JSON.stringify(res.body);
     expect(raw).not.toContain('secret-222');
     expect(raw).not.toContain('token-222');
@@ -105,10 +104,8 @@ describe('GET /api/accounts', () => {
       accessToken: 'token-222',
       accessTokenSecret: 'secret-222',
     });
-    // Default account = the env credentials.
-    expect(svc.accounts.getCredentialsForAccount(undefined)).toMatchObject({
-      accessToken: 'env-token',
-    });
+    // No account picked = no credentials (there is no default account).
+    expect(svc.accounts.getCredentialsForAccount(undefined)).toBeNull();
     expect(svc.accounts.getCredentialsForAccount('acct_missing')).toBeNull();
   });
 });
@@ -230,7 +227,7 @@ describe('connect flow', () => {
     await svc.accounts.rename('acct_222', 'Brand');
     const again = await connect('222', 'second_renamed', 'second-secret');
     expect(again.status).toBe(200);
-    expect(svc.accounts.list()).toHaveLength(2);
+    expect(svc.accounts.list()).toHaveLength(1);
     expect(svc.accounts.get('acct_222')).toMatchObject({
       label: 'Brand',
       handle: 'second_renamed',
@@ -266,15 +263,16 @@ describe('connect flow', () => {
 
 describe('verify, rename, remove', () => {
   it('verify records the handle and status (and revokes on failure)', async () => {
+    await connect('222', 'second_acct');
     verify.mockResolvedValueOnce({
       valid: true,
-      user: { username: 'owner', id: '111' },
+      user: { username: 'renamed_on_x', id: '222' },
       message: 'ok',
     });
-    const ok = await request(app).post('/api/accounts/acct_env/verify');
-    expect(ok.body.account).toMatchObject({ id: 'acct_env', handle: 'owner', status: 'ok' });
+    const ok = await request(app).post('/api/accounts/acct_222/verify');
+    expect(ok.body.account).toMatchObject({ id: 'acct_222', handle: 'renamed_on_x', status: 'ok' });
+    expect((await request(app).post('/api/accounts/acct_env/verify')).status).toBe(404);
 
-    await connect('222', 'second_acct');
     // A network error, 429 or 5xx never revokes: the account keeps posting.
     verify.mockResolvedValueOnce({ valid: false, message: 'Network error connecting to X API' });
     const blip = await request(app).post('/api/accounts/acct_222/verify');
@@ -293,17 +291,17 @@ describe('verify, rename, remove', () => {
     expect(svc.accounts.get('acct_222')?.status).toBe('ok');
   });
 
-  it('renames connected accounts only', async () => {
+  it('renames connected accounts (an unknown id is a 404)', async () => {
     await connect('222', 'second_acct');
     const res = await request(app).patch('/api/accounts/acct_222').send({ label: '  Shop  ' });
     expect(res.body.account.label).toBe('Shop');
     expect((await request(app).patch('/api/accounts/acct_env').send({ label: 'x' })).status).toBe(
-      400,
+      404,
     );
     expect((await request(app).patch('/api/accounts/nope').send({ label: 'x' })).status).toBe(404);
   });
 
-  it('removing an account pauses its campaigns (they keep accountId); default is not removable', async () => {
+  it('removing an account pauses its campaigns (they keep accountId)', async () => {
     await connect('222', 'second_acct');
     const a = svc.contexts.createContext({ name: 'A', accountId: 'acct_222', enabled: true });
     const b = svc.contexts.createContext({ name: 'B', enabled: true });
@@ -315,7 +313,7 @@ describe('verify, rename, remove', () => {
       autoPausedReason: expect.stringMatching(/@second_acct is removed or disconnected/),
     });
     expect(svc.contexts.getContext(b.id)?.enabled).toBe(true);
-    expect((await request(app).delete('/api/accounts/acct_env')).status).toBe(400);
+    expect((await request(app).delete('/api/accounts/acct_env')).status).toBe(404);
 
     // Resuming a campaign whose account is gone is refused.
     const resume = await request(app).post(`/api/contexts/${a.id}/toggle`);
@@ -337,7 +335,7 @@ describe('campaign accountId', () => {
     expect(updated.status).toBe(400);
   });
 
-  it('stores the default account as undefined and keeps a valid one', async () => {
+  it('stores "no account" as undefined, keeps a valid one, and the old default id is unknown', async () => {
     await connect('222', 'second_acct');
     const res = await request(app)
       .post('/api/contexts')
@@ -345,8 +343,12 @@ describe('campaign accountId', () => {
     expect(res.body.context.accountId).toBe('acct_222');
     const back = await request(app)
       .put(`/api/contexts/${res.body.context.id}`)
-      .send({ accountId: 'acct_env' });
+      .send({ accountId: '' });
     expect(back.body.context.accountId).toBeUndefined();
+    const legacy = await request(app)
+      .put(`/api/contexts/${res.body.context.id}`)
+      .send({ accountId: 'acct_env' });
+    expect(legacy.status).toBe(400);
   });
 
   it('changing the account resets the reply chain like a target change', async () => {
@@ -359,7 +361,7 @@ describe('campaign accountId', () => {
     svc.contexts.recordContextPostResult(ctx.id, 'success', '5555', 'reply');
     expect(svc.contexts.getContext(ctx.id)?.chainAnchor?.tweetId).toBe('5555');
 
-    // Same account (default spelled two ways) and other edits keep the chain.
+    // Same account (none, spelled '' and undefined) and other edits keep the chain.
     await request(app).put(`/api/contexts/${ctx.id}`).send({ accountId: '', name: 'renamed' });
     expect(svc.contexts.getContext(ctx.id)?.chainAnchor?.tweetId).toBe('5555');
 
@@ -377,7 +379,7 @@ describe('campaign accountId', () => {
     expect(svc.contexts.duplicateContext(ctx.id).accountId).toBe('acct_222');
   });
 
-  it('duplicating a campaign whose account was removed falls back to the default account', async () => {
+  it('duplicating a campaign whose account was removed leaves the copy without an account', async () => {
     await connect('222', 'second_acct');
     const ctx = svc.contexts.createContext({ name: 'orig', accountId: 'acct_222' });
     await request(app).delete('/api/accounts/acct_222').expect(200);

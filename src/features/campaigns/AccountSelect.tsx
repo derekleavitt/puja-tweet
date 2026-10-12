@@ -4,7 +4,6 @@
  */
 
 import React from 'react';
-import { DEFAULT_ACCOUNT_ID } from '../../types.js';
 import { useServerInfo } from '../../context/serverInfo.js';
 import { FIELD_CLASS, LABEL_CLASS } from './constants.js';
 
@@ -24,9 +23,9 @@ export const AccountSelect: React.FC<AccountSelectProps> = ({
   onChange,
 }) => {
   const { accounts = [] } = useServerInfo();
-  const selected = value || DEFAULT_ACCOUNT_ID;
-  const known = accounts.some((a) => a.id === selected);
-  const changed = savedValue !== undefined && selected !== (savedValue || DEFAULT_ACCOUNT_ID);
+  const selected = value || '';
+  const known = !selected || accounts.some((a) => a.id === selected);
+  const changed = savedValue !== undefined && selected !== (savedValue || '');
 
   return (
     <div className="space-y-1.5">
@@ -40,18 +39,21 @@ export const AccountSelect: React.FC<AccountSelectProps> = ({
         onChange={(e) => onChange(e.target.value)}
         className={FIELD_CLASS}
       >
+        {!selected && <option value="">Pick an account…</option>}
         {!known && <option value={selected}>Removed account ({selected})</option>}
         {accounts.map((a) => (
           <option key={a.id} value={a.id} disabled={a.status === 'revoked' && a.id !== selected}>
             {a.handle ? `@${a.handle}` : a.label}
-            {a.isDefault ? ' (default)' : a.label !== `@${a.handle}` ? ` · ${a.label}` : ''}
+            {a.label !== `@${a.handle}` ? ` · ${a.label}` : ''}
             {a.status === 'revoked' ? ' (disconnected)' : ''}
           </option>
         ))}
       </select>
       <p className="text-[11px] text-neutral-500">
-        X only allows replies to posts this account wrote or is mentioned in. Add accounts under
-        Settings, X accounts.
+        {accounts.length
+          ? 'X only allows replies to posts this account wrote or is mentioned in.'
+          : 'No X account is connected yet: posts are simulated until you connect one.'}{' '}
+        Add accounts under Settings, X accounts.
       </p>
       {changed && hasChain && (
         <p className="text-[11px] text-amber-700 dark:text-amber-400">

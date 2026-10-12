@@ -8,6 +8,7 @@ import { resetGeminiCallCounter } from '../../server/geminiConfig.js';
 import { MemoryStore } from '../../server/store/MemoryStore.js';
 import { checkTweetText, weightedTweetLength } from '../../shared/tweetLength.js';
 import type { TweetContext } from '../../shared/types.js';
+import { useTestAccount } from '../helpers/testAccount.js';
 
 const generateContent = vi.fn();
 vi.mock('@google/genai', () => ({
@@ -62,6 +63,7 @@ beforeEach(async () => {
   resetGeminiCallCounter();
   generateContent.mockReset();
   svc = await createServices(new MemoryStore());
+  await useTestAccount(svc);
   svc.settings.updateSettings({ globalDryRun: false, globalPaused: false });
   post.mockReset().mockResolvedValue({ success: true, tweetId: '999', url: 'u' });
   next.mockReset().mockResolvedValue({ tags: ['Heart', 'Muse', 'Longing'], source: 'offline' });

@@ -26,7 +26,7 @@ const campaignsOf = (contexts: TweetContext[], id: string) =>
     .filter((c) =>
       c.mode === 'conversation'
         ? c.conversation?.participants.some((p) => p.accountId === id)
-        : (c.accountId || 'acct_env') === id,
+        : c.accountId === id,
     )
     .map((c) => c.name);
 

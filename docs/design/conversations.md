@@ -20,7 +20,7 @@ similar but unique AI persona, and each one knows the whole history.
 ## 1. Data model (`shared/types.ts`; all fields optional, so no migration)
 
 ```ts
-export interface ConversationParticipant { accountId: string; persona: string } // 'acct_env' allowed
+export interface ConversationParticipant { accountId: string; persona: string } // a connected account
 export interface ConversationConfig {          // client-editable
   participants: ConversationParticipant[];     // 2–5, unique accountId
   sharedPrompt: string;                        // premise / tone
@@ -114,7 +114,7 @@ Code lives in `server/services/conversationService.ts`. The pure parts go in
       nextSpeakerAccountId, nextSpeakerHandle, text, replyToTweetId, summaryUsed }
     ```
   - Handles come from `accounts.handleOf`. A participant without a known handle (an unverified
-    default account) is a 400 at save or preview: "Verify @handle first".
+    account) is a 400 at save or preview: "Verify @handle first".
 - **Recording a turn:** `contexts.recordConversationTurn(id, turn, status, tweetId)`.
   - On success or simulated:
     - append the turn to `turns` (see the invariant above);
@@ -184,7 +184,7 @@ conversation: {
 
 ### Service rules (each is a 400)
 
-- Every participant passes `checkAccountId` (connected, or `acct_env`).
+- Every participant passes `checkAccountId` (a connected account).
 - No duplicate accountIds.
 - `firstSpeakerAccountId` is one of the participants.
 - When the opener is also a participant, it can't be the first speaker.

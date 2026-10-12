@@ -35,8 +35,7 @@ import {
 import { isTransientFailure, transientReason, type XErrorClass } from '../xErrors.js';
 import { getXTimeoutMs } from '../timeouts.js';
 import { appendTurnRecord, clipStoredText, turnBufferOf } from './conversationTurn.js';
-import { accountProblem, effectiveAccountId } from './accountService.js';
-import { DEFAULT_ACCOUNT_ID } from '../../shared/types.js';
+import { accountProblem } from './accountService.js';
 import { buildPrimaryContext } from './primaryContext.js';
 import { parseContextUpdate } from './contextSchema.js';
 import {
@@ -117,10 +116,10 @@ export class ContextService {
     private readonly queue: QueueService,
   ) {}
 
-  /** Stored form of an account id: undefined for the default account. Unknown ids are a 400. */
-  private checkAccountId(id: string | undefined): string | undefined {
-    const accountId = effectiveAccountId(id);
-    if (accountId === DEFAULT_ACCOUNT_ID) return undefined;
+  /** Stored form of an account id: undefined when none is picked. Unknown ids are a 400. */
+  private checkAccountId(id: string | null | undefined): string | undefined {
+    const accountId = id || undefined;
+    if (!accountId) return undefined;
     if (!this.sm.state.accounts.some((a) => a.id === accountId)) {
       throw new HttpError(
         400,
@@ -130,19 +129,14 @@ export class ContextService {
     return accountId;
   }
 
-  /** Known handle of an account (no '@'); the default account's comes from its verification or X_HANDLE. */
+  /** Known handle of a connected account (no '@'). */
   private handleOf(id: string): string | undefined {
-    if (id === DEFAULT_ACCOUNT_ID) {
-      const meta = this.sm.state.defaultAccount;
-      return meta?.handle || (process.env.X_HANDLE || '').trim().replace(/^@/, '') || undefined;
-    }
     return this.sm.state.accounts.find((a) => a.id === id)?.handle || undefined;
   }
 
   private validateConversation(config: ConversationConfig | undefined): ValidatedConversation {
     return validateConversation(config, {
-      accountExists: (id) =>
-        id === DEFAULT_ACCOUNT_ID || this.sm.state.accounts.some((a) => a.id === id),
+      accountExists: (id) => this.sm.state.accounts.some((a) => a.id === id),
       handleOf: (id) => this.handleOf(id),
     });
   }
@@ -338,11 +332,10 @@ export class ContextService {
     const modeChanged = isConversation !== wasConversation;
     const accountId = isConversation
       ? current.accountId // ignored: the speaker changes per turn
-      : 'accountId' in updates &&
-          effectiveAccountId(updates.accountId) !== effectiveAccountId(current.accountId)
+      : 'accountId' in updates && (updates.accountId || undefined) !== current.accountId
         ? this.checkAccountId(updates.accountId)
         : current.accountId;
-    const accountChanged = effectiveAccountId(accountId) !== effectiveAccountId(current.accountId);
+    const accountChanged = accountId !== current.accountId;
 
     // A conversation is validated whenever its setup (or the mode) changes; progress restarts on a
     // new target or mode, re-picks the next speaker if the cast dropped them, and otherwise stays.
@@ -407,14 +400,19 @@ export class ContextService {
             current.conversation?.sharedPrompt,
           ])) ||
       !!resetChain;
-    // A conversation can resume only when every participant is usable.
+    // A conversation can resume only when every participant is usable. A single campaign without
+    // an account may still run simulated (global or campaign dry run); live posting needs one.
+    const simulated =
+      this.sm.state.settings.globalDryRun !== false || (updates.dryRun ?? current.dryRun) === true;
     const blocked = !resumed
       ? undefined
       : isConversation
         ? conversation?.participants
             .map((p) => accountProblem(this.sm.state, p.accountId))
             .find(Boolean)
-        : accountProblem(this.sm.state, accountId);
+        : !accountId && simulated
+          ? undefined
+          : accountProblem(this.sm.state, accountId);
     if (blocked) throw new HttpError(400, `Cannot resume "${current.name}": ${blocked}.`);
     const finishedAt = conversation?.maxTurns;
     let finished = isConversation && roundFinished(conversationState, finishedAt);

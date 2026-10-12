@@ -145,14 +145,13 @@ npx firebase-tools deploy --only firestore:rules --project hitthehatch
 
 `firebase.json` targets the named AI Studio database. The rules hard-code the owner email; keep it in
 sync with `shared/owner.ts`. Override the database with `FIRESTORE_DATABASE_ID`. Optional env vars:
-`GEMINI_MODEL`, `GEMINI_FALLBACK_MODEL`, `GEMINI_MAX_CALLS_PER_DAY`, `GEMINI_TIMEOUT_MS`, `X_HANDLE`
-(display fallback for the default account's handle until it is verified), `OAUTH_CALLBACK_ORIGINS`
+`GEMINI_MODEL`, `GEMINI_FALLBACK_MODEL`, `GEMINI_MAX_CALLS_PER_DAY`, `GEMINI_TIMEOUT_MS`, `OAUTH_CALLBACK_ORIGINS`
 (extra origins for the X account callback, e.g. a custom domain) and build-time `VITE_FIREBASE_*`
 (baked into the bundle). See `.env.example`.
 
-## Extra X accounts
+## X accounts
 
-Campaigns can post as other X accounts connected in Settings → X accounts (OAuth 1.0a with the same
+Campaigns post as X accounts connected in Settings → X accounts (OAuth 1.0a with the same
 `TWITTER_API_KEY`/`SECRET`). Their tokens are stored encrypted in the Firestore state document with
 `CREDENTIALS_ENCRYPTION_KEY` (already a secret above). In the X developer portal add the callback URL
 `https://<your Cloud Run URL or domain>/oauth/x/callback` and set app permissions to Read and Write.
@@ -171,7 +170,7 @@ gcloud run deploy chromabot --source . --region us-central1 \
   --service-account=chromabot-runtime@hitthehatch.iam.gserviceaccount.com \
   --min-instances=0 --max-instances=1 --concurrency=20 --cpu-throttling --allow-unauthenticated \
   --set-env-vars="STORE=firestore,SCHEDULER_MODE=external,SCHEDULER_TICK_TIMEOUT_MS=50000,FIREBASE_PROJECT_ID=hitthehatch,AUTHORIZED_EMAILS=the.derek.leavitt@gmail.com,SCHEDULE_TIMEZONE=America/Denver,TARGET_TWEET_ID=2103110008212992249,NODE_ENV=production" \
-  --set-secrets="TWITTER_API_KEY=TWITTER_API_KEY:latest,TWITTER_API_SECRET=TWITTER_API_SECRET:latest,TWITTER_ACCESS_TOKEN=TWITTER_ACCESS_TOKEN:latest,TWITTER_ACCESS_TOKEN_SECRET=TWITTER_ACCESS_TOKEN_SECRET:latest,TWITTER_BEARER_TOKEN=TWITTER_BEARER_TOKEN:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,WEBHOOK_SECRET=WEBHOOK_SECRET:latest,CREDENTIALS_ENCRYPTION_KEY=CREDENTIALS_ENCRYPTION_KEY:latest,CRON_SECRET=CRON_SECRET:latest"
+  --set-secrets="TWITTER_API_KEY=TWITTER_API_KEY:latest,TWITTER_API_SECRET=TWITTER_API_SECRET:latest,TWITTER_BEARER_TOKEN=TWITTER_BEARER_TOKEN:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,WEBHOOK_SECRET=WEBHOOK_SECRET:latest,CREDENTIALS_ENCRYPTION_KEY=CREDENTIALS_ENCRYPTION_KEY:latest,CRON_SECRET=CRON_SECRET:latest"
 ```
 
 `--source .` also needs `roles/cloudbuild.builds.editor`-style access and the Cloud Build API; the

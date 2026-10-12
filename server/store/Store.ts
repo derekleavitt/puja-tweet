@@ -16,14 +16,12 @@ import type {
 } from '../../shared/types.js';
 
 /** A connected X account as persisted. `encrypted` holds `{ accessToken, accessTokenSecret }`. */
-export interface XAccount extends Omit<XAccountInfo, 'isDefault'> {
+export interface XAccount extends Omit<XAccountInfo, 'wipe'> {
   encrypted: string;
 }
 
-/** Cached facts about the default (env-token) account; its tokens are never stored. */
-export type DefaultAccountMeta = Partial<
-  Pick<XAccountInfo, 'handle' | 'userId' | 'status' | 'lastVerifiedAt' | 'lastError'>
->;
+/** What older stores knew about the removed built-in default account (read once, then dropped). */
+export type LegacyDefaultAccount = Partial<Pick<XAccountInfo, 'handle' | 'userId'>>;
 
 /** A request token waiting for the owner to authorize it on X (10-minute TTL). */
 export interface PendingOAuth {
@@ -81,22 +79,19 @@ export interface BotState {
   logs: PostLog[];
   queue: QueueSlot[];
   credentials: TwitterCredentials;
-  /** Connected X accounts (the default env-token account is synthesised, not stored here). */
+  /** Connected X accounts: the only accounts campaigns can post as. */
   accounts: XAccount[];
-  defaultAccount?: DefaultAccountMeta;
+  /** Legacy input only: the removed default account, until `removeDefaultAccount` ran. */
+  defaultAccount?: LegacyDefaultAccount;
+  /** True once the built-in default account was removed from this store (see migration). */
+  defaultAccountRemoved?: boolean;
   pendingOAuth: PendingOAuth[];
-  /** X cooldown of the DEFAULT account (kept as scalars for older state files). */
-  cooldownUntilMs: number;
-  cooldownReason: string;
-  lastThrottledAt: string;
-  /** Last live post of the DEFAULT account (anti-burst spacing). */
-  lastGlobalLivePostTimestamp: number;
-  /** Cooldown / last live post of connected accounts, keyed by account id. */
+  /** Cooldown / last live post of each connected account, keyed by account id. */
   accountCooldowns?: Record<string, AccountCooldown>;
   lastLivePostByAccount?: Record<string, number>;
   lastCapturedRateLimitHeaders?: RateLimitHeaders;
   lastRateLimitCaptureTimestamp?: number;
-  /** The X account those headers came from (they are per user); undefined = default account. */
+  /** The X account those headers came from (they are per user). */
   lastRateLimitAccountId?: string;
   /** Gemini calls made on `day` (UTC), so GEMINI_MAX_CALLS_PER_DAY survives restarts. */
   geminiUsage?: { day: string; calls: number };

@@ -1,9 +1,9 @@
 /**
  * X ChromaBot - useCredentials
- * Save / verify X API credentials.
+ * Save / remove the X app's keys (accounts are connected under Settings, X accounts).
  */
 
-import { clearCredentials, saveCredentials, verifyCredentials } from '../api/endpoints.js';
+import { clearCredentials, saveCredentials } from '../api/endpoints.js';
 import { CredentialsStatus } from '../types.js';
 
 export interface CredentialsResult {
@@ -30,9 +30,7 @@ export function useCredentials({ setCredentialsStatus, fetchStatus }: UseCredent
   };
 
   // Remove the stored credentials of one auth method
-  const handleClearCredentials = async (
-    method: 'oauth1' | 'oauth2' | 'bearer',
-  ): Promise<CredentialsResult> => {
+  const handleClearCredentials = async (method: 'app' | 'bearer'): Promise<CredentialsResult> => {
     const data = await clearCredentials(method);
     if (data?.success) {
       setCredentialsStatus(data.credentialsStatus ?? null);
@@ -41,10 +39,5 @@ export function useCredentials({ setCredentialsStatus, fetchStatus }: UseCredent
     return { success: !!data?.success, error: data?.error };
   };
 
-  // Verify credentials
-  const handleVerifyCredentials = async () => {
-    return await verifyCredentials();
-  };
-
-  return { handleSaveCredentials, handleClearCredentials, handleVerifyCredentials };
+  return { handleSaveCredentials, handleClearCredentials };
 }

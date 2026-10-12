@@ -95,12 +95,13 @@ export async function runPostDrop(options: CliOptions, deps: PostDropDeps): Prom
     );
     return 1;
   }
-  // The campaign's own X account (default: the env-token account).
+  // The campaign's own connected X account (none picked = simulated only).
   const creds = services.accounts.getCredentialsForAccount(context.accountId);
   const hasAuth = !!(
-    creds &&
-    ((creds.apiKey && creds.apiSecret && creds.accessToken && creds.accessTokenSecret) ||
-      creds.oauth2AccessToken)
+    creds?.apiKey &&
+    creds.apiSecret &&
+    creds.accessToken &&
+    creds.accessTokenSecret
   );
   const handle = services.accounts.handleOf(context.accountId);
 
@@ -109,7 +110,7 @@ export async function runPostDrop(options: CliOptions, deps: PostDropDeps): Prom
   console.log(`Execution Time (UTC): ${new Date().toISOString()}`);
   console.log(`Context: ${context.name} (${context.id})`);
   console.log(`Engagement mode: ${(context.engagementMode || 'reply').toUpperCase()}`);
-  console.log(`Posts as: ${handle ? `@${handle}` : context.accountId || 'default account'}`);
+  console.log(`Posts as: ${handle ? `@${handle}` : context.accountId || 'no account picked'}`);
   console.log(`Target Tweet ID: ${context.targetTweetId}`);
   console.log(`Slot: ${options.slot.toUpperCase()}`);
   console.log(`Mode requested: ${wantLive ? 'LIVE X API (Real Post)' : 'DRY RUN (Simulated)'}`);

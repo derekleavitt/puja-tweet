@@ -13,7 +13,6 @@ import { HttpError } from '../middleware/error.js';
 import { AgentUnavailableError, resolveTemplateText } from '../templateAgent.js';
 import { postColorTweet, type TwitterCredentials } from '../twitterClient.js';
 import { classifyXError, type XErrorClass } from '../xErrors.js';
-import { DEFAULT_ACCOUNT_ID } from '../../shared/types.js';
 import { composeDropText, isEvolutionEnabled, nextHashtagState, usedHashtags } from './dropText.js';
 import type { ComposeOptions } from './dropText.js';
 import { hashtagService, type HashtagService } from './hashtagService.js';
@@ -531,7 +530,7 @@ export const createDropService = (deps: DropDeps) => {
         `-> Mode: ${engagementMode.toUpperCase()} ` +
         `${describeMode(context, engagementMode, replyToTweetId, chainInfo)}` +
         `, source: ${source}, mode: ${isDryRun ? 'DRY-RUN' : 'LIVE X'}${s.settings.isGlobalDryRun() ? ' (global dry-run)' : ''}` +
-        `, account: ${accountHandle ? `@${accountHandle}` : (accountId ?? DEFAULT_ACCOUNT_ID)}`,
+        `, account: ${accountHandle ? `@${accountHandle}` : (accountId ?? 'none')}`,
     );
 
     let fallbackTriggered = false;
@@ -623,7 +622,7 @@ export const createDropService = (deps: DropDeps) => {
       errorMessage,
       contextId: context.id,
       contextName: context.name,
-      accountId: accountId ?? DEFAULT_ACCOUNT_ID,
+      ...(accountId ? { accountId } : {}),
       ...(accountHandle ? { accountHandle } : {}),
     } as const;
     s.logs.addLog(logEntry);

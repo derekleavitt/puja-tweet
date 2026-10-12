@@ -8,7 +8,7 @@ import type { Page } from '@playwright/test';
 import { test, expect, openApp, openTab, campaignCard } from './fixtures.js';
 
 const HANDLES = ['main_e2e', 'alice', 'bob', 'carol'];
-const IDS = ['acct_env', 'acct_100', 'acct_200', 'acct_300'];
+const IDS = ['acct_000', 'acct_100', 'acct_200', 'acct_300'];
 const NAME = 'Salon Debate';
 
 interface Mock {
@@ -88,7 +88,6 @@ async function setup(page: Page, opts: { live?: boolean; ctx?: Record<string, un
       userId: String(i),
       status: 'ok',
       createdAt: new Date().toISOString(),
-      isDefault: i === 0,
     }));
     json.contexts = [mock.ctx];
     json.settings = { ...json.settings, globalDryRun: !mock.live };

@@ -1,7 +1,6 @@
 /**
  * X ChromaBot - AccountRow
- * One X account in Settings: @handle, label, status, last verified, and its actions.
- * The default (env-token) account can only be verified.
+ * One connected X account in Settings: @handle, label, status, last verified, and its actions.
  */
 
 import React, { useState } from 'react';
@@ -136,28 +135,24 @@ export const AccountRow: React.FC<AccountRowProps> = ({
         >
           <Eraser className="w-3 h-3" /> Delete all content
         </button>
-        {!account.isDefault && (
-          <>
-            <button
-              type="button"
-              onClick={() => {
-                setLabel(account.label);
-                setEditing(true);
-              }}
-              className={ACTION}
-            >
-              <Pencil className="w-3 h-3" /> Rename
-            </button>
-            <button
-              type="button"
-              onClick={onRequestRemove}
-              disabled={busy === `remove:${account.id}`}
-              className={`${ACTION} text-red-600 dark:text-red-400`}
-            >
-              <Trash2 className="w-3 h-3" /> Remove
-            </button>
-          </>
-        )}
+        <button
+          type="button"
+          onClick={() => {
+            setLabel(account.label);
+            setEditing(true);
+          }}
+          className={ACTION}
+        >
+          <Pencil className="w-3 h-3" /> Rename
+        </button>
+        <button
+          type="button"
+          onClick={onRequestRemove}
+          disabled={busy === `remove:${account.id}`}
+          className={`${ACTION} text-red-600 dark:text-red-400`}
+        >
+          <Trash2 className="w-3 h-3" /> Remove
+        </button>
       </div>
     </li>
   );

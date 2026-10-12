@@ -54,23 +54,18 @@ export interface ChainAnchor {
   postedAt: string; // ISO timestamp of that reply
 }
 
-/** The account behind the env tokens (TWITTER_ACCESS_TOKEN/SECRET); campaigns without `accountId` use it. */
-export const DEFAULT_ACCOUNT_ID = 'acct_env';
-
 export type XAccountStatus = 'ok' | 'revoked' | 'unverified';
 
 /** Public view of an X account a campaign can post as. Never carries tokens. */
 export interface XAccountInfo {
-  id: string; // 'acct_env' for the default (env) account, 'acct_<userId>' for connected ones
+  id: string; // 'acct_<userId>'
   label: string;
-  handle: string; // Without '@'; '' until the default account was verified
+  handle: string; // Without '@'
   userId: string;
   status: XAccountStatus;
   lastVerifiedAt?: string;
   lastError?: string;
   createdAt: string;
-  /** True for the env-token account: verify only (no rename / remove). */
-  isDefault: boolean;
   /** The latest "delete all content" job of this account, if any. */
   wipe?: WipeJobSummary;
 }
@@ -92,9 +87,13 @@ export interface WipeJobSummary {
   /** Waiting for X's rate limit until this time (ISO). */
   waitingUntil?: string;
   lastError?: string;
+  /** Running: rough minutes until the queued items are removed (X's rate windows). */
+  estimatedMinutesLeft?: number;
+  /** Running: there may be more to list after the queue (later pages, passes or the likes). */
+  moreToRead?: boolean;
 }
 
-/** One voice of a conversation campaign: a connected account (or 'acct_env') and its persona. */
+/** One voice of a conversation campaign: a connected account and its persona. */
 export interface ConversationParticipant {
   accountId: string;
   persona: string;
@@ -182,7 +181,7 @@ export interface TweetContext {
   id: string; // Unique context ID e.g. 'ctx_default', 'ctx_1790623000'
   name: string; // Context title e.g. 'Primary Eternal Colors'
   description?: string;
-  /** X account this campaign posts as (see `XAccountInfo`); undefined = the default account. */
+  /** Connected X account this campaign posts as (see `XAccountInfo`); undefined = none picked yet. */
   accountId?: string;
   targetTweetId: string; // The numeric Tweet ID to reply to (root post)
   replyTargetMode?: 'original_post' | 'last_comment'; // 'original_post' = reply to root post; 'last_comment' = cascading reply to last comment made by us
@@ -295,20 +294,14 @@ export interface RateLimitTelemetry {
   activeCooldown?: CooldownState;
 }
 
+/** The X app's own keys (accounts are connected separately and keep their own tokens). */
 export interface CredentialsStatus {
   hasApiKey: boolean;
   apiKeyMasked: string | null;
   hasApiSecret: boolean;
-  hasAccessToken: boolean;
-  accessTokenMasked: string | null;
-  hasAccessTokenSecret: boolean;
-  hasOAuth2ClientId: boolean;
-  oauth2ClientIdMasked: string | null;
-  hasOAuth2ClientSecret: boolean;
-  hasOAuth2AccessToken: boolean;
-  hasOAuth2RefreshToken: boolean;
   hasBearerToken: boolean;
-  authMethod: string;
+  bearerTokenMasked: string | null;
+  /** API key + secret are set: accounts can be connected and signed as. */
   isFullyConfigured: boolean;
   source: 'environment_variables' | 'server_config' | 'none';
   /** False when CREDENTIALS_ENCRYPTION_KEY is unset: UI-entered credentials cannot be saved. */
@@ -400,7 +393,7 @@ export interface StatusResponse extends AiStatus {
   queue?: QueueSlot[];
   /** Every account campaigns can post as (default first). */
   accounts?: XAccountInfo[];
-  /** X cooldown per account id (`cooldownState` is the default account's). */
+  /** X cooldown per connected account id (`cooldownState` is the one ending last). */
   accountCooldowns?: Record<string, CooldownState>;
 }
 

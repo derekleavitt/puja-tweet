@@ -44,7 +44,7 @@ const conversationSchema = z.object({
 export const contextUpdateSchema = z.object({
   name: z.string().optional(),
   description: z.string().optional(),
-  // X account the campaign posts as ('' / null / 'acct_env' = the default account). Must exist.
+  // Connected X account the campaign posts as ('' / null = none picked). Must exist.
   accountId: z.string().max(100).nullish(),
   targetTweetId: z
     .string()

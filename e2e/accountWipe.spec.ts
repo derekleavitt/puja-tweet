@@ -21,7 +21,6 @@ async function mockAccount(page: Page) {
     status: 'ok',
     createdAt: new Date().toISOString(),
     lastVerifiedAt: new Date().toISOString(),
-    isDefault: false,
     ...(state.wipe ? { wipe: state.wipe } : {}),
   });
   await page.route('**/api/status', async (route) => {

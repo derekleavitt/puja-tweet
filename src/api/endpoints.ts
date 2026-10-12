@@ -15,7 +15,6 @@ import {
   QueueSlot,
   StatusResponse,
   TweetContext,
-  VerifyResult,
   XAccountInfo,
 } from '../types.js';
 
@@ -172,10 +171,8 @@ export const saveSettings = (settings: Partial<BotSettings> & { contextId?: stri
 // Credentials
 export const saveCredentials = (creds: Record<string, string>) =>
   orBody(apiFetch<Json>('/api/credentials', { method: 'POST', body: creds }));
-export const clearCredentials = (method: 'oauth1' | 'oauth2' | 'bearer') =>
+export const clearCredentials = (method: 'app' | 'bearer') =>
   orBody(apiFetch<Json>(`/api/credentials/${method}`, { method: 'DELETE' }));
-export const verifyCredentials = () =>
-  orBody(apiFetch<VerifyResult>('/api/twitter/verify', { method: 'POST' }));
 
 // X accounts campaigns can post as (responses never contain tokens)
 type AccountsResult = { success: boolean; accounts: XAccountInfo[] };

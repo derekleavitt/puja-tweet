@@ -3,6 +3,7 @@ import { createDropService } from '../../server/services/dropService.js';
 import { createServices, type Services } from '../../server/services/index.js';
 import { MemoryStore } from '../../server/store/MemoryStore.js';
 import { parseArgs, runPostDrop } from '../../scripts/postDropCli.js';
+import { useTestAccount } from '../helpers/testAccount.js';
 
 let svc: Services;
 const post = vi.fn();
@@ -27,6 +28,7 @@ beforeEach(async () => {
   vi.spyOn(console, 'log').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
   svc = await createServices(new MemoryStore());
+  await useTestAccount(svc);
   post
     .mockReset()
     .mockImplementation(async (_c, _o, isDryRun: boolean) =>
