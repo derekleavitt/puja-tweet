@@ -27,14 +27,14 @@ describe('JsonFileStore', () => {
     const store = new JsonFileStore(dir);
     const renameSpy = vi.spyOn(fs.promises, 'rename');
     const a = createDefaultState();
-    a.cooldownReason = 'first';
+    a.activeContextId = 'first';
     await store.save(a);
-    a.cooldownReason = 'second';
+    a.activeContextId = 'second';
     await store.save(a);
     expect(renameSpy).toHaveBeenCalledWith(`${file()}.tmp`, file());
     expect(fs.existsSync(`${file()}.tmp`)).toBe(false);
-    expect(JSON.parse(fs.readFileSync(file(), 'utf-8')).cooldownReason).toBe('second');
-    expect(JSON.parse(fs.readFileSync(`${file()}.bak`, 'utf-8')).cooldownReason).toBe('first');
+    expect(JSON.parse(fs.readFileSync(file(), 'utf-8')).activeContextId).toBe('second');
+    expect(JSON.parse(fs.readFileSync(`${file()}.bak`, 'utf-8')).activeContextId).toBe('first');
   });
 
   it('saveSync is atomic too', () => {
@@ -48,11 +48,11 @@ describe('JsonFileStore', () => {
   it('recovers from the backup when the main file is corrupt', async () => {
     const store = new JsonFileStore(dir);
     const s = createDefaultState();
-    s.cooldownReason = 'good';
+    s.activeContextId = 'good';
     await store.save(s);
     await store.save(s);
     fs.writeFileSync(file(), '{ not json');
-    expect((await store.load()).cooldownReason).toBe('good');
+    expect((await store.load()).activeContextId).toBe('good');
   });
 
   it('refuses to boot when file and backup are unreadable unless ALLOW_FRESH_STORE', async () => {

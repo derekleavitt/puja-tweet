@@ -10,6 +10,7 @@ import { postColorTweet } from '../../server/twitterClient.js';
 import { scheduler } from '../../server/scheduler.js';
 import { createServices, services } from '../../server/services/index.js';
 import { MemoryStore } from '../../server/store/MemoryStore.js';
+import { useTestAccount } from '../helpers/testAccount.js';
 
 vi.mock('../../server/twitterClient.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../server/twitterClient.js')>();
@@ -79,7 +80,7 @@ let A: string;
 let B: string;
 let C: string;
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.spyOn(Date, 'now').mockImplementation(() => now);
   post.mockReset().mockImplementation(okPost as never);
   for (const c of services.contexts.getContexts().slice(1)) services.contexts.deleteContext(c.id);
@@ -105,6 +106,7 @@ beforeEach(() => {
   C = campaign({ name: 'C', targetTweetId: '3000', template: 'C {weather_desc}' });
   // The primary (first) campaign stays paused so only A, B, C take part.
   services.contexts.patchContext(services.contexts.getContexts()[0].id, { enabled: false });
+  await useTestAccount(services);
 });
 
 afterEach(() => {
@@ -240,7 +242,7 @@ describe('errors, back-off and auto-pause stay with the failing campaign', () =>
     post.mockImplementation(failWith(429, 'Too Many Requests') as never);
     await scheduler.tick(); // A hits the limit
     expect(services.rateLimit.getCooldownState().isThrottled).toBe(true);
-    // All three campaigns post as the default account, so they all wait.
+    // All three campaigns post as the same test account, so they all wait.
     expect(scheduler.getBlockedReason(ctx(C))).toMatch(/cooldown/);
     post.mockImplementation(okPost as never);
     await scheduler.tick();

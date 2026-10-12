@@ -16,7 +16,6 @@ interface MockAccount {
   status: 'ok' | 'revoked' | 'unverified';
   createdAt: string;
   lastVerifiedAt?: string;
-  isDefault: false;
 }
 
 /** A fake account layer over the real API. */
@@ -37,7 +36,6 @@ async function mockAccounts(page: Page) {
       status: 'ok',
       createdAt: new Date().toISOString(),
       lastVerifiedAt: new Date().toISOString(),
-      isDefault: false,
     };
     accounts.push(account);
     return account;
@@ -107,31 +105,26 @@ const row = (page: Page, handle: string) =>
     .getByTestId('account-row')
     .filter({ hasText: `@${handle}` });
 
-test('settings list the default account; the campaign form shows "Posts as" and keeps it', async ({
-  app,
-}) => {
+test('settings list connected accounts only; a campaign without one says so', async ({ app }) => {
   await openApp(app);
   await openTab(app, 'Settings');
   const section = accountsSection(app);
   await expect(section).toContainText('/oauth/x/callback');
-  const defaultRow = section.locator('[data-account-id="acct_env"]');
-  await expect(defaultRow).toContainText('Default account');
-  await expect(defaultRow.getByRole('button', { name: 'Verify' })).toBeVisible();
-  await expect(defaultRow.getByRole('button', { name: 'Rename' })).toHaveCount(0);
-  await expect(defaultRow.getByRole('button', { name: 'Remove' })).toHaveCount(0);
+  // No built-in default account: nothing is listed until an account is connected.
+  await expect(section.getByTestId('account-row')).toHaveCount(0);
 
   await openTab(app, 'Campaigns');
   await expect(campaignCard(app, PRIMARY).getByTestId('posts-as')).toContainText(
-    'Posts as the default account',
+    'Posts as no account (pick one)',
   );
   await campaignCard(app, PRIMARY).getByTitle('Edit context & schedule').click();
   const postsAs = app.getByLabel('Posts as');
-  await expect(postsAs).toHaveValue('acct_env');
-  await expect(app.getByText(/X only allows replies to posts this account wrote/)).toBeVisible();
+  await expect(postsAs).toHaveValue('');
+  await expect(app.getByText(/No X account is connected yet/)).toBeVisible();
   await app.getByRole('button', { name: 'Save & Regenerate Queue' }).click();
   await expect(postsAs).toHaveCount(0);
   await campaignCard(app, PRIMARY).getByTitle('Edit context & schedule').click();
-  await expect(app.getByLabel('Posts as')).toHaveValue('acct_env');
+  await expect(app.getByLabel('Posts as')).toHaveValue('');
   await app.getByRole('button', { name: 'Cancel' }).click();
 });
 

@@ -3,6 +3,7 @@ import { generateColor } from '../../server/colorEngine.js';
 import { createDropService } from '../../server/services/dropService.js';
 import { createServices, type Services } from '../../server/services/index.js';
 import { MemoryStore } from '../../server/store/MemoryStore.js';
+import { useTestAccount } from '../helpers/testAccount.js';
 
 let svc: Services;
 const post = vi.fn();
@@ -23,6 +24,7 @@ const configure = (patch: Record<string, unknown>) => {
 
 beforeEach(async () => {
   svc = await createServices(new MemoryStore());
+  await useTestAccount(svc);
   svc.settings.updateSettings({ globalDryRun: false, globalPaused: false });
   post.mockReset().mockResolvedValue({ success: true, tweetId: '999', url: 'u' });
   resolveText.mockReset().mockResolvedValue('hello');

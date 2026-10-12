@@ -390,7 +390,9 @@ class SchedulerService {
       context.mode === 'conversation'
         ? `Next speaker ${handle ? `@${handle}` : (accountId ?? '?')}: `
         : '';
-    const problem = services.accounts.problem(accountId);
+    // Without an account a campaign can still run simulated; live it is blocked.
+    const simulated = services.settings.isGlobalDryRun() || context.dryRun === true;
+    const problem = !accountId && simulated ? undefined : services.accounts.problem(accountId);
     if (problem) return `${who}${problem}`;
     const windowSeconds = services.rateLimit.getWindowExhaustedSeconds(accountId);
     if (windowSeconds > 0) {

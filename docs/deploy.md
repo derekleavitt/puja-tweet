@@ -83,8 +83,8 @@ To run the production build locally instead:
 | `APP_VERSION` | no | Overrides the version shown by `/api/health` |
 | `GEMINI_API_KEY` | for AI templates | Gemini API key |
 | `GEMINI_TIMEOUT_MS`, `X_TIMEOUT_MS` | no | Upstream request timeouts |
-| `TWITTER_API_KEY`, `TWITTER_API_SECRET`, `TWITTER_ACCESS_TOKEN`, `TWITTER_ACCESS_TOKEN_SECRET` | for live posting | OAuth 1.0a user credentials |
-| `TWITTER_BEARER_TOKEN`, `TWITTER_OAUTH2_*` | no | OAuth 2.0 alternatives |
+| `TWITTER_API_KEY`, `TWITTER_API_SECRET` | to connect accounts | The X app's consumer key/secret (accounts are connected in Settings and keep their own tokens) |
+| `TWITTER_BEARER_TOKEN` | no | App-only token, used to read X trends (`X_TRENDS_WOEID`) |
 | `TARGET_TWEET_ID` | no | Default target tweet |
 | `SCHEDULE_TIMES`, `SCHEDULE_TIMEZONE` | no | Default posting schedule |
 | `APP_URL` | no | Public URL of the deployment |

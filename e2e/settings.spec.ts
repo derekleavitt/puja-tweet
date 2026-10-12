@@ -55,11 +55,11 @@ test('credentials screen refuses to persist without CREDENTIALS_ENCRYPTION_KEY',
   await openTab(app, 'API Keys');
   await expect(app.getByText(/CREDENTIALS_ENCRYPTION_KEY/).first()).toBeVisible();
   await expect(app.getByText(/Saving keys from this form is disabled/)).toBeVisible();
-  await expect(app.getByRole('button', { name: 'Update OAuth 1.0a Keys' })).toBeDisabled();
+  await expect(app.getByRole('button', { name: 'Save App Keys' })).toBeDisabled();
 
   // The API itself refuses with a clear message and stores nothing
   const res = await app.request.post('/api/credentials', {
-    data: { apiKey: 'k', apiSecret: 's', accessToken: 't', accessTokenSecret: 'ts' },
+    data: { apiKey: 'k', apiSecret: 's' },
   });
   expect(res.status()).toBe(400);
   const body = await res.json();

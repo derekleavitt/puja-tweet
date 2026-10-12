@@ -35,10 +35,7 @@ export const createDefaultState = (): BotState => ({
   credentials: {},
   accounts: [],
   pendingOAuth: [],
-  cooldownUntilMs: 0,
-  cooldownReason: '',
-  lastThrottledAt: '',
-  lastGlobalLivePostTimestamp: 0,
+  defaultAccountRemoved: true,
 });
 
 /** Merges loosely-typed persisted data (e.g. a parsed JSON file) over the defaults. */
@@ -59,6 +56,8 @@ export const normalizeState = (raw: unknown): BotState => {
       (a) => a && typeof a.id === 'string' && typeof a.encrypted === 'string',
     );
   }
+  // A store from before the default account was removed still has to run that migration.
+  state.defaultAccountRemoved = data.defaultAccountRemoved === true;
   if (data.defaultAccount && typeof data.defaultAccount === 'object') {
     state.defaultAccount = data.defaultAccount;
   }
@@ -68,12 +67,6 @@ export const normalizeState = (raw: unknown): BotState => {
   }
   if (data.lastLivePostByAccount && typeof data.lastLivePostByAccount === 'object') {
     state.lastLivePostByAccount = data.lastLivePostByAccount;
-  }
-  if (data.cooldownUntilMs) state.cooldownUntilMs = Number(data.cooldownUntilMs);
-  if (data.cooldownReason) state.cooldownReason = data.cooldownReason;
-  if (data.lastThrottledAt) state.lastThrottledAt = data.lastThrottledAt;
-  if (data.lastGlobalLivePostTimestamp) {
-    state.lastGlobalLivePostTimestamp = Number(data.lastGlobalLivePostTimestamp);
   }
   if (data.lastCapturedRateLimitHeaders) {
     state.lastCapturedRateLimitHeaders = data.lastCapturedRateLimitHeaders;

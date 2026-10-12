@@ -79,7 +79,7 @@ describe('FirestoreStore', () => {
   it('round-trips state and keeps log order, stripping undefined values', async () => {
     const { db, docs, logDocCount } = createFakeFirestore();
     const state = createDefaultState();
-    state.cooldownReason = 'throttled';
+    state.activeContextId = 'throttled';
     state.logs = [log('b'), log('a', { replyToTweetId: undefined }), log('c/with slash')];
     await new FirestoreStore(db).save(state);
 
@@ -87,7 +87,7 @@ describe('FirestoreStore', () => {
     expect(logDocCount()).toBe(3);
 
     const loaded = await new FirestoreStore(db).load();
-    expect(loaded.cooldownReason).toBe('throttled');
+    expect(loaded.activeContextId).toBe('throttled');
     expect(loaded.logs.map((l) => l.id)).toEqual(['b', 'a', 'c/with slash']);
   });
 

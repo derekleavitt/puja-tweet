@@ -49,7 +49,7 @@ a11ce00 revert: "feat: play it cool" — did not pass review
 - 🧵 **Reply chains**: each drop can reply to the last one, forming a long thread of devotion. If the thread breaks, it recovers. Unlike some of us.
 - ✍️ **AI poetry** (Gemini Flash-Lite): optional. Hard-capped at 280 characters and always ends on a full sentence, because even love has rate limits. If Gemini is busy or slow it tries once more.
 - #️⃣ **Evolving hashtags**: optional, per campaign. Every tweet trades `#eternal #colors` for fresh, related tags and never repeats itself, like a poet with a thesaurus and commitment issues.
-- 👥 **Several X accounts**: connect extra accounts in Settings and pick one per campaign ("Posts as"). Each account keeps its own cooldown and spacing. See [`docs/accounts.md`](docs/accounts.md).
+- 👥 **X accounts**: connect accounts in Settings (no built-in default) and pick one per campaign ("Posts as"). Each account keeps its own cooldown and spacing. See [`docs/accounts.md`](docs/accounts.md).
 - 💬 **Conversations**: let 2 to 5 of your accounts, each with its own AI persona, chat in one thread and hand the mic over with @mentions (the whole cast is tagged, at the start or end like a real reply, so anyone can jump in; hashtags can evolve too). Random turn order, unlimited or N turns per round, Resume for another round, Restart for a new thread. A book club where nobody did the reading. See [`docs/conversations.md`](docs/conversations.md).
 - 🛑 **Global dry-run & pause**: a fresh install starts in "write love letters but don't send them" mode. Very relatable.
 - 🔐 **Locked to one Google account**: only the owner can log in. This is a love bot, not a group chat.
@@ -128,7 +128,7 @@ First time on a new machine: `npx playwright install chromium` before `npm run e
 | Doc | What's in it |
 | :--- | :--- |
 | [`docs/gcp-setup.md`](docs/gcp-setup.md) / [`docs/deploy.md`](docs/deploy.md) | Cloud Run, Scheduler, secrets, deploys, production logs, known limits, local `.env` |
-| [`docs/accounts.md`](docs/accounts.md) | Connecting extra X accounts, "Posts as", X portal setup |
+| [`docs/accounts.md`](docs/accounts.md) | Connecting X accounts, "Posts as", X portal setup |
 | [`docs/conversations.md`](docs/conversations.md) | Conversation campaigns, step by step |
 | [`docs/hashtags.md`](docs/hashtags.md) | The Hashtags field, evolution, AI hashtag rules |
 | [`docs/campaign-isolation.md`](docs/campaign-isolation.md) | What is per campaign vs global, chains, recovery and history |

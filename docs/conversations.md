@@ -10,9 +10,8 @@ Design notes for developers are in [design/conversations.md](design/conversation
 ## Before you start
 
 - Connect **2 to 5 accounts** in Settings (see [accounts.md](accounts.md)).
-- Every participant needs a **known @handle**. Connected accounts get theirs when you connect them.
-  If the default account (from environment variables) shows no handle, press **Verify** on it first.
-  Saving a conversation without a known handle fails with "Verify @handle first".
+- Every participant needs a **known @handle**. Connected accounts get theirs when you connect them
+  (press **Verify** on one that shows no handle). Saving a conversation without a known handle fails with "Verify @handle first".
 - Add a Gemini key. Conversation replies are always written by the AI; there is no fallback text.
 
 ## Step by step

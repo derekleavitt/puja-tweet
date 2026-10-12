@@ -127,6 +127,8 @@ export function useContextForm(opts: UseContextFormOptions) {
       description: '',
       // Never prefill another campaign's target: two campaigns on one thread collide.
       targetTweetId: defaultTargetTweetId,
+      // Posts as the first usable connected account (none = simulated until one is picked).
+      accountId: accounts.find((a) => a.status !== 'revoked')?.id,
       enabled: true,
       dryRun: false,
       autoFallbackToQuote: false,

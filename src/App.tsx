@@ -62,12 +62,10 @@ function ChromaBotDashboard() {
     setSettings,
     refresh,
   });
-  const { handleSaveCredentials, handleClearCredentials, handleVerifyCredentials } = useCredentials(
-    {
-      setCredentialsStatus: status.setCredentialsStatus,
-      fetchStatus,
-    },
-  );
+  const { handleSaveCredentials, handleClearCredentials } = useCredentials({
+    setCredentialsStatus: status.setCredentialsStatus,
+    fetchStatus,
+  });
 
   // Initial load (runs once on mount); the queue loads once the campaigns are known.
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -211,7 +209,6 @@ function ChromaBotDashboard() {
                   credentialsStatus={credentialsStatus}
                   onSaveCredentials={handleSaveCredentials}
                   onClearCredentials={handleClearCredentials}
-                  onVerifyCredentials={handleVerifyCredentials}
                 />
               )}
             </>

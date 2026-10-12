@@ -1,11 +1,14 @@
 /**
- * X API credentials (env vars take precedence over stored ones) and the webhook secret.
+ * The X app's own keys (env vars take precedence over stored ones) and the webhook secret.
+ * Only app-level keys live here: the consumer key/secret (needed to connect accounts and to sign
+ * as them) and an optional app-only bearer token. Every account's user tokens belong to the
+ * connected account itself (accountService); there is no built-in default account.
  */
 
 import crypto from 'crypto';
 import { HttpError } from '../middleware/error.js';
 import { decrypt, encrypt, getEncryptionKey } from './credentialCrypto.js';
-import type { RefreshedTokens, TwitterCredentials } from '../twitterClient.js';
+import type { TwitterCredentials } from '../twitterClient.js';
 import type { StateManager } from './stateManager.js';
 
 /** Shows only `••••` plus the last 2 characters (nothing for short values). */
@@ -15,32 +18,26 @@ export const mask = (val?: string) => {
   return `••••${val.substring(val.length - 2)}`;
 };
 
-type CredentialField = Exclude<keyof TwitterCredentials, 'encrypted' | 'onTokensRefreshed'>;
+/** The app keys: consumer key/secret and an optional app-only bearer token. */
+export type AppKeys = Pick<TwitterCredentials, 'apiKey' | 'apiSecret' | 'bearerToken'>;
+type CredentialField = keyof AppKeys;
 
 const FIELD_ENV: Record<CredentialField, string> = {
   apiKey: 'TWITTER_API_KEY',
   apiSecret: 'TWITTER_API_SECRET',
-  accessToken: 'TWITTER_ACCESS_TOKEN',
-  accessTokenSecret: 'TWITTER_ACCESS_TOKEN_SECRET',
-  oauth2ClientId: 'TWITTER_OAUTH2_CLIENT_ID',
-  oauth2ClientSecret: 'TWITTER_OAUTH2_CLIENT_SECRET',
-  oauth2AccessToken: 'TWITTER_OAUTH2_ACCESS_TOKEN',
-  oauth2RefreshToken: 'TWITTER_OAUTH2_REFRESH_TOKEN',
   bearerToken: 'TWITTER_BEARER_TOKEN',
 };
-const FIELDS = Object.keys(FIELD_ENV) as CredentialField[];
+export const CREDENTIAL_FIELDS = Object.keys(FIELD_ENV) as CredentialField[];
+const FIELDS = CREDENTIAL_FIELDS;
 
 const METHOD_FIELDS: Record<string, CredentialField[]> = {
-  oauth1: ['apiKey', 'apiSecret', 'accessToken', 'accessTokenSecret'],
-  oauth2: ['oauth2ClientId', 'oauth2ClientSecret', 'oauth2AccessToken', 'oauth2RefreshToken'],
+  app: ['apiKey', 'apiSecret'],
   bearer: ['bearerToken'],
 };
 
 export class CredentialService {
-  /** UI-entered credentials in plaintext, memory only. On disk they exist only as an encrypted blob. */
-  private stored: TwitterCredentials = {};
-  /** True once an OAuth 2.0 refresh rotated the tokens: they then win over env values (which go stale). */
-  private rotated = false;
+  /** UI-entered keys in plaintext, memory only. On disk they exist only as an encrypted blob. */
+  private stored: AppKeys = {};
 
   constructor(private readonly sm: StateManager) {
     this.loadStored();
@@ -58,17 +55,25 @@ export class CredentialService {
       }
       try {
         const data = JSON.parse(decrypt(persisted.encrypted, key));
-        this.stored = data.creds ?? {};
-        this.rotated = !!data.rotated;
+        const creds: Record<string, string> = data.creds ?? {};
+        for (const f of FIELDS) if (creds[f]) this.stored[f] = creds[f];
+        // Older stores also held user tokens of the removed default account: drop them.
+        if (Object.keys(creds).some((k) => !(FIELDS as string[]).includes(k))) {
+          this.writeStored();
+          console.warn('[Credentials] Dropped stored user tokens (accounts are connected now).');
+        }
       } catch {
         console.error('[Credentials] Could not decrypt stored credentials (wrong key?); ignoring.');
       }
       return;
     }
     // Legacy plaintext from an older data file: migrate to the encrypted form, or drop it from disk.
-    const legacy: TwitterCredentials = {};
+    const legacy: AppKeys = {};
     for (const f of FIELDS) if (persisted[f]) legacy[f] = persisted[f];
-    if (Object.keys(legacy).length === 0) return;
+    if (Object.keys(legacy).length === 0) {
+      if (Object.keys(persisted).length) this.writeStored(); // only old user tokens: drop them
+      return;
+    }
     this.stored = legacy;
     this.writeStored();
     console.warn(
@@ -83,9 +88,7 @@ export class CredentialService {
     const key = getEncryptionKey();
     const hasAny = FIELDS.some((f) => this.stored[f]);
     this.sm.state.credentials =
-      key && hasAny
-        ? { encrypted: encrypt(JSON.stringify({ creds: this.stored, rotated: this.rotated }), key) }
-        : {};
+      key && hasAny ? { encrypted: encrypt(JSON.stringify({ creds: this.stored }), key) } : {};
     this.sm.persist();
   }
 
@@ -93,71 +96,28 @@ export class CredentialService {
     return getEncryptionKey() !== null;
   }
 
-  getEffectiveCredentials(): TwitterCredentials {
+  /** The app keys in effect (env first, then UI-entered). */
+  getEffectiveCredentials(): AppKeys {
     const pick = (f: CredentialField) => process.env[FIELD_ENV[f]] || this.stored[f] || '';
-    const pickOAuth2 = (f: 'oauth2AccessToken' | 'oauth2RefreshToken') =>
-      this.rotated && this.stored[f] ? this.stored[f]! : pick(f);
     return {
       apiKey: pick('apiKey'),
       apiSecret: pick('apiSecret'),
-      accessToken: pick('accessToken'),
-      accessTokenSecret: pick('accessTokenSecret'),
-      oauth2ClientId: pick('oauth2ClientId'),
-      oauth2ClientSecret: pick('oauth2ClientSecret'),
-      oauth2AccessToken: pickOAuth2('oauth2AccessToken'),
-      oauth2RefreshToken: pickOAuth2('oauth2RefreshToken'),
       bearerToken: pick('bearerToken'),
-      onTokensRefreshed: (tokens) => this.persistRefreshedTokens(tokens),
     };
-  }
-
-  /** Called by the X client after an OAuth 2.0 refresh; X rotates refresh tokens, so keep the new pair. */
-  persistRefreshedTokens(tokens: RefreshedTokens) {
-    this.stored.oauth2AccessToken = tokens.accessToken;
-    if (tokens.refreshToken) this.stored.oauth2RefreshToken = tokens.refreshToken;
-    this.rotated = true;
-    if (!this.canPersist) {
-      console.warn(
-        '[Credentials] Refreshed OAuth 2.0 tokens kept in memory only (CREDENTIALS_ENCRYPTION_KEY not set).',
-      );
-    }
-    this.writeStored();
   }
 
   getMaskedCredentialsStatus() {
     const creds = this.getEffectiveCredentials();
-    const hasOAuth1 = !!(
-      creds.apiKey &&
-      creds.apiSecret &&
-      creds.accessToken &&
-      creds.accessTokenSecret
-    );
-    const hasOAuth2 = !!(
-      creds.oauth2AccessToken ||
-      (creds.oauth2ClientId && creds.oauth2RefreshToken)
-    );
     const fromEnv = FIELDS.some((f) => !!process.env[FIELD_ENV[f]]);
     const fromStore = FIELDS.some((f) => !!this.stored[f]);
-
     return {
       hasApiKey: !!creds.apiKey,
       apiKeyMasked: mask(creds.apiKey),
       hasApiSecret: !!creds.apiSecret,
-      hasAccessToken: !!creds.accessToken,
-      accessTokenMasked: mask(creds.accessToken),
-      hasAccessTokenSecret: !!creds.accessTokenSecret,
-      hasOAuth2ClientId: !!creds.oauth2ClientId,
-      oauth2ClientIdMasked: mask(creds.oauth2ClientId),
-      hasOAuth2ClientSecret: !!creds.oauth2ClientSecret,
-      hasOAuth2AccessToken: !!creds.oauth2AccessToken,
-      hasOAuth2RefreshToken: !!creds.oauth2RefreshToken,
       hasBearerToken: !!creds.bearerToken,
-      authMethod: hasOAuth1
-        ? 'OAuth 1.0a (Permanent)'
-        : hasOAuth2
-          ? 'OAuth 2.0 User Context'
-          : 'None',
-      isFullyConfigured: hasOAuth1 || hasOAuth2,
+      bearerTokenMasked: mask(creds.bearerToken),
+      /** The app can connect accounts and sign as them. */
+      isFullyConfigured: !!(creds.apiKey && creds.apiSecret),
       source: fromEnv ? 'environment_variables' : fromStore ? 'server_config' : 'none',
       canPersistCredentials: this.canPersist,
     };
@@ -167,10 +127,10 @@ export class CredentialService {
    * Merges UI-entered credentials into the stored set. `undefined` and blank values are ignored
    * (blank means "keep existing"); fields provided by env vars are never stored or overwritten.
    */
-  updateCredentials(creds: Partial<TwitterCredentials>) {
+  updateCredentials(creds: Partial<Record<CredentialField, unknown>>) {
     const updates: Partial<Record<CredentialField, string>> = {};
     for (const f of FIELDS) {
-      const v = typeof creds[f] === 'string' ? creds[f]!.trim() : '';
+      const v = typeof creds[f] === 'string' ? (creds[f] as string).trim() : '';
       if (v && !process.env[FIELD_ENV[f]]) updates[f] = v;
     }
     if (Object.keys(updates).length === 0) return;
@@ -181,7 +141,6 @@ export class CredentialService {
       );
     }
     Object.assign(this.stored, updates);
-    if (updates.oauth2AccessToken || updates.oauth2RefreshToken) this.rotated = false;
     this.writeStored();
   }
 
@@ -190,7 +149,6 @@ export class CredentialService {
     const fields = METHOD_FIELDS[method];
     if (!fields) throw new HttpError(400, `Unknown credential method "${method}".`);
     for (const f of fields) delete this.stored[f];
-    if (method === 'oauth2') this.rotated = false;
     this.writeStored();
   }
 

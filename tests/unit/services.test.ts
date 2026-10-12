@@ -328,15 +328,10 @@ describe('services over MemoryStore', () => {
 
     it('masks stored credentials and reports the source', () => {
       vi.stubEnv('TWITTER_API_KEY', '');
-      svc.credentials.updateCredentials({
-        apiKey: 'abcdefghijklmnop',
-        apiSecret: 's',
-        accessToken: 'tokentoken',
-        accessTokenSecret: 'x',
-      });
+      svc.credentials.updateCredentials({ apiKey: 'abcdefghijklmnop', apiSecret: 's' });
       const status = svc.credentials.getMaskedCredentialsStatus();
       expect(status.apiKeyMasked).toBe('••••op');
-      expect(status.authMethod).toBe('OAuth 1.0a (Permanent)');
+      expect(status.isFullyConfigured).toBe(true);
       expect(status.source).toBe('server_config');
     });
 
@@ -358,9 +353,13 @@ describe('services over MemoryStore', () => {
   });
 
   describe('rateLimitService', () => {
-    it('sets and clears the global cooldown', () => {
+    it('sets and clears an account cooldown (shown without an id too)', () => {
       expect(svc.rateLimit.getCooldownState().isThrottled).toBe(false);
-      svc.rateLimit.setCooldown(10, 'testing');
+      svc.rateLimit.setCooldown(10, 'ignored: no account');
+      expect(svc.rateLimit.getCooldownState().isThrottled).toBe(false);
+      svc.rateLimit.setCooldown(10, 'testing', 'acct_1');
+      expect(svc.rateLimit.getCooldownState('acct_1').isThrottled).toBe(true);
+      expect(svc.rateLimit.getCooldownState('acct_2').isThrottled).toBe(false);
       const state = svc.rateLimit.getCooldownState();
       expect(state.isThrottled).toBe(true);
       expect(state.reason).toBe('testing');
@@ -371,9 +370,10 @@ describe('services over MemoryStore', () => {
     });
 
     it('tracks time since the last live post', () => {
-      expect(svc.rateLimit.getTimeSinceLastLivePostMs()).toBe(Infinity);
-      svc.rateLimit.recordLivePostTimestamp();
-      expect(svc.rateLimit.getTimeSinceLastLivePostMs()).toBeLessThan(1000);
+      expect(svc.rateLimit.getTimeSinceLastLivePostMs('acct_1')).toBe(Infinity);
+      svc.rateLimit.recordLivePostTimestamp('acct_1');
+      expect(svc.rateLimit.getTimeSinceLastLivePostMs('acct_1')).toBeLessThan(1000);
+      expect(svc.rateLimit.getTimeSinceLastLivePostMs('acct_2')).toBe(Infinity);
     });
 
     it('detects the tier from captured headers and counts live posts in 24h', () => {

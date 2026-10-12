@@ -3,6 +3,7 @@ import { scheduler } from '../../server/scheduler.js';
 import { createDropService, dropService } from '../../server/services/dropService.js';
 import { createServices, services } from '../../server/services/index.js';
 import { MemoryStore } from '../../server/store/MemoryStore.js';
+import { TEST_ACCOUNT, useTestAccount } from '../helpers/testAccount.js';
 
 type Evaluate = (c: unknown, n: number) => Promise<void>;
 const evaluate = (c: unknown, n: number) =>
@@ -21,11 +22,12 @@ const dueContexts = (count: number) => {
   });
 };
 
-beforeEach(() => {
+beforeEach(async () => {
   services.settings.updateSettings({ globalPaused: false, globalDryRun: false });
   vi.spyOn(console, 'log').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
+  await useTestAccount(services);
 });
 
 afterEach(() => {
@@ -59,7 +61,7 @@ describe('per-post anti-burst', () => {
   it('fires at most one live drop per 60 s even when several contexts are due', async () => {
     dueContexts(3);
     const exec = vi.spyOn(dropService, 'executeDrop').mockImplementation(async () => {
-      services.rateLimit.recordLivePostTimestamp();
+      services.rateLimit.recordLivePostTimestamp(TEST_ACCOUNT.id);
       return {} as never;
     });
     await scheduler.tick();

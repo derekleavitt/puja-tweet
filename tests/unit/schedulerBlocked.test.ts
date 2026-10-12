@@ -3,6 +3,7 @@ import { scheduler } from '../../server/scheduler.js';
 import { generateJitterForContext } from '../../server/services/contextChain.js';
 import { dropService } from '../../server/services/dropService.js';
 import { services } from '../../server/services/index.js';
+import { TEST_ACCOUNT, useTestAccount } from '../helpers/testAccount.js';
 
 const oneMinuteCampaign = (lastPostedAgoMs: number) => {
   for (const c of services.contexts.getContexts()) c.enabled = false;
@@ -13,10 +14,11 @@ const oneMinuteCampaign = (lastPostedAgoMs: number) => {
   return ctx;
 };
 
-beforeEach(() => {
+beforeEach(async () => {
   services.settings.updateSettings({ globalPaused: false, globalDryRun: true });
   services.rateLimit.clearCooldown();
   vi.spyOn(console, 'log').mockImplementation(() => {});
+  await useTestAccount(services);
 });
 
 afterEach(() => vi.restoreAllMocks());
@@ -39,8 +41,8 @@ describe('scheduler blocked reasons', () => {
 
   it('explains an active cooldown', () => {
     const ctx = oneMinuteCampaign(0);
-    services.rateLimit.setCooldown(15, 'reply cooldown');
-    expect(scheduler.getBlockedReason(ctx)).toMatch(/X cooldown: 15m left/);
+    services.rateLimit.setCooldown(15, 'reply cooldown', TEST_ACCOUNT.id);
+    expect(scheduler.getBlockedReason(ctx)).toMatch(/X cooldown for @tester: 15m left/);
   });
 
   it('has no reason when the scheduler is free to post', () => {

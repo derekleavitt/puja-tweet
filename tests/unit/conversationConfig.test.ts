@@ -133,7 +133,7 @@ describe('conversation config validation', () => {
     );
   });
 
-  it('rejects a participant without a known handle (unverified default account)', () => {
+  it('rejects the removed default account id like any unknown account', () => {
     fails(
       () =>
         create({
@@ -142,7 +142,7 @@ describe('conversation config validation', () => {
             { accountId: 'acct_env', persona: 'y' },
           ],
         }),
-      /Verify @handle first/,
+      /Unknown X account "acct_env"/,
     );
   });
 

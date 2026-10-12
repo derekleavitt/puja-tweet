@@ -9,9 +9,9 @@ import type { Page } from '@playwright/test';
 import { test, expect, openApp } from './fixtures.js';
 
 const HANDLES = ['main_e2e', 'alice', 'bob', 'carol', 'dan', 'erin'];
-const ids = ['acct_env', ...HANDLES.slice(1).map((h, i) => `acct_${i + 1}00`)];
+const ids = HANDLES.map((h, i) => `acct_${i}00`);
 
-/** Six verified accounts (the default plus five connected ones) in the status response. */
+/** Six verified, connected accounts in the status response. */
 async function mockAccounts(page: Page) {
   await page.route('**/api/status', async (route) => {
     const res = await route.fetch();
@@ -23,7 +23,6 @@ async function mockAccounts(page: Page) {
       userId: String(i),
       status: 'ok',
       createdAt: new Date().toISOString(),
-      isDefault: i === 0,
     }));
     await route.fulfill({ response: res, json });
   });
@@ -79,7 +78,7 @@ test('conversation mode hides the single-account fields and relabels the target'
 
   // Two rows prefilled with the first two accounts; the 2-voice hint shows
   await expect(rowsOf(app)).toHaveCount(2);
-  await expect(account(app, 1)).toHaveValue('acct_env');
+  await expect(account(app, 1)).toHaveValue('acct_000');
   await expect(account(app, 2)).toHaveValue('acct_100');
   await expect(app.getByText('With two voices they simply take turns.')).toBeVisible();
 
@@ -145,7 +144,20 @@ test('first speaker options follow the @mentions of the opening post', async ({ 
 });
 
 test('unverified accounts ask for verification; invalid forms do not save', async ({ app }) => {
-  // The default account is unverified (no handle) in the real e2e status
+  // Two connected accounts, the first one not verified yet (no handle).
+  await app.route('**/api/status', async (route) => {
+    const res = await route.fetch();
+    const json = await res.json();
+    json.accounts = ['', 'bob'].map((handle, i) => ({
+      id: `acct_${i}00`,
+      label: handle ? `@${handle}` : 'X user 0',
+      handle,
+      userId: String(i),
+      status: handle ? 'ok' : 'unverified',
+      createdAt: new Date().toISOString(),
+    }));
+    await route.fulfill({ response: res, json });
+  });
   await openConversationForm(app);
   await expect(app.getByText('Verify in Settings first', { exact: false }).first()).toBeVisible();
   await app.getByPlaceholder(/Morning Thread, Daily Quotes/).fill('Chat');
@@ -182,7 +194,7 @@ test('Unlimited vs a fixed number of turns, and the body that is saved', async (
     targetTweetId: '4242',
     conversation: {
       participants: [
-        { accountId: 'acct_env', persona: 'Dry wit' },
+        { accountId: 'acct_000', persona: 'Dry wit' },
         { accountId: 'acct_300', persona: 'Warm and curious' },
       ],
       sharedPrompt: 'Two friends discuss colors',

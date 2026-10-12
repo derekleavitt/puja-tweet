@@ -4,7 +4,6 @@
  */
 
 import { HttpError } from '../middleware/error.js';
-import { effectiveAccountId } from './accountService.js';
 import type { ConversationConfig, ConversationState } from '../../shared/types.js';
 
 export const MIN_PARTICIPANTS = 2;
@@ -33,7 +32,7 @@ export const validateConversation = (
 ): ValidatedConversation => {
   if (!input) throw new HttpError(400, 'Conversation mode needs a conversation setup.');
   const participants = (input.participants ?? []).map((p) => ({
-    accountId: effectiveAccountId(p.accountId),
+    accountId: (p.accountId ?? '').trim(),
     persona: (p.persona ?? '').trim(),
   }));
   if (participants.length < MIN_PARTICIPANTS || participants.length > MAX_PARTICIPANTS) {
@@ -68,9 +67,7 @@ export const validateConversation = (
 
   const openerHandle = input.openerHandle?.trim().replace(/^@/, '') || undefined;
   const openingPost = (input.openingPost ?? '').trim();
-  const firstSpeakerAccountId = input.firstSpeakerAccountId
-    ? effectiveAccountId(input.firstSpeakerAccountId)
-    : undefined;
+  const firstSpeakerAccountId = input.firstSpeakerAccountId || undefined;
   if (firstSpeakerAccountId) {
     if (!handles.has(firstSpeakerAccountId)) {
       throw new HttpError(400, 'The first speaker must be one of the participants.');
