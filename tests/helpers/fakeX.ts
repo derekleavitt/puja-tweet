@@ -111,6 +111,8 @@ export class FakeX {
   timelineCap = 3200;
   /** The X plan cannot read timelines / likes (403). */
   refuseReads = false;
+  /** The app's pay-per-use credits are used up: every content call answers 402. */
+  outOfCredits = false;
 
   constructor(
     readonly consumerKey = 'fake-consumer-key',
@@ -307,6 +309,12 @@ export class FakeX {
     const own = (id: string) => id === user.userId;
     const limited = (window: FakeWindow) => this.spend(window);
     let m: RegExpExecArray | null;
+    if (this.outOfCredits && /^\/2\/(users|tweets)\//.test(path) && path !== '/2/users/me') {
+      return json(402, {
+        title: 'CreditsDepleted',
+        detail: 'Your enrolled account does not have any credits to fulfill this request.',
+      });
+    }
 
     if (method === 'GET' && (m = /^\/2\/users\/(\d+)\/tweets$/.exec(path)) && own(m[1])) {
       const h = limited('timeline');

@@ -14,6 +14,7 @@ import { MemoryStore } from '../../server/store/MemoryStore.js';
 import { resolveTemplateText } from '../../server/templateAgent.js';
 import { postColorTweet } from '../../server/twitterClient.js';
 import { estimateMinutesLeft } from '../../server/services/wipeJob.js';
+import { CREDITS_RETRY_MS } from '../../server/services/wipeService.js';
 import type { WipeJob } from '../../server/store/Store.js';
 import { FakeX, type FakeUser } from '../helpers/fakeX.js';
 
@@ -216,6 +217,42 @@ describe('content wipe', () => {
     expect(vi.mocked(console.log).mock.calls.flat().join('\n')).toMatch(
       /@brand_one failed: .*Reason: X refused to list @brand_one's posts \(HTTP 403\)/,
     );
+  });
+
+  it('out of X API credits (402): skips nothing, waits, and continues where it stopped', async () => {
+    for (let i = 0; i < 6; i++) fake.seedPost(user.userId);
+    fake.windows.set('deletePost', { remaining: 2, reset: Math.floor(now / 1000) + 60 });
+    await request(app).post(`/api/accounts/${ID}/wipe`).send({ confirm: 'brand_one' });
+    await svc.wipe.advance(); // lists 6, deletes 2, then the window is used up
+    expect(fake.tweetsBy(user.userId)).toHaveLength(4);
+
+    fake.outOfCredits = true;
+    fake.windows.delete('deletePost');
+    now += 2 * 60_000;
+    await svc.wipe.advance(); // first delete answers 402
+    let summary = await wipeOf();
+    expect(summary).toMatchObject({
+      status: 'running',
+      queued: 4,
+      counts: { posts: 2, failed: 0 },
+    });
+    expect(summary.lastError).toContain('X API credits are used up (HTTP 402, "CreditsDepleted');
+    expect(summary.waitingUntil).toBe(new Date(now + CREDITS_RETRY_MS).toISOString());
+    const calls = fake.requests.length;
+    now += 10 * 60_000;
+    await svc.wipe.advance(); // still waiting: no call at all
+    expect(fake.requests.length).toBe(calls);
+
+    fake.outOfCredits = false; // credits added
+    now += CREDITS_RETRY_MS;
+    const timelineReads = fake.requests.filter((q) => q.path.endsWith('/tweets')).length;
+    await runTicks();
+    expect(fake.tweetsBy(user.userId)).toEqual([]);
+    summary = await wipeOf();
+    expect(summary).toMatchObject({ status: 'done', counts: { posts: 6, failed: 0 } });
+    expect(summary.lastError).toBeUndefined();
+    // The queued posts were not read again: only the follow-up pass reads the timeline.
+    expect(fake.requests.filter((q) => q.path.endsWith('/tweets')).length).toBe(timelineReads + 1);
   });
 
   it('stops on revoked tokens and marks the account', async () => {

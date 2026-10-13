@@ -110,8 +110,11 @@ reply and quote is deleted, every retweet undone and every like removed. It cann
   the reason a job stops are logged (`[Wipe]` lines).
 - X lists only the newest ~3,200 posts. The job repeats passes until a pass finds nothing left, so
   older posts surface as newer ones go. Posts X refuses to remove are counted as failed and skipped.
-- Listing posts and likes is a read: your X plan must allow it (a refusal stops the job with a clear
-  message), and on pay-per-use it counts toward your read usage.
+- Listing posts and likes is a read: your X plan must allow it (a 403 stops the job with a clear
+  message), and on pay-per-use every read and delete uses API credits.
+- **Out of X API credits** (HTTP 402 "CreditsDepleted"): nothing is skipped. The job keeps its place,
+  says so under the account, checks again every 30 minutes and continues where it stopped once you
+  add credits in the X developer portal (Billing). Posting from campaigns needs credits too.
 - With the global **Dry Run** on it only counts what it would remove and deletes nothing.
 - Code: `server/services/wipeService.ts`, `server/xContentClient.ts`.
 
