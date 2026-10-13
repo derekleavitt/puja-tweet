@@ -18,6 +18,8 @@ import type { TwitterCredentials } from '../twitterClient.js';
 export const WIPE_MAX_CALLS_PER_TICK = 12;
 export const WIPE_TICK_BUDGET_MS = 15_000;
 const RETRY_LATER_MS = 60_000;
+/** Out of X API credits (HTTP 402): every call fails until credits are added; check again this often. */
+export const CREDITS_RETRY_MS = 30 * 60_000;
 const DEFAULT_WINDOW_MS = 15 * 60_000;
 /** Posts that could not be removed (kept so later passes skip them instead of failing again). */
 const MAX_FAILED_IDS = 2_000;
@@ -201,6 +203,24 @@ export class WipeService {
     return limited;
   }
 
+  /**
+   * 402 Payment Required: the X app has no API credits left (pay-per-use). Nothing is wrong with the
+   * item or the account, so nothing is skipped: every endpoint waits and the job continues where it
+   * stopped (queue and cursor kept, so nothing is read twice) once credits are added.
+   */
+  private outOfCredits(job: WipeJob, r: XCallResult) {
+    const until = this.now() + CREDITS_RETRY_MS;
+    for (const ep of ['timeline', 'likedList', 'deletePost', 'unretweet', 'unlike'] as const) {
+      job.waitUntil[ep] = Math.max(job.waitUntil[ep] ?? 0, until);
+    }
+    const body = r.body as { title?: unknown; detail?: unknown } | null;
+    const said = [body?.title, body?.detail].filter((x) => typeof x === 'string').join(': ');
+    job.lastError =
+      `X API credits are used up (HTTP 402${said ? `, "${said}"` : ''}): add credits in the X ` +
+      'developer portal (Billing). The wipe checks again every 30 minutes and continues where it stopped.';
+    console.warn(`[Wipe] @${job.handle}: ${job.lastError}`);
+  }
+
   /** 401: the account's tokens were revoked; the job cannot continue. */
   private revoked(job: WipeJob) {
     this.deps.accounts.markRevoked(job.accountId, 'X rejected the tokens during a content wipe.');
@@ -233,9 +253,10 @@ export class WipeService {
     }
     if (this.rate(job, endpoint, r)) return;
     if (r.status === 401) return this.revoked(job);
-    if (r.status === 402 || r.status === 403) {
+    if (r.status === 402) return this.outOfCredits(job, r);
+    if (r.status === 403) {
       const what = job.phase === 'posts' ? 'posts' : 'likes';
-      const message = `X refused to list @${job.handle}'s ${what} (HTTP ${r.status}): the X plan may not include reading them.`;
+      const message = `X refused to list @${job.handle}'s ${what} (HTTP 403): the X plan may not include reading them.`;
       if (job.phase === 'posts') return this.finish(job, 'failed', message);
       job.lastError = message; // keep what the posts phase did
       return this.finish(job, 'done');
@@ -245,6 +266,7 @@ export class WipeService {
       job.lastError = `X answered HTTP ${r.status} listing ${job.phase}; retrying.`;
       return;
     }
+    job.lastError = undefined; // X answered normally again (e.g. after credits were added)
     const failed = new Set(job.failedIds);
     const fresh = items.filter((i) => !failed.has(`${i.kind}:${i.id}`));
     if (job.simulate) for (const i of fresh) job.counts[COUNT[i.kind]]++;
@@ -271,6 +293,7 @@ export class WipeService {
     }
     if (this.rate(job, endpoint, r)) return;
     if (r.status === 401) return this.revoked(job);
+    if (r.status === 402) return this.outOfCredits(job, r); // keeps the item queued
     if (r.status >= 500) {
       job.waitUntil[endpoint] = this.now() + RETRY_LATER_MS;
       job.lastError = `X answered HTTP ${r.status}; retrying.`;
@@ -280,6 +303,7 @@ export class WipeService {
     if (r.status < 300) {
       job.counts[COUNT[item.kind]]++;
       job.passRemoved++;
+      job.lastError = undefined;
     } else if (r.status !== 404) {
       // 404 = already gone. Anything else will not work on a retry either: skip it from now on.
       job.counts.failed++;
