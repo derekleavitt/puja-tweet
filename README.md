@@ -128,6 +128,7 @@ First time on a new machine: `npx playwright install chromium` before `npm run e
 | Doc | What's in it |
 | :--- | :--- |
 | [`docs/gcp-setup.md`](docs/gcp-setup.md) / [`docs/deploy.md`](docs/deploy.md) | Cloud Run, Scheduler, secrets, deploys, production logs, known limits, local `.env` |
+| [`docs/rebuild.md`](docs/rebuild.md) | **Offline since 2026-10-23**: how to rebuild and publish from source |
 | [`docs/accounts.md`](docs/accounts.md) | Connecting X accounts, "Posts as", X portal setup |
 | [`docs/conversations.md`](docs/conversations.md) | Conversation campaigns, step by step |
 | [`docs/hashtags.md`](docs/hashtags.md) | The Hashtags field, evolution, AI hashtag rules |

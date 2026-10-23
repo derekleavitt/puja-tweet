@@ -16,40 +16,16 @@ loop or driven externally through `POST /api/cron/tick`).
 
 ## Status: torn down (2026-10-23)
 
-Nothing runs and there are no public endpoints. Removed from GCP project `hitthehatch` (other apps
-in that project were not touched): Cloud Run `chromabot` (us-central1) and the old AI Studio service
-`x-chromabot-automated-color-reply-generator` (us-west1), Cloud Scheduler `chromabot-tick`,
-Artifact Registry `chromabot`, service accounts `chromabot-runtime` / `chromabot-deployer` and
-their project roles, and the Workload Identity pool `github` with provider `github-actions`. The
-GitHub workflow "Deploy to Cloud Run" is **disabled**, so merging to `main` deploys nothing.
+Nothing runs, there are no public endpoints, and no data or secrets remain. Removed from GCP project
+`hitthehatch` (other apps in that project were not touched): Cloud Run `chromabot` (us-central1) and
+the old AI Studio service `x-chromabot-automated-color-reply-generator` (us-west1), Cloud Scheduler
+`chromabot-tick`, Artifact Registry `chromabot`, service accounts `chromabot-runtime` /
+`chromabot-deployer` and their project roles, the Workload Identity pool `github`, the Firestore
+database `ai-studio-xchromabotautoma-…` and every Secret Manager secret of this app. The GitHub
+workflow "Deploy to Cloud Run" is **disabled**, so merging to `main` deploys nothing.
 
-Still present (data, kept on purpose): the Firestore database
-`ai-studio-xchromabotautoma-f7df51c8-9507-4dbf-b83e-55995c4c0943` (campaigns, encrypted account
-tokens, logs) and the Secret Manager secrets `TWITTER_API_KEY`, `TWITTER_API_SECRET`,
-`TWITTER_BEARER_TOKEN`, `TWITTER_ACCESS_TOKEN`, `TWITTER_ACCESS_TOKEN_SECRET`, `GEMINI_API_KEY`,
-`WEBHOOK_SECRET`, `CREDENTIALS_ENCRYPTION_KEY`, `CRON_SECRET` (no other app uses them). The repo
-variables `GCP_*` are kept for reference.
-
-### Rebuild and publish
-
-1. `gcloud auth login`, then `bash scripts/setup-gcp-deploy.sh`. It recreates the APIs, Artifact
-   Registry, both service accounts and roles, the Workload Identity pool + provider, and asks for any
-   missing secrets (blank keeps a saved value). A deleted pool is kept for 30 days and blocks its
-   name: within that time run
-   `gcloud iam workload-identity-pools undelete github --location=global --project=hitthehatch`
-   (and the same for the provider with `providers undelete github-actions --workload-identity-pool=github`)
-   first, or the script fails on create.
-2. Set the repository variables it prints (`GCP_WIF_PROVIDER`, `GCP_DEPLOY_SA`, `GCP_RUNTIME_SA`,
-   `GCP_PROJECT_ID=hitthehatch`, `GCP_REGION=us-central1`) if they changed.
-3. `gh workflow enable deploy.yml`, then GitHub → Actions → Deploy to Cloud Run → Run workflow. The
-   summary prints the new URL.
-4. `bash scripts/setup-gcp-deploy.sh --scheduler <URL>` (the minute tick), add the URL's host in
-   Firebase → Authentication → Authorized domains, and register `<URL>/oauth/x/callback` in the X
-   developer portal. Sign in, check the X accounts in Settings, then switch Dry Run / Pause off.
-
-If the Firestore database or the secrets were deleted too, the setup script recreates the secrets
-(generated ones get new values) and the app starts with an empty store: reconnect the X accounts and
-recreate the campaigns. Full walkthrough: [gcp-setup.md](gcp-setup.md).
+**To bring it back, follow [rebuild.md](rebuild.md)** (from zero: new database, secrets, deploy,
+scheduler, sign-in, X accounts).
 
 ## Production (before the teardown)
 
